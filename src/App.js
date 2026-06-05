@@ -3,465 +3,128 @@ import './App.css';
 
 const WorkflowD3 = () => {
   const svgRef = useRef();
-  const [hoveredTask, setHoveredTask] = useState(null);
   const [tooltipData, setTooltipData] = useState(null);
   const [tooltipPos, setTooltipPos] = useState({ x: 0, y: 0 });
 
-  const data = {
-    tasks: [
-      {
-        id: 'task1',
-        name: 'Task 1',
-        tool: 'TOOL 1',
-        responsible: 'RESPONSIBLE_A',
-        startTime: 100,
-        duration: 150,
-        color: '#4CAF50',
-        details: 'Initial processing of Document Input 1 and 2',
-        dependencies: []
-      },
-      {
-        id: 'task2',
-        name: 'Task 2',
-        tool: 'TOOL 2',
-        responsible: 'RESPONSIBLE_A',
-        startTime: 200,
-        duration: 150,
-        color: '#4CAF50',
-        details: 'Processing Document Input 3',
-        dependencies: []
-      },
-      {
-        id: 'task3',
-        name: 'Task 3',
-        tool: 'TOOL 3',
-        responsible: 'RESPONSIBLE_B',
-        startTime: 400,
-        duration: 120,
-        color: '#1a3a99',
-        details: 'Data validation and verification',
-        dependencies: ['task2']
-      },
-      {
-        id: 'task4',
-        name: 'Task 4',
-        tool: 'TOOL 1',
-        responsible: 'RESPONSIBLE_B',
-        startTime: 300,
-        duration: 200,
-        color: '#1a3a99',
-        details: 'Advanced processing following Task 1',
-        dependencies: ['task1'],
-        verticalOffset: true
-      },
-      {
-        id: 'task5',
-        name: 'Task 5',
-        tool: 'TOOL 2',
-        responsible: 'RESPONSIBLE_C',
-        startTime: 400,
-        duration: 180,
-        color: '#d946ef',
-        details: 'Quality assurance checkpoint',
-        dependencies: ['task2'],
-        verticalOffset: true
-      },
-      {
-        id: 'task6',
-        name: 'Task 6',
-        tool: 'TOOL 4',
-        responsible: 'RESPONSIBLE_A',
-        startTime: 550,
-        duration: 150,
-        color: '#4CAF50',
-        details: 'Final document generation',
-        dependencies: ['task4', 'task5']
-      }
-    ],
-    tools: ['TOOL 1', 'TOOL 2', 'TOOL 3', 'TOOL 4'],
-    documents: [
-      { id: 'document1', name: 'Document Input 1', type: 'input' },
-      { id: 'document2', name: 'Document Input 2', type: 'input' },
-      { id: 'document3', name: 'Document Input 3', type: 'input' },
-      { id: 'output1', name: 'Document Output 1', type: 'output' },
-      { id: 'output2', name: 'Document Output 1', type: 'output' },
-      { id: 'output3', name: 'Document Output 1', type: 'output' }
-    ],
-    responsibles: [
-      { key: 'RESPONSIBLE_A', name: 'RESPONSIBLE A', color: '#c7e9c0', borderColor: '#2d6a2d' },
-      { key: 'RESPONSIBLE_B', name: 'RESPONSIBLE B', color: '#b3d9ff', borderColor: '#003d99' },
-      { key: 'RESPONSIBLE_C', name: 'RESPONSIBLE C', color: '#f0c6ff', borderColor: '#9900cc' }
-    ]
-  };
+  const tasks = [
+    { id: 't1', name: 'Task 1', tool: 'TOOL 1', x: 100, y: 100, w: 150, h: 40, color: '#4CAF50', deps: [], details: 'Task 1 details' },
+    { id: 't2', name: 'Task 2', tool: 'TOOL 2', x: 300, y: 200, w: 150, h: 40, color: '#4CAF50', deps: [], details: 'Task 2 details' },
+    { id: 't3', name: 'Task 3', tool: 'TOOL 3', x: 500, y: 100, w: 120, h: 40, color: '#1a3a99', deps: ['t2'], details: 'Task 3 details' },
+    { id: 't4', name: 'Task 4', tool: 'TOOL 1', x: 300, y: 300, w: 200, h: 40, color: '#1a3a99', deps: ['t1'], details: 'Task 4 details' },
+    { id: 't5', name: 'Task 5', tool: 'TOOL 2', x: 500, y: 300, w: 180, h: 40, color: '#d946ef', deps: ['t2'], details: 'Task 5 details' },
+    { id: 't6', name: 'Task 6', tool: 'TOOL 4', x: 700, y: 200, w: 150, h: 40, color: '#4CAF50', deps: ['t4', 't5'], details: 'Task 6 details' }
+  ];
 
   useEffect(() => {
     if (!svgRef.current) return;
 
-    const margin = { top: 100, right: 200, bottom: 40, left: 150 };
-    const svgWidth = 1800;
-    const svgHeight = 900;
-    const width = svgWidth - margin.left - margin.right;
-    const height = svgHeight - margin.top - margin.bottom;
-    const toolHeight = height / data.tools.length;
-    const taskHeight = 40;
-
-    // Clear SVG
     svgRef.current.innerHTML = '';
-
     const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
-    svg.setAttribute('width', svgWidth);
-    svg.setAttribute('height', svgHeight);
-    svg.setAttribute('style', 'background-color: #f5f5f5; border: 1px solid #ddd;');
+    svg.setAttribute('width', 1000);
+    svg.setAttribute('height', 500);
+    svg.setAttribute('style', 'background-color: #f5f5f5; border: 2px solid #333;');
     svgRef.current.appendChild(svg);
 
-    // Add defs for arrow markers
+    // Add arrow marker
     const defs = document.createElementNS('http://www.w3.org/2000/svg', 'defs');
-    
-    // Large arrow marker for dependencies
-    const markerLarge = document.createElementNS('http://www.w3.org/2000/svg', 'marker');
-    markerLarge.setAttribute('id', 'arrowhead-large');
-    markerLarge.setAttribute('markerWidth', '13');
-    markerLarge.setAttribute('markerHeight', '13');
-    markerLarge.setAttribute('refX', '9');
-    markerLarge.setAttribute('refY', '6.5');
-    markerLarge.setAttribute('orient', 'auto');
-    const polygonLarge = document.createElementNS('http://www.w3.org/2000/svg', 'polygon');
-    polygonLarge.setAttribute('points', '0 0, 13 6.5, 0 13');
-    polygonLarge.setAttribute('fill', '#2c3e50');
-    markerLarge.appendChild(polygonLarge);
-    defs.appendChild(markerLarge);
-
+    const marker = document.createElementNS('http://www.w3.org/2000/svg', 'marker');
+    marker.setAttribute('id', 'arrowhead');
+    marker.setAttribute('markerWidth', '10');
+    marker.setAttribute('markerHeight', '10');
+    marker.setAttribute('refX', '9');
+    marker.setAttribute('refY', '3');
+    marker.setAttribute('orient', 'auto');
+    const poly = document.createElementNS('http://www.w3.org/2000/svg', 'polygon');
+    poly.setAttribute('points', '0 0, 10 3, 0 6');
+    poly.setAttribute('fill', '#FF6B6B');
+    marker.appendChild(poly);
+    defs.appendChild(marker);
     svg.appendChild(defs);
 
-    // Legend
-    const legendGroup = document.createElementNS('http://www.w3.org/2000/svg', 'g');
-    legendGroup.setAttribute('transform', `translate(${margin.left}, 20)`);
-
-    data.responsibles.forEach((resp, i) => {
-      const legendItem = document.createElementNS('http://www.w3.org/2000/svg', 'g');
-      legendItem.setAttribute('transform', `translate(${i * 400}, 0)`);
-
-      const rect = document.createElementNS('http://www.w3.org/2000/svg', 'rect');
-      rect.setAttribute('x', '0');
-      rect.setAttribute('y', '0');
-      rect.setAttribute('width', '40');
-      rect.setAttribute('height', '30');
-      rect.setAttribute('fill', resp.color);
-      rect.setAttribute('stroke', resp.borderColor);
-      rect.setAttribute('stroke-width', '2');
-      legendItem.appendChild(rect);
-
-      const text = document.createElementNS('http://www.w3.org/2000/svg', 'text');
-      text.setAttribute('x', '50');
-      text.setAttribute('y', '20');
-      text.setAttribute('font-size', '12px');
-      text.setAttribute('font-weight', 'bold');
-      text.setAttribute('fill', '#333');
-      text.textContent = resp.name;
-      legendItem.appendChild(text);
-
-      legendGroup.appendChild(legendItem);
-    });
-    svg.appendChild(legendGroup);
-
-    // Main content group
-    const g = document.createElementNS('http://www.w3.org/2000/svg', 'g');
-    g.setAttribute('transform', `translate(${margin.left}, ${margin.top})`);
-    svg.appendChild(g);
-
-    // Activity title
-    const title = document.createElementNS('http://www.w3.org/2000/svg', 'text');
-    title.setAttribute('x', width / 2);
-    title.setAttribute('y', '-30');
-    title.setAttribute('text-anchor', 'middle');
-    title.setAttribute('font-size', '20px');
-    title.setAttribute('font-weight', 'bold');
-    title.setAttribute('fill', '#333');
-    title.textContent = 'ACTIVITY 1';
-    g.appendChild(title);
-
-    // Helper function to get task vertical position
-    const getTaskVerticalPosition = (task) => {
-      const toolIndex = data.tools.indexOf(task.tool);
-      const toolTasksBeforeThis = data.tasks
-        .filter(t => t.tool === task.tool && t.startTime < task.startTime)
-        .length;
-
-      const baseY = toolIndex * toolHeight + 45;
-      const verticalOffset = toolTasksBeforeThis * (taskHeight + 20);
-
-      return Math.min(baseY + verticalOffset, toolIndex * toolHeight + toolHeight - 60);
-    };
-
-    // Draw dependencies first (so they appear behind tasks)
-    const arrowsGroup = document.createElementNS('http://www.w3.org/2000/svg', 'g');
-    arrowsGroup.setAttribute('class', 'arrows-group');
-    g.appendChild(arrowsGroup);
-
-    data.tasks.forEach(task => {
-      task.dependencies.forEach(depId => {
-        const depTask = data.tasks.find(t => t.id === depId);
+    // Draw arrows for dependencies
+    tasks.forEach(task => {
+      task.deps.forEach(depId => {
+        const depTask = tasks.find(t => t.id === depId);
         if (depTask) {
-          const sourceY = getTaskVerticalPosition(depTask) + taskHeight / 2;
-          const sourceX = depTask.startTime + depTask.duration;
-          const targetY = getTaskVerticalPosition(task) + taskHeight / 2;
-          const targetX = task.startTime;
-
-          // Create curved path with better arrows
-          const midX = (sourceX + targetX) / 2;
           const path = document.createElementNS('http://www.w3.org/2000/svg', 'path');
+          const x1 = depTask.x + depTask.w;
+          const y1 = depTask.y + depTask.h / 2;
+          const x2 = task.x;
+          const y2 = task.y + task.h / 2;
           
-          // Use quadratic bezier curve for better visualization
-          const d = `M ${sourceX} ${sourceY} Q ${midX} ${sourceY}, ${midX} ${(sourceY + targetY) / 2} T ${targetX} ${targetY}`;
+          const d = `M ${x1} ${y1} L ${x1 + 30} ${y1} L ${x2 - 30} ${y2} L ${x2} ${y2}`;
           
           path.setAttribute('d', d);
+          path.setAttribute('stroke', '#FF6B6B');
+          path.setAttribute('stroke-width', '3');
           path.setAttribute('fill', 'none');
-          path.setAttribute('stroke', '#2c3e50');
-          path.setAttribute('stroke-width', '2.5');
-          path.setAttribute('stroke-linecap', 'round');
-          path.setAttribute('stroke-linejoin', 'round');
-          path.setAttribute('marker-end', 'url(#arrowhead-large)');
-          path.setAttribute('opacity', '0.7');
-          path.setAttribute('class', 'dependency-arrow');
-          path.setAttribute('data-from', depId);
-          path.setAttribute('data-to', task.id);
+          path.setAttribute('marker-end', 'url(#arrowhead)');
           
-          // Add hover effect
           path.addEventListener('mouseenter', function() {
-            this.setAttribute('stroke-width', '3.5');
-            this.setAttribute('opacity', '1');
             this.setAttribute('stroke', '#4CAF50');
-            this.style.filter = 'drop-shadow(0 2px 4px rgba(0, 0, 0, 0.3))';
+            this.setAttribute('stroke-width', '4');
           });
-
+          
           path.addEventListener('mouseleave', function() {
-            this.setAttribute('stroke-width', '2.5');
-            this.setAttribute('opacity', '0.7');
-            this.setAttribute('stroke', '#2c3e50');
-            this.style.filter = 'none';
+            this.setAttribute('stroke', '#FF6B6B');
+            this.setAttribute('stroke-width', '3');
           });
-
-          arrowsGroup.appendChild(path);
+          
+          svg.appendChild(path);
         }
       });
     });
 
-    // Draw tool containers
-    data.tools.forEach((tool, toolIndex) => {
-      const toolY = toolIndex * toolHeight;
-
-      // Tool border
-      const toolRect = document.createElementNS('http://www.w3.org/2000/svg', 'rect');
-      toolRect.setAttribute('x', '0');
-      toolRect.setAttribute('y', toolY);
-      toolRect.setAttribute('width', width);
-      toolRect.setAttribute('height', toolHeight);
-      toolRect.setAttribute('fill', '#fafafa');
-      toolRect.setAttribute('stroke', '#2563eb');
-      toolRect.setAttribute('stroke-width', '2');
-      toolRect.setAttribute('rx', '4');
-      g.appendChild(toolRect);
-
-      // Tool header
-      const toolLabel = document.createElementNS('http://www.w3.org/2000/svg', 'text');
-      toolLabel.setAttribute('x', '10');
-      toolLabel.setAttribute('y', toolY + 25);
-      toolLabel.setAttribute('font-size', '13px');
-      toolLabel.setAttribute('font-weight', 'bold');
-      toolLabel.setAttribute('fill', '#1565c0');
-      toolLabel.textContent = tool;
-      g.appendChild(toolLabel);
-
-      // Tool separator line
-      const line = document.createElementNS('http://www.w3.org/2000/svg', 'line');
-      line.setAttribute('x1', '0');
-      line.setAttribute('y1', toolY + 35);
-      line.setAttribute('x2', width);
-      line.setAttribute('y2', toolY + 35);
-      line.setAttribute('stroke', '#2563eb');
-      line.setAttribute('stroke-width', '1');
-      line.setAttribute('opacity', '0.3');
-      g.appendChild(line);
-    });
-
     // Draw tasks
-    data.tasks.forEach((task) => {
-      const taskGroup = document.createElementNS('http://www.w3.org/2000/svg', 'g');
-      taskGroup.setAttribute('class', 'task-group');
-      taskGroup.setAttribute('data-task-id', task.id);
-
-      const taskY = getTaskVerticalPosition(task);
-
-      // Task rectangle
-      const taskRect = document.createElementNS('http://www.w3.org/2000/svg', 'rect');
-      taskRect.setAttribute('x', task.startTime);
-      taskRect.setAttribute('y', taskY);
-      taskRect.setAttribute('width', task.duration);
-      taskRect.setAttribute('height', taskHeight);
-      taskRect.setAttribute('rx', '4');
-      taskRect.setAttribute('fill', task.color);
-      taskRect.setAttribute('stroke', task.color);
-      taskRect.setAttribute('stroke-width', '2');
-      taskRect.setAttribute('class', 'task-rect');
-      taskRect.style.cursor = 'pointer';
-      taskRect.style.transition = 'all 0.3s ease';
-
-      // Create closure to capture task data
-      const handleTaskMouseEnter = (e) => {
-        setHoveredTask(task.id);
+    tasks.forEach(task => {
+      const rect = document.createElementNS('http://www.w3.org/2000/svg', 'rect');
+      rect.setAttribute('x', task.x);
+      rect.setAttribute('y', task.y);
+      rect.setAttribute('width', task.w);
+      rect.setAttribute('height', task.h);
+      rect.setAttribute('fill', task.color);
+      rect.setAttribute('rx', '4');
+      rect.style.cursor = 'pointer';
+      
+      rect.addEventListener('mouseenter', (e) => {
         setTooltipData(task);
         setTooltipPos({ x: e.clientX, y: e.clientY });
-
-        taskRect.style.filter = 'drop-shadow(0 4px 12px rgba(0,0,0,0.4))';
-        taskRect.style.opacity = '1';
-
-        // Dim other tasks
-        svg.querySelectorAll('.task-rect').forEach(el => {
-          if (el !== taskRect) {
-            el.style.opacity = '0.3';
-          }
-        });
-
-        // Highlight arrows related to this task
-        svg.querySelectorAll('.dependency-arrow').forEach(arrow => {
-          const from = arrow.getAttribute('data-from');
-          const to = arrow.getAttribute('data-to');
-          
-          if (from === task.id || to === task.id) {
-            arrow.setAttribute('stroke', '#4CAF50');
-            arrow.setAttribute('stroke-width', '3.5');
-            arrow.setAttribute('opacity', '1');
-            arrow.style.filter = 'drop-shadow(0 2px 4px rgba(0, 0, 0, 0.3))';
-          } else {
-            arrow.setAttribute('opacity', '0.2');
-          }
-        });
-      };
-
-      const handleTaskMouseLeave = () => {
-        setHoveredTask(null);
+        rect.style.filter = 'drop-shadow(0 4px 8px rgba(0,0,0,0.3))';
+      });
+      
+      rect.addEventListener('mouseleave', () => {
         setTooltipData(null);
-
-        taskRect.style.filter = 'none';
-        
-        svg.querySelectorAll('.task-rect').forEach(el => {
-          el.style.opacity = '1';
-        });
-
-        // Reset arrows
-        svg.querySelectorAll('.dependency-arrow').forEach(arrow => {
-          arrow.setAttribute('stroke', '#2c3e50');
-          arrow.setAttribute('stroke-width', '2.5');
-          arrow.setAttribute('opacity', '0.7');
-          arrow.style.filter = 'none';
-        });
-      };
-
-      taskRect.addEventListener('mouseenter', handleTaskMouseEnter);
-      taskRect.addEventListener('mouseleave', handleTaskMouseLeave);
-
-      taskGroup.appendChild(taskRect);
+        rect.style.filter = 'none';
+      });
+      
+      svg.appendChild(rect);
 
       // Task label
-      const taskLabel = document.createElementNS('http://www.w3.org/2000/svg', 'text');
-      taskLabel.setAttribute('x', task.startTime + task.duration / 2);
-      taskLabel.setAttribute('y', taskY + taskHeight / 2 + 5);
-      taskLabel.setAttribute('text-anchor', 'middle');
-      taskLabel.setAttribute('font-size', '12px');
-      taskLabel.setAttribute('font-weight', 'bold');
-      taskLabel.setAttribute('fill', 'white');
-      taskLabel.setAttribute('pointer-events', 'none');
-      taskLabel.textContent = task.name;
-      taskGroup.appendChild(taskLabel);
-
-      g.appendChild(taskGroup);
+      const text = document.createElementNS('http://www.w3.org/2000/svg', 'text');
+      text.setAttribute('x', task.x + task.w / 2);
+      text.setAttribute('y', task.y + task.h / 2 + 5);
+      text.setAttribute('text-anchor', 'middle');
+      text.setAttribute('font-size', '12px');
+      text.setAttribute('font-weight', 'bold');
+      text.setAttribute('fill', 'white');
+      text.setAttribute('pointer-events', 'none');
+      text.textContent = task.name;
+      svg.appendChild(text);
     });
 
-    // Draw input documents
-    const inputDocs = data.documents.filter(d => d.type === 'input');
-    inputDocs.forEach((doc, i) => {
-      const docGroup = document.createElementNS('http://www.w3.org/2000/svg', 'g');
-      docGroup.setAttribute('transform', `translate(-140, ${i * 100 + 30})`);
-
-      const docRect = document.createElementNS('http://www.w3.org/2000/svg', 'rect');
-      docRect.setAttribute('x', '0');
-      docRect.setAttribute('y', '0');
-      docRect.setAttribute('width', '130');
-      docRect.setAttribute('height', '50');
-      docRect.setAttribute('rx', '6');
-      docRect.setAttribute('fill', '#999');
-      docRect.setAttribute('stroke', '#666');
-      docRect.setAttribute('stroke-width', '2');
-      docGroup.appendChild(docRect);
-
-      const docText = document.createElementNS('http://www.w3.org/2000/svg', 'text');
-      docText.setAttribute('x', '65');
-      docText.setAttribute('y', '30');
-      docText.setAttribute('text-anchor', 'middle');
-      docText.setAttribute('font-size', '11px');
-      docText.setAttribute('font-weight', 'bold');
-      docText.setAttribute('fill', 'white');
-      docText.textContent = doc.name;
-      docGroup.appendChild(docText);
-
-      g.appendChild(docGroup);
-    });
-
-    // Draw output documents
-    const outputDocs = data.documents.filter(d => d.type === 'output');
-    outputDocs.forEach((doc, i) => {
-      const docGroup = document.createElementNS('http://www.w3.org/2000/svg', 'g');
-      docGroup.setAttribute('transform', `translate(${width + 20}, ${i * 100 + 30})`);
-
-      const docRect = document.createElementNS('http://www.w3.org/2000/svg', 'rect');
-      docRect.setAttribute('x', '0');
-      docRect.setAttribute('y', '0');
-      docRect.setAttribute('width', '130');
-      docRect.setAttribute('height', '50');
-      docRect.setAttribute('rx', '6');
-      docRect.setAttribute('fill', '#999');
-      docRect.setAttribute('stroke', '#666');
-      docRect.setAttribute('stroke-width', '2');
-      docGroup.appendChild(docRect);
-
-      const docText = document.createElementNS('http://www.w3.org/2000/svg', 'text');
-      docText.setAttribute('x', '65');
-      docText.setAttribute('y', '30');
-      docText.setAttribute('text-anchor', 'middle');
-      docText.setAttribute('font-size', '11px');
-      docText.setAttribute('font-weight', 'bold');
-      docText.setAttribute('fill', 'white');
-      docText.textContent = doc.name;
-      docGroup.appendChild(docText);
-
-      g.appendChild(docGroup);
-    });
-
-  }, [data]);
-
-  // Handle tooltip mouse move to keep it following cursor
-  const handleTooltipMouseMove = (e) => {
-    if (tooltipData) {
-      setTooltipPos({ x: e.clientX, y: e.clientY });
-    }
-  };
+  }, []);
 
   return (
-    <div 
-      className="workflow-d3-container"
-      onMouseMove={handleTooltipMouseMove}
-    >
+    <div className="workflow-d3-container">
       <div ref={svgRef} className="svg-container"></div>
-
-      {/* Tooltip - only visible when hoveredTask is set */}
-      {hoveredTask && tooltipData && (
+      
+      {tooltipData && (
         <div 
           className="d3-tooltip" 
           style={{
             position: 'fixed',
             left: `${tooltipPos.x + 20}px`,
             top: `${tooltipPos.y - 100}px`,
-            zIndex: 1000
           }}
         >
           <div className="tooltip-header">
@@ -469,16 +132,7 @@ const WorkflowD3 = () => {
           </div>
           <div className="tooltip-content">
             <p><strong>Tool:</strong> {tooltipData.tool}</p>
-            <p><strong>Responsible:</strong> {tooltipData.responsible}</p>
-            <p><strong>Duration:</strong> {tooltipData.duration}px</p>
-            <p><strong>Start Time:</strong> {tooltipData.startTime}px</p>
-            <p><strong>Description:</strong> {tooltipData.details}</p>
-            <p>
-              <strong>Dependencies:</strong>{' '}
-              {tooltipData.dependencies.length > 0 
-                ? tooltipData.dependencies.join(', ') 
-                : 'None'}
-            </p>
+            <p><strong>Details:</strong> {tooltipData.details}</p>
           </div>
         </div>
       )}
