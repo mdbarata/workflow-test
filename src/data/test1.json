@@ -1,0 +1,123 @@
+{
+    "activities": [
+      {
+        "id": "activity_1",
+        "name": "ACTIVITY 1",
+        "tools": [
+          "PLM (3DEXPERIENCE / Teamcenter)",
+          "SAP S/4HANA",
+          "MES",
+          "Skywise",
+          "Power BI",
+          "Simulation (HPC)",
+          "Document Management System",
+          "Integration Layer / APIs"
+        ],
+        "responsibles": [
+          {
+            "key": "RESPONSIBLE_A",
+            "name": "Systems Engineer",
+            "color": "#c7e9c0",
+            "borderColor": "#2d6a2d",
+            "taskColor": "#4CAF50"
+          },
+          {
+            "key": "RESPONSIBLE_B",
+            "name": "Manufacturing Engineer",
+            "color": "#b3d9ff",
+            "borderColor": "#003d99",
+            "taskColor": "#1a3a99"
+          },
+          {
+            "key": "RESPONSIBLE_C",
+            "name": "Operations Manager",
+            "color": "#f0c6ff",
+            "borderColor": "#9900cc",
+            "taskColor": "#d946ef"
+          }
+        ],
+        "documents": [
+          { "id": "doc_in_1", "name": "Requirements", "type": "input" },
+          { "id": "doc_in_2", "name": "Production Data", "type": "input" },
+          { "id": "doc_in_3", "name": "Operational Data", "type": "input" },
+          { "id": "doc_out_1", "name": "Architecture Documentation", "type": "output" },
+          { "id": "doc_out_2", "name": "Production Plan", "type": "output" },
+          { "id": "doc_out_3", "name": "Performance Report", "type": "output" }
+        ],
+        "tasks": [
+          {
+            "id": "task1",
+            "name": "Perform trade-off study",
+            "tool": "Simulation (HPC)",
+            "responsible": "RESPONSIBLE_A",
+            "startTime": 100,
+            "duration": 150,
+            "details": "Define design alternatives, run simulations, document results",
+            "dependencies": [],
+            "inputs": ["doc_in_1"],
+            "outputs": []
+          },
+          {
+            "id": "task2",
+            "name": "Manage requirements",
+            "tool": "PLM (3DEXPERIENCE / Teamcenter)",
+            "responsible": "RESPONSIBLE_A",
+            "startTime": 200,
+            "duration": 150,
+            "details": "Capture and link requirements, share with stakeholders",
+            "dependencies": [],
+            "inputs": ["doc_in_1"],
+            "outputs": []
+          },
+          {
+            "id": "task3",
+            "name": "Develop system architecture",
+            "tool": "PLM (3DEXPERIENCE / Teamcenter)",
+            "responsible": "RESPONSIBLE_A",
+            "startTime": 350,
+            "duration": 150,
+            "details": "Create architecture model and validate components",
+            "dependencies": ["task1"],
+            "inputs": [],
+            "outputs": ["doc_out_1"]
+          },
+          {
+            "id": "task4",
+            "name": "Define production process",
+            "tool": "PLM (3DEXPERIENCE / Teamcenter)",
+            "responsible": "RESPONSIBLE_B",
+            "startTime": 300,
+            "duration": 200,
+            "details": "Design process flow and integrate with ERP",
+            "dependencies": ["task2"],
+            "inputs": [],
+            "outputs": ["doc_out_2"]
+          },
+          {
+            "id": "task5",
+            "name": "Plan production schedule",
+            "tool": "SAP S/4HANA",
+            "responsible": "RESPONSIBLE_C",
+            "startTime": 500,
+            "duration": 180,
+            "details": "Define production plan, distribute orders, monitor execution",
+            "dependencies": ["task4"],
+            "inputs": ["doc_in_2"],
+            "outputs": []
+          },
+          {
+            "id": "task6",
+            "name": "Monitor production performance",
+            "tool": "Power BI",
+            "responsible": "RESPONSIBLE_C",
+            "startTime": 700,
+            "duration": 150,
+            "details": "Analyze KPIs and generate performance reports",
+            "dependencies": ["task5"],
+            "inputs": ["doc_in_3"],
+            "outputs": ["doc_out_3"]
+          }
+        ]
+      }
+    ]
+  }
