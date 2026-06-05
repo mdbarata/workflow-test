@@ -98,6 +98,19 @@ body {
   }
 }
 
+/* Dependency arrows */
+.dependency-arrow {
+  transition: all 0.3s ease;
+  cursor: pointer;
+}
+
+.dependency-arrow:hover {
+  stroke: #4CAF50 !important;
+  stroke-width: 3.5 !important;
+  opacity: 1 !important;
+  filter: drop-shadow(0 2px 4px rgba(0, 0, 0, 0.2));
+}
+
 /* Task hover effect */
 .task-group {
   transition: all 0.3s ease;
@@ -149,17 +162,6 @@ body {
 .svg-container {
   scrollbar-color: #888 #f1f1f1;
   scrollbar-width: thin;
-}
-
-.dependency-arrow {
-  transition: all 0.3s ease;
-}
-
-.dependency-arrow:hover {
-  stroke: #4CAF50 !important;
-  stroke-width: 3.5 !important;
-  opacity: 1 !important;
-  filter: drop-shadow(0 2px 4px rgba(0, 0, 0, 0.2));
 }
 
 /* Responsive Design */
