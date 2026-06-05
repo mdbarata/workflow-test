@@ -6,76 +6,418 @@
 
 body {
   font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
-  background-color: #f0f0f0;
+  background-color: #e8edf3;
 }
 
 #root {
   width: 100%;
   height: 100vh;
+  overflow: hidden;
 }
+
+/* ── Layout ────────────────────────────────────────────────────────────────── */
 
 .workflow-d3-container {
   width: 100%;
   height: 100%;
-  padding: 20px;
-  background-color: #f0f0f0;
+  display: flex;
+  flex-direction: column;
+  gap: 0;
+  background-color: #e8edf3;
+  overflow: hidden;
 }
 
 .svg-container {
-  width: 100%;
-  height: 100%;
-  background-color: white;
-  border-radius: 8px;
-  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+  flex: 1;
   overflow: auto;
+  background: white;
+  margin: 0 16px 16px 16px;
+  border-radius: 10px;
+  box-shadow: 0 2px 12px rgba(0, 0, 0, 0.08);
+  padding: 0;
+}
+
+.canvas-wrapper {
+  position: relative;
+  display: inline-block;
+}
+
+/* ── Activity tabs ─────────────────────────────────────────────────────────── */
+
+.activity-tabs {
+  display: flex;
+  gap: 4px;
+  padding: 10px 16px 0;
+}
+
+.activity-tab {
+  padding: 7px 18px;
+  border: none;
+  border-radius: 6px 6px 0 0;
+  background: #cbd5e1;
+  color: #475569;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background 0.15s;
+}
+
+.activity-tab.active {
+  background: white;
+  color: #1e40af;
+}
+
+.activity-tab:hover:not(.active) {
+  background: #e2e8f0;
+}
+
+/* ── Filter bar ────────────────────────────────────────────────────────────── */
+
+.filter-bar {
   display: flex;
   align-items: center;
-  justify-content: center;
+  flex-wrap: wrap;
+  gap: 8px;
+  padding: 10px 16px;
+  background: white;
+  margin: 10px 16px 6px 16px;
+  border-radius: 8px;
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.07);
 }
 
-.svg-container svg {
-  width: auto;
-  height: auto;
+.filter-section {
+  display: flex;
+  align-items: center;
+  gap: 8px;
 }
+
+.filter-label {
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  color: #94a3b8;
+  text-transform: uppercase;
+  white-space: nowrap;
+}
+
+.filter-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.filter-divider {
+  width: 1px;
+  height: 28px;
+  background: #e2e8f0;
+  margin: 0 4px;
+}
+
+.filter-spacer {
+  flex: 1;
+}
+
+/* ── Chips ─────────────────────────────────────────────────────────────────── */
+
+.chip {
+  padding: 4px 12px;
+  border-radius: 20px;
+  border: 1.5px solid #cbd5e1;
+  background: transparent;
+  font-size: 11px;
+  font-weight: 600;
+  color: #64748b;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  transition: all 0.15s ease;
+  white-space: nowrap;
+}
+
+.chip:hover {
+  background: #f1f5f9;
+  transform: translateY(-1px);
+}
+
+.chip-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+
+.chip-active {
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.15);
+}
+
+.chip-tool {
+  border-color: #2563eb;
+  color: #2563eb;
+}
+
+.chip-tool-active {
+  background-color: #2563eb !important;
+  color: white !important;
+  border-color: #1d4ed8 !important;
+}
+
+.chip-clear {
+  border-color: #ef4444;
+  color: #ef4444;
+  font-size: 10px;
+}
+
+.chip-clear:hover {
+  background: #fef2f2;
+}
+
+/* ── Import button ─────────────────────────────────────────────────────────── */
+
+.import-btn {
+  padding: 6px 16px;
+  border-radius: 6px;
+  border: none;
+  background: #1e40af;
+  color: white;
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background 0.15s, transform 0.1s;
+}
+
+.import-btn:hover {
+  background: #1d4ed8;
+  transform: translateY(-1px);
+}
+
+/* ── Tooltip ───────────────────────────────────────────────────────────────── */
 
 .d3-tooltip {
-  background-color: #2c3e50;
+  background: #1e293b;
   color: white;
-  padding: 12px;
-  border-radius: 6px;
+  padding: 14px 16px;
+  border-radius: 10px;
   font-size: 12px;
-  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.4);
-  min-width: 200px;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.35);
+  min-width: 260px;
+  max-width: 380px;
   pointer-events: none;
-  z-index: 1000;
-  border: 2px solid #34495e;
-  animation: fadeIn 0.2s ease;
+  animation: tooltipFadeIn 0.15s ease;
+  border: 1px solid rgba(255, 255, 255, 0.08);
 }
 
 .tooltip-header {
-  margin-bottom: 8px;
-  border-bottom: 1px solid rgba(255, 255, 255, 0.2);
-  padding-bottom: 6px;
-  font-size: 13px;
-  font-weight: bold;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 10px;
+  padding-bottom: 9px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.12);
+  font-size: 14px;
+  font-weight: 700;
+  color: #f1f5f9;
+}
+
+.tooltip-badge {
+  width: 12px;
+  height: 12px;
+  border-radius: 3px;
+  flex-shrink: 0;
 }
 
 .tooltip-content p {
   margin: 6px 0;
+  line-height: 1.5;
   font-size: 11px;
+  color: #cbd5e1;
 }
 
 .tooltip-content strong {
-  color: #4CAF50;
+  color: #7dd3fc;
+  margin-right: 5px;
 }
 
-@keyframes fadeIn {
-  from {
-    opacity: 0;
-    transform: translateY(5px);
-  }
-  to {
-    opacity: 1;
-    transform: translateY(0);
-  }
+@keyframes tooltipFadeIn {
+  from { opacity: 0; transform: translateY(6px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+
+/* ── JSON Importer modal ───────────────────────────────────────────────────── */
+
+.importer-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.5);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 2000;
+  backdrop-filter: blur(3px);
+}
+
+.importer-modal {
+  background: white;
+  border-radius: 12px;
+  width: 620px;
+  max-width: 95vw;
+  max-height: 85vh;
+  display: flex;
+  flex-direction: column;
+  box-shadow: 0 20px 60px rgba(0, 0, 0, 0.3);
+  overflow: hidden;
+}
+
+.importer-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 18px 22px;
+  border-bottom: 1px solid #e2e8f0;
+}
+
+.importer-header h2 {
+  font-size: 16px;
+  font-weight: 700;
+  color: #1e293b;
+}
+
+.importer-close {
+  background: none;
+  border: none;
+  font-size: 18px;
+  color: #94a3b8;
+  cursor: pointer;
+  padding: 2px 6px;
+  border-radius: 4px;
+  transition: background 0.1s;
+}
+
+.importer-close:hover {
+  background: #f1f5f9;
+  color: #475569;
+}
+
+.importer-body {
+  padding: 20px 22px;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  overflow-y: auto;
+  flex: 1;
+}
+
+.importer-upload {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+}
+
+.upload-btn {
+  padding: 8px 16px;
+  border-radius: 6px;
+  border: 1.5px solid #2563eb;
+  background: #eff6ff;
+  color: #1d4ed8;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.15s;
+  white-space: nowrap;
+}
+
+.upload-btn:hover {
+  background: #dbeafe;
+}
+
+.upload-hint {
+  font-size: 12px;
+  color: #94a3b8;
+}
+
+.importer-textarea {
+  width: 100%;
+  height: 300px;
+  padding: 12px;
+  font-family: 'Courier New', monospace;
+  font-size: 11px;
+  border: 1.5px solid #e2e8f0;
+  border-radius: 8px;
+  resize: vertical;
+  background: #f8fafc;
+  color: #334155;
+  outline: none;
+  transition: border-color 0.15s;
+}
+
+.importer-textarea:focus {
+  border-color: #2563eb;
+  background: white;
+}
+
+.importer-error {
+  padding: 10px 14px;
+  background: #fef2f2;
+  border: 1px solid #fecaca;
+  border-radius: 6px;
+  color: #dc2626;
+  font-size: 12px;
+}
+
+.importer-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 10px;
+}
+
+.btn-secondary {
+  padding: 8px 18px;
+  border-radius: 6px;
+  border: 1.5px solid #e2e8f0;
+  background: white;
+  color: #64748b;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.15s;
+}
+
+.btn-secondary:hover {
+  background: #f8fafc;
+}
+
+.btn-primary {
+  padding: 8px 20px;
+  border-radius: 6px;
+  border: none;
+  background: #1e40af;
+  color: white;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.15s;
+}
+
+.btn-primary:hover:not(:disabled) {
+  background: #1d4ed8;
+}
+
+.btn-primary:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+/* ── Scrollbar ─────────────────────────────────────────────────────────────── */
+
+.svg-container::-webkit-scrollbar { width: 10px; height: 10px; }
+.svg-container::-webkit-scrollbar-track { background: #f1f5f9; border-radius: 8px; }
+.svg-container::-webkit-scrollbar-thumb { background: #94a3b8; border-radius: 8px; }
+.svg-container::-webkit-scrollbar-thumb:hover { background: #64748b; }
+.svg-container { scrollbar-color: #94a3b8 #f1f5f9; scrollbar-width: thin; }
+
+/* ── Print ─────────────────────────────────────────────────────────────────── */
+
+@media print {
+  .filter-bar, .d3-tooltip, .importer-overlay, .import-btn { display: none; }
+  .svg-container { box-shadow: none; overflow: visible; margin: 0; }
 }
