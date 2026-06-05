@@ -132,24 +132,21 @@ const WorkflowD3 = () => {
     svgRef.current.appendChild(svg);
 
     const defs = document.createElementNS('http://www.w3.org/2000/svg', 'defs');
-    const marker = document.createElementNS(
-      'http://www.w3.org/2000/svg',
-      'marker'
-    );
-    marker.setAttribute('id', 'arrowhead');
-    marker.setAttribute('markerWidth', '10');
-    marker.setAttribute('markerHeight', '10');
+
+    // Large arrow marker
+    const marker = document.createElementNS('http://www.w3.org/2000/svg', 'marker');
+    marker.setAttribute('id', 'arrowhead-large');
+    marker.setAttribute('markerWidth', '13');
+    marker.setAttribute('markerHeight', '13');
     marker.setAttribute('refX', '9');
-    marker.setAttribute('refY', '3');
+    marker.setAttribute('refY', '6.5');
     marker.setAttribute('orient', 'auto');
-    const polygon = document.createElementNS(
-      'http://www.w3.org/2000/svg',
-      'polygon'
-    );
-    polygon.setAttribute('points', '0 0, 10 3, 0 6');
-    polygon.setAttribute('fill', '#666');
+    const polygon = document.createElementNS('http://www.w3.org/2000/svg', 'polygon');
+    polygon.setAttribute('points', '0 0, 13 6.5, 0 13');
+    polygon.setAttribute('fill', '#2c3e50');
     marker.appendChild(polygon);
     defs.appendChild(marker);
+
     svg.appendChild(defs);
 
     const legendGroup = document.createElementNS(
@@ -226,33 +223,51 @@ const WorkflowD3 = () => {
       );
     };
 
-    data.tasks.forEach((task) => {
-      task.dependencies.forEach((depId) => {
-        const depTask = data.tasks.find((t) => t.id === depId);
-        if (depTask) {
-          const sourceY = getTaskVerticalPosition(depTask) + taskHeight / 2;
-          const sourceX = depTask.startTime + depTask.duration;
-          const targetY = getTaskVerticalPosition(task) + taskHeight / 2;
-          const targetX = task.startTime;
+    // Draw dependencies first (so they appear behind tasks)
+data.tasks.forEach(task => {
+  task.dependencies.forEach(depId => {
+    const depTask = data.tasks.find(t => t.id === depId);
+    if (depTask) {
+      const sourceY = getTaskVerticalPosition(depTask) + taskHeight / 2;
+      const sourceX = depTask.startTime + depTask.duration;
+      const targetY = getTaskVerticalPosition(task) + taskHeight / 2;
+      const targetX = task.startTime;
 
-          const path = document.createElementNS(
-            'http://www.w3.org/2000/svg',
-            'path'
-          );
-          const d = `M ${sourceX} ${sourceY} L ${sourceX + 30} ${sourceY} L ${
-            targetX - 30
-          } ${targetY} L ${targetX} ${targetY}`;
-          path.setAttribute('d', d);
-          path.setAttribute('fill', 'none');
-          path.setAttribute('stroke', '#999');
-          path.setAttribute('stroke-width', '2');
-          path.setAttribute('stroke-dasharray', '5,5');
-          path.setAttribute('marker-end', 'url(#arrowhead)');
-          path.setAttribute('opacity', '0.5');
-          g.appendChild(path);
-        }
+      // Create curved path with better arrows
+      const midX = (sourceX + targetX) / 2;
+
+      const path = document.createElementNS('http://www.w3.org/2000/svg', 'path');
+      
+      // Use quadratic bezier curve for better visualization
+      const d = `M ${sourceX} ${sourceY} Q ${midX} ${sourceY}, ${midX} ${(sourceY + targetY) / 2} T ${targetX} ${targetY}`;
+      
+      path.setAttribute('d', d);
+      path.setAttribute('fill', 'none');
+      path.setAttribute('stroke', '#2c3e50');
+      path.setAttribute('stroke-width', '2.5');
+      path.setAttribute('stroke-linecap', 'round');
+      path.setAttribute('stroke-linejoin', 'round');
+      path.setAttribute('marker-end', 'url(#arrowhead-large)');
+      path.setAttribute('opacity', '0.7');
+      path.setAttribute('class', 'dependency-arrow');
+      
+      // Add hover effect
+      path.addEventListener('mouseenter', () => {
+        path.setAttribute('stroke-width', '3.5');
+        path.setAttribute('opacity', '1');
+        path.setAttribute('stroke', '#4CAF50');
       });
-    });
+
+      path.addEventListener('mouseleave', () => {
+        path.setAttribute('stroke-width', '2.5');
+        path.setAttribute('opacity', '0.7');
+        path.setAttribute('stroke', '#2c3e50');
+      });
+
+      g.appendChild(path);
+    }
+  });
+});
 
     data.tools.forEach((tool, toolIndex) => {
       const toolY = toolIndex * toolHeight;
@@ -341,10 +356,10 @@ const WorkflowD3 = () => {
       taskRect.addEventListener('mouseleave', () => {
         setHoveredTask(null);
         setTooltipData(null);
-
+      
         taskRect.style.filter = 'none';
-
-        svg.querySelectorAll('.task-rect').forEach((el) => {
+      
+        svg.querySelectorAll('.task-rect').forEach(el => {
           el.style.opacity = '1';
         });
       });
