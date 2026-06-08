@@ -1,0 +1,303 @@
+{
+  "activities": [
+    {
+      "id": "activity_1",
+      "name": "Marketing Campaign Development",
+      "tools": ["Canva Design Suite", "Google Analytics", "Mailchimp", "HubSpot CRM"],
+      "responsibles": [
+        {
+          "key": "RESPONSIBLE_A",
+          "name": "Sarah Chen",
+          "color": "#c7e9c0",
+          "borderColor": "#2d6a2d",
+          "taskColor": "#4CAF50"
+        },
+        {
+          "key": "RESPONSIBLE_B",
+          "name": "Marcus Johnson",
+          "color": "#b3d9ff",
+          "borderColor": "#003d99",
+          "taskColor": "#1a3a99"
+        },
+        {
+          "key": "RESPONSIBLE_C",
+          "name": "Elena Rodriguez",
+          "color": "#f0c6ff",
+          "borderColor": "#9900cc",
+          "taskColor": "#d946ef"
+        },
+        {
+          "key": "RESPONSIBLE_D",
+          "name": "David Liu",
+          "color": "#ffe6cc",
+          "borderColor": "#cc6600",
+          "taskColor": "#ff8c00"
+        }
+      ],
+      "documents": [
+        { "id": "doc_in_1", "name": "Brand Guidelines", "type": "input" },
+        { "id": "doc_in_2", "name": "Target Audience Data", "type": "input" },
+        { "id": "doc_in_3", "name": "Product Specifications", "type": "input" },
+        { "id": "doc_in_4", "name": "Budget Allocation", "type": "input" },
+        { "id": "doc_out_1", "name": "Campaign Strategy Document", "type": "output" },
+        { "id": "doc_out_2", "name": "Creative Assets Package", "type": "output" },
+        { "id": "doc_out_3", "name": "Email Campaign Template", "type": "output" },
+        { "id": "doc_out_4", "name": "Performance Metrics Report", "type": "output" }
+      ],
+      "tasks": [
+        {
+          "id": "task1",
+          "name": "Brand Analysis",
+          "tool": "HubSpot CRM",
+          "responsible": "RESPONSIBLE_A",
+          "startTime": 0,
+          "duration": 240,
+          "details": "Analyze brand guidelines and target audience data",
+          "dependencies": [],
+          "inputs": ["doc_in_1", "doc_in_2"],
+          "outputs": []
+        },
+        {
+          "id": "task2",
+          "name": "Creative Concept Design",
+          "tool": "Canva Design Suite",
+          "responsible": "RESPONSIBLE_B",
+          "startTime": 240,
+          "duration": 360,
+          "details": "Develop creative concepts and design mockups",
+          "dependencies": ["task1"],
+          "inputs": ["doc_in_1"],
+          "outputs": ["doc_out_2"]
+        },
+        {
+          "id": "task3",
+          "name": "Content Strategy Development",
+          "tool": "Google Analytics",
+          "responsible": "RESPONSIBLE_C",
+          "startTime": 120,
+          "duration": 300,
+          "details": "Create content strategy based on audience insights",
+          "dependencies": [],
+          "inputs": ["doc_in_2"],
+          "outputs": ["doc_out_1"]
+        },
+        {
+          "id": "task4",
+          "name": "Email Campaign Setup",
+          "tool": "Mailchimp",
+          "responsible": "RESPONSIBLE_D",
+          "startTime": 600,
+          "duration": 240,
+          "details": "Configure email templates and automation sequences",
+          "dependencies": ["task2", "task3"],
+          "inputs": ["doc_in_3"],
+          "outputs": ["doc_out_3"]
+        }
+      ]
+    },
+    {
+      "id": "activity_2",
+      "name": "Enterprise Data Migration",
+      "tools": ["AWS DataPipeline", "Talend ETL", "Oracle Database", "Apache Spark", "Snowflake", "Jenkins CI/CD", "Datadog Monitoring"],
+      "responsibles": [
+        {
+          "key": "RESPONSIBLE_A",
+          "name": "Sarah Chen",
+          "color": "#c7e9c0",
+          "borderColor": "#2d6a2d",
+          "taskColor": "#4CAF50"
+        },
+        {
+          "key": "RESPONSIBLE_B",
+          "name": "Marcus Johnson",
+          "color": "#b3d9ff",
+          "borderColor": "#003d99",
+          "taskColor": "#1a3a99"
+        },
+        {
+          "key": "RESPONSIBLE_C",
+          "name": "Elena Rodriguez",
+          "color": "#f0c6ff",
+          "borderColor": "#9900cc",
+          "taskColor": "#d946ef"
+        },
+        {
+          "key": "RESPONSIBLE_D",
+          "name": "David Liu",
+          "color": "#ffe6cc",
+          "borderColor": "#cc6600",
+          "taskColor": "#ff8c00"
+        },
+        {
+          "key": "RESPONSIBLE_E",
+          "name": "Priya Patel",
+          "color": "#ffcccc",
+          "borderColor": "#990000",
+          "taskColor": "#cc0000"
+        }
+      ],
+      "documents": [
+        { "id": "doc_in_1", "name": "Legacy System Schema", "type": "input" },
+        { "id": "doc_in_2", "name": "Data Validation Rules", "type": "input" },
+        { "id": "doc_in_3", "name": "Migration Timeline", "type": "input" },
+        { "id": "doc_in_4", "name": "Database Credentials", "type": "input" },
+        { "id": "doc_in_5", "name": "Performance Benchmarks", "type": "input" },
+        { "id": "doc_in_6", "name": "Compliance Requirements", "type": "input" },
+        { "id": "doc_out_1", "name": "Migration Plan Document", "type": "output" },
+        { "id": "doc_out_2", "name": "ETL Pipeline Configuration", "type": "output" },
+        { "id": "doc_out_3", "name": "Data Mapping Specifications", "type": "output" },
+        { "id": "doc_out_4", "name": "Test Results Report", "type": "output" },
+        { "id": "doc_out_5", "name": "Validation Report", "type": "output" },
+        { "id": "doc_out_6", "name": "Migration Execution Log", "type": "output" },
+        { "id": "doc_out_7", "name": "Performance Analysis Report", "type": "output" },
+        { "id": "doc_out_8", "name": "Rollback Procedures", "type": "output" }
+      ],
+      "tasks": [
+        {
+          "id": "task1",
+          "name": "Requirements Analysis",
+          "tool": "AWS DataPipeline",
+          "responsible": "RESPONSIBLE_A",
+          "startTime": 0,
+          "duration": 180,
+          "details": "Analyze legacy system and migration requirements",
+          "dependencies": [],
+          "inputs": ["doc_in_1", "doc_in_3"],
+          "outputs": ["doc_out_1"]
+        },
+        {
+          "id": "task2",
+          "name": "Schema Mapping",
+          "tool": "Talend ETL",
+          "responsible": "RESPONSIBLE_B",
+          "startTime": 180,
+          "duration": 240,
+          "details": "Map legacy schema to target database schema",
+          "dependencies": ["task1"],
+          "inputs": ["doc_in_1"],
+          "outputs": ["doc_out_3"]
+        },
+        {
+          "id": "task3",
+          "name": "ETL Pipeline Development",
+          "tool": "Apache Spark",
+          "responsible": "RESPONSIBLE_B",
+          "startTime": 420,
+          "duration": 300,
+          "details": "Develop and configure ETL pipeline",
+          "dependencies": ["task2"],
+          "inputs": ["doc_in_2", "doc_in_4"],
+          "outputs": ["doc_out_2"]
+        },
+        {
+          "id": "task4",
+          "name": "Data Validation Setup",
+          "tool": "Oracle Database",
+          "responsible": "RESPONSIBLE_C",
+          "startTime": 300,
+          "duration": 200,
+          "details": "Configure data validation rules and checkpoints",
+          "dependencies": ["task1"],
+          "inputs": ["doc_in_2", "doc_in_6"],
+          "outputs": []
+        },
+        {
+          "id": "task5",
+          "name": "Infrastructure Preparation",
+          "tool": "AWS DataPipeline",
+          "responsible": "RESPONSIBLE_D",
+          "startTime": 180,
+          "duration": 240,
+          "details": "Prepare cloud infrastructure and database instances",
+          "dependencies": ["task1"],
+          "inputs": ["doc_in_4", "doc_in_5"],
+          "outputs": []
+        },
+        {
+          "id": "task6",
+          "name": "Test Data Extraction",
+          "tool": "Talend ETL",
+          "responsible": "RESPONSIBLE_C",
+          "startTime": 720,
+          "duration": 180,
+          "details": "Extract test dataset from legacy system",
+          "dependencies": ["task3", "task4"],
+          "inputs": [],
+          "outputs": []
+        },
+        {
+          "id": "task7",
+          "name": "Test Migration Run",
+          "tool": "Apache Spark",
+          "responsible": "RESPONSIBLE_B",
+          "startTime": 900,
+          "duration": 240,
+          "details": "Execute test migration and validate results",
+          "dependencies": ["task6"],
+          "inputs": [],
+          "outputs": ["doc_out_4"]
+        },
+        {
+          "id": "task8",
+          "name": "Performance Tuning",
+          "tool": "Snowflake",
+          "responsible": "RESPONSIBLE_E",
+          "startTime": 1140,
+          "duration": 180,
+          "details": "Optimize ETL performance and resource allocation",
+          "dependencies": ["task7"],
+          "inputs": ["doc_in_5"],
+          "outputs": ["doc_out_7"]
+        },
+        {
+          "id": "task9",
+          "name": "Rollback Planning",
+          "tool": "Jenkins CI/CD",
+          "responsible": "RESPONSIBLE_A",
+          "startTime": 1140,
+          "duration": 150,
+          "details": "Design and document rollback procedures",
+          "dependencies": ["task7"],
+          "inputs": ["doc_in_3"],
+          "outputs": ["doc_out_8"]
+        },
+        {
+          "id": "task10",
+          "name": "Monitoring Setup",
+          "tool": "Datadog Monitoring",
+          "responsible": "RESPONSIBLE_E",
+          "startTime": 1020,
+          "duration": 120,
+          "details": "Configure monitoring and alerting for migration",
+          "dependencies": ["task5"],
+          "inputs": [],
+          "outputs": []
+        },
+        {
+          "id": "task11",
+          "name": "Production Migration Execution",
+          "tool": "Jenkins CI/CD",
+          "responsible": "RESPONSIBLE_D",
+          "startTime": 1320,
+          "duration": 360,
+          "details": "Execute full production data migration",
+          "dependencies": ["task8", "task9", "task10"],
+          "inputs": [],
+          "outputs": ["doc_out_6"]
+        },
+        {
+          "id": "task12",
+          "name": "Final Data Validation",
+          "tool": "Snowflake",
+          "responsible": "RESPONSIBLE_C",
+          "startTime": 1680,
+          "duration": 200,
+          "details": "Perform comprehensive validation of migrated data",
+          "dependencies": ["task11"],
+          "inputs": [],
+          "outputs": ["doc_out_5"]
+        }
+      ]
+    }
+  ]
+}
