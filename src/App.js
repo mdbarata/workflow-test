@@ -3,18 +3,18 @@ import './App.css';
 import defaultData from './data/workflow.json';
 import WorkflowCanvas from './components/WorkflowCanvas';
 import FilterBar from './components/FilterBar';
-import JsonImporter from './components/JsonImporter';
+import TaskEditor from './components/TaskEditor';
 
 const App = () => {
   const [workflowData, setWorkflowData] = useState(defaultData);
   const [activeActivityIndex, setActiveActivityIndex] = useState(0);
   const [filters, setFilters] = useState({ responsibles: [], tools: [] });
-  const [showImporter, setShowImporter] = useState(false);
+  const [showEditor, setShowEditor] = useState(false);
 
   const activities = workflowData.activities || [];
   const activity = activities[activeActivityIndex];
 
-  const handleImport = (newData) => {
+  const handleSave = (newData) => {
     setWorkflowData(newData);
     setActiveActivityIndex(0);
     setFilters({ responsibles: [], tools: [] });
@@ -24,7 +24,7 @@ const App = () => {
     return (
       <div className="workflow-d3-container">
         <p style={{ color: '#ef4444', padding: '20px' }}>
-          No activity found in the loaded data.
+          No activity found. Use "Edit tasks" to add one.
         </p>
       </div>
     );
@@ -54,17 +54,18 @@ const App = () => {
         activity={activity}
         filters={filters}
         onChange={setFilters}
-        onImport={() => setShowImporter(true)}
+        onImport={() => setShowEditor(true)}
       />
 
       <div className="svg-container">
         <WorkflowCanvas activity={activity} filters={filters} />
       </div>
 
-      {showImporter && (
-        <JsonImporter
-          onImport={handleImport}
-          onClose={() => setShowImporter(false)}
+      {showEditor && (
+        <TaskEditor
+          workflowData={workflowData}
+          onSave={handleSave}
+          onClose={() => setShowEditor(false)}
         />
       )}
     </div>

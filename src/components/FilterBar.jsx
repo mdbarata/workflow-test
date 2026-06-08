@@ -77,7 +77,7 @@ const FilterBar = ({ activity, filters, onChange, onImport }) => {
       <div className="filter-spacer" />
 
       <button className="import-btn" onClick={onImport}>
-        ↑ Import JSON
+        ✎ Edit tasks
       </button>
     </div>
   );
