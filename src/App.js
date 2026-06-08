@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import './App.css';
-import defaultData from './data/workflow.json';
+import defaultData from './data/withtime.json';
 import WorkflowCanvas from './components/WorkflowCanvas';
 import FilterBar from './components/FilterBar';
 import TaskEditor from './components/TaskEditor';

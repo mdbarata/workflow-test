@@ -1,7 +1,6 @@
 import React, { useState, useMemo, useCallback } from 'react';
 
 // ── Responsible palette ───────────────────────────────────────────────────────
-// Colour presets cycle when a new responsible name is first encountered.
 const RESP_PRESETS = [
   { color: '#c7e9c0', borderColor: '#2d6a2d', taskColor: '#4CAF50' },
   { color: '#b3d9ff', borderColor: '#003d99', taskColor: '#1a3a99' },
@@ -20,12 +19,11 @@ const splitList = (str) =>
 
 const joinList = (arr) => (arr || []).join(', ');
 
-// Derive startTime from dependency chain (simple topological pass).
-// Tasks with no pre-tasks start at 100. Each dependent task starts after its
-// latest dependency ends. Duration defaults to 150 units.
 const DEFAULT_DURATION = 150;
-const DEFAULT_START = 100;
+const DEFAULT_START = 0;
+const TASK_GAP = 20;
 
+// ── Auto-calculate startTime based on dependencies (hybrid approach) ──────────
 const computeStartTimes = (rows) => {
   const byId = {};
   rows.forEach((r) => { byId[r.taskId] = r; });
@@ -35,22 +33,48 @@ const computeStartTimes = (rows) => {
     if (memo[id] !== undefined) return memo[id];
     const r = byId[id];
     if (!r) return 0;
+    
+    // If explicit startTime is provided, use it
+    const explicitStart = r.startTime !== '' && r.startTime !== null && r.startTime !== undefined
+      ? parseInt(r.startTime, 10)
+      : null;
+    
+    if (explicitStart !== null && !isNaN(explicitStart)) {
+      const dur = parseInt(r.duration, 10) || DEFAULT_DURATION;
+      memo[id] = explicitStart + dur;
+      return memo[id];
+    }
+    
+    // Otherwise, calculate from dependencies
     const pres = splitList(r.pre);
     const start = pres.length
-      ? Math.max(...pres.map((p) => getEnd(p))) + 20
+      ? Math.max(...pres.map((p) => getEnd(p))) + TASK_GAP
       : DEFAULT_START;
-    memo[id] = start + (parseInt(r.duration, 10) || DEFAULT_DURATION);
+    const dur = parseInt(r.duration, 10) || DEFAULT_DURATION;
+    memo[id] = start + dur;
     return memo[id];
   };
+  
   rows.forEach((r) => getEnd(r.taskId));
 
   const startOf = {};
   rows.forEach((r) => {
-    const pres = splitList(r.pre);
-    startOf[r.taskId] = pres.length
-      ? Math.max(...pres.map((p) => getEnd(p))) + 20
-      : DEFAULT_START;
+    // Check if explicit startTime is provided
+    const explicitStart = r.startTime !== '' && r.startTime !== null && r.startTime !== undefined
+      ? parseInt(r.startTime, 10)
+      : null;
+    
+    if (explicitStart !== null && !isNaN(explicitStart)) {
+      startOf[r.taskId] = explicitStart;
+    } else {
+      // Auto-calculate from dependencies
+      const pres = splitList(r.pre);
+      startOf[r.taskId] = pres.length
+        ? Math.max(...pres.map((p) => getEnd(p))) + TASK_GAP
+        : DEFAULT_START;
+    }
   });
+  
   return startOf;
 };
 
@@ -140,6 +164,7 @@ const emptyRow = (activityName = '') => ({
   label: '',
   responsible: '',
   tool: '',
+  startTime: '',
   inputs: '',
   outputs: '',
   pre: '',
@@ -162,6 +187,7 @@ const workflowToRows = (data) => {
           act.responsibles.find((r) => r.key === t.responsible)?.name ||
           t.responsible,
         tool: t.tool,
+        startTime: t.startTime !== undefined && t.startTime !== null ? String(t.startTime) : '',
         inputs: joinList(
           (t.inputs || []).map(
             (id) => act.documents.find((d) => d.id === id)?.name || id
@@ -183,13 +209,14 @@ const workflowToRows = (data) => {
 };
 
 // ── Cell component (editable inline) ─────────────────────────────────────────
-const Cell = ({ value, onChange, placeholder, wide, list }) => (
-  <td style={{ padding: '3px 4px', minWidth: wide ? 110 : 80 }}>
+const Cell = ({ value, onChange, placeholder, wide, list, numeric }) => (
+  <td style={{ padding: '3px 4px', minWidth: wide ? 110 : numeric ? 70 : 80 }}>
     <input
       value={value}
       onChange={(e) => onChange(e.target.value)}
       placeholder={placeholder}
       list={list}
+      type={numeric ? 'number' : 'text'}
       style={{
         width: '100%',
         fontSize: 12,
@@ -242,6 +269,26 @@ const TaskEditor = ({ workflowData, onSave, onClose }) => {
     const idx = rows.findIndex((r) => r._key === key);
     const copy = { ...rows[idx], _key: _uid++, taskId: '', label: rows[idx].label + ' (copy)' };
     setRows((prev) => [...prev.slice(0, idx + 1), copy, ...prev.slice(idx + 1)]);
+  };
+
+  // ── AUTO-ARRANGE: Recalculate all startTimes based on dependencies ──
+  const handleAutoArrange = () => {
+    const withIds = rows.map((r, i) => ({
+      ...r,
+      taskId: r.taskId.trim() || `task${i + 1}`,
+      startTime: '', // Clear all explicit startTimes to force recalculation
+    }));
+    
+    const startTimes = computeStartTimes(withIds);
+    
+    setRows((prev) =>
+      prev.map((r, i) => ({
+        ...r,
+        startTime: String(startTimes[withIds[i].taskId] || DEFAULT_START),
+      }))
+    );
+    
+    setError(null);
   };
 
   const handleImport = (e) => {
@@ -316,7 +363,7 @@ const TaskEditor = ({ workflowData, onSave, onClose }) => {
         style={{
           background: '#ffffff',
           borderRadius: 12,
-          width: '96vw', maxWidth: 1200,
+          width: '96vw', maxWidth: 1300,
           maxHeight: '90vh',
           display: 'flex', flexDirection: 'column',
           boxShadow: '0 20px 60px rgba(0,0,0,0.3)',
@@ -360,7 +407,7 @@ const TaskEditor = ({ workflowData, onSave, onClose }) => {
 
         {/* Table */}
         <div style={{ flex: 1, overflowY: 'auto', overflowX: 'auto', background: '#ffffff' }}>
-          <table style={{ width: '100%', borderCollapse: 'collapse', minWidth: 1000 }}>
+          <table style={{ width: '100%', borderCollapse: 'collapse', minWidth: 1100 }}>
             <thead>
               <tr>
                 <th style={{ ...thStyle, width: 28 }}>#</th>
@@ -369,7 +416,8 @@ const TaskEditor = ({ workflowData, onSave, onClose }) => {
                 <th style={{ ...thStyle, minWidth: 110 }}>Label</th>
                 <th style={{ ...thStyle, minWidth: 120 }}>Responsible</th>
                 <th style={{ ...thStyle, minWidth: 100 }}>Tool</th>
-                <th style={{ ...thStyle, minWidth: 80 }}>Duration</th>
+                <th style={{ ...thStyle, minWidth: 70 }}>Start Time</th>
+                <th style={{ ...thStyle, minWidth: 70 }}>Duration</th>
                 <th style={{ ...thStyle, minWidth: 140 }}>Inputs</th>
                 <th style={{ ...thStyle, minWidth: 140 }}>Outputs</th>
                 <th style={{ ...thStyle, minWidth: 120 }}>Pre-tasks</th>
@@ -392,7 +440,8 @@ const TaskEditor = ({ workflowData, onSave, onClose }) => {
                   <Cell value={row.label} onChange={(v) => updateRow(row._key, 'label', v)} placeholder="Task name" wide />
                   <Cell value={row.responsible} onChange={(v) => updateRow(row._key, 'responsible', v)} placeholder="Responsible A" list="resp-list" wide />
                   <Cell value={row.tool} onChange={(v) => updateRow(row._key, 'tool', v)} placeholder="Tool 1" list="tool-list" />
-                  <Cell value={row.duration} onChange={(v) => updateRow(row._key, 'duration', v)} placeholder="150" />
+                  <Cell value={row.startTime} onChange={(v) => updateRow(row._key, 'startTime', v)} placeholder="auto" numeric />
+                  <Cell value={row.duration} onChange={(v) => updateRow(row._key, 'duration', v)} placeholder="150" numeric />
                   <Cell value={row.inputs} onChange={(v) => updateRow(row._key, 'inputs', v)} placeholder="Doc A, Doc B" wide />
                   <Cell value={row.outputs} onChange={(v) => updateRow(row._key, 'outputs', v)} placeholder="Doc C" wide />
                   <Cell value={row.pre} onChange={(v) => updateRow(row._key, 'pre', v)} placeholder="task1, task2" list="id-list" wide />
@@ -442,6 +491,18 @@ const TaskEditor = ({ workflowData, onSave, onClose }) => {
             {error ? `⚠ ${error}` : `${rows.filter(r => r.label.trim()).length} tasks across ${activities.length || 0} activit${activities.length === 1 ? 'y' : 'ies'}`}
           </div>
           <div style={{ display: 'flex', gap: 8 }}>
+            <button 
+              className="btn-secondary" 
+              onClick={handleAutoArrange}
+              title="Automatically arrange all tasks based on dependencies"
+              style={{
+                display: 'flex',
+                alignItems: 'center',
+                gap: 6,
+              }}
+            >
+              🔄 Auto-arrange tasks
+            </button>
             <label className="btn-secondary" style={{ cursor: 'pointer' }}>
                 ↑ Import JSON
                 <input type="file" accept=".json" onChange={handleImport} style={{ display: 'none' }} />
