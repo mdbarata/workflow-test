@@ -2,6 +2,9 @@ import React, { useState, useMemo, useCallback, useEffect } from 'react';
 import TaskNode, { TASK_HEIGHT } from './TaskNode';
 import DocumentNode, { DOC_WIDTH, DOC_HEIGHT } from './DocumentNode';
 
+// Fallback height used for connector calculations before the node has measured itself
+/* const DOC_HEIGHT = DOC_MIN_HEIGHT;*/
+
 // ── Layout constants ──────────────────────────────────────────────────────────
 const MARGIN = { top: 110, right: 220, bottom: 60, left: 200 };
 const TOOL_HEIGHT = 160;
@@ -126,10 +129,17 @@ const WorkflowCanvas = ({ activity, filters }) => {
     buildDefaultPositions(documents, canvasHeight, canvasWidth)
   );
 
+  // Rendered heights reported back from each DocumentNode after bbox measurement
+  const [docHeights, setDocHeights] = useState({});
+  const handleDocHeight = useCallback((docId, h) => {
+    setDocHeights((prev) => (prev[docId] === h ? prev : { ...prev, [docId]: h }));
+  }, []);
+
   // Reset positions when activity changes
   useEffect(() => {
     setDocPositions(buildDefaultPositions(documents, canvasHeight, canvasWidth));
-  }, [activity.id]); // eslint-disable-line react-hooks/exhaustive-deps
+    setDocHeights({});
+  }, [activity.id]); // eslint-disable-line
 
   // Drag state (ref-like pattern kept in state for simplicity)
   const [dragging, setDragging] = useState(null);
@@ -336,7 +346,8 @@ const WorkflowCanvas = ({ activity, filters }) => {
               ? 'arrow-doc-green'
               : 'arrow-doc';
 
-            const docCenterY = pos.y + DOC_HEIGHT / 2;
+            const docH = docHeights[doc.id] || DOC_HEIGHT;
+            const docCenterY = pos.y + docH / 2;
 
             return connectedTasks.map((ct) => {
               const tx = isInput ? getTaskX(ct) : getTaskX(ct) + ct.duration;
@@ -446,6 +457,7 @@ const WorkflowCanvas = ({ activity, filters }) => {
                 onMouseEnter={() => setHoveredDocId(doc.id)}
                 onMouseLeave={() => setHoveredDocId(null)}
                 onMouseDown={(e) => handleDocMouseDown(e, doc.id)}
+                onHeightChange={(h) => handleDocHeight(doc.id, h)}
               />
             );
           })}

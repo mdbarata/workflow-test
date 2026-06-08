@@ -1,11 +1,8 @@
-import React, { useState, useRef, useEffect } from 'react';
+import React from 'react';
 
 const DOC_WIDTH = 130;
-const DOC_MIN_HEIGHT = 48;
+const DOC_HEIGHT = 48;
 const DOC_RADIUS = 6;
-const TEXT_PADDING = 8;
-const ICON_WIDTH = 12;
-const ICON_HEIGHT = 16;
 
 const DocIcon = ({ x, y, color }) => (
   <g>
@@ -35,22 +32,8 @@ const DocumentNode = ({
   onMouseEnter,
   onMouseLeave,
   onMouseDown,
+  onHeightChange,
 }) => {
-  const [docHeight, setDocHeight] = useState(DOC_MIN_HEIGHT);
-  const textRef = useRef(null);
-
-  useEffect(() => {
-    if (textRef.current) {
-      const bbox = textRef.current.getBBox();
-      // Calculate required height: icon area + text height + padding
-      const requiredHeight = Math.max(
-        ICON_HEIGHT + TEXT_PADDING * 2,
-        bbox.height + TEXT_PADDING * 2
-      );
-      setDocHeight(Math.max(requiredHeight, DOC_MIN_HEIGHT));
-    }
-  }, [doc.name]);
-
   const isInput = doc.type === 'input';
   const baseFill = isInput ? '#6b7280' : '#374151';
   const highlightFill = isInput ? '#2563eb' : '#059669';
@@ -60,7 +43,7 @@ const DocumentNode = ({
   const strokeColor = isHighlighted || isDragging ? 'white' : 'rgba(0,0,0,0.3)';
   const scale = isDragging ? 1.04 : 1;
   const cx = x + DOC_WIDTH / 2;
-  const cy = y + docHeight / 2;
+  const cy = y + DOC_HEIGHT / 2;
 
   return (
     <g
@@ -78,7 +61,7 @@ const DocumentNode = ({
         x={x}
         y={y}
         width={DOC_WIDTH}
-        height={docHeight}
+        height={DOC_HEIGHT}
         rx={DOC_RADIUS}
         fill={fill}
         stroke={strokeColor}
@@ -92,22 +75,16 @@ const DocumentNode = ({
               : 'none',
         }}
       />
-      <DocIcon x={x + 8} y={y + TEXT_PADDING} color="rgba(255,255,255,0.6)" />
+      <DocIcon x={x + 8} y={y + (DOC_HEIGHT - 16) / 2} color="rgba(255,255,255,0.6)" />
       <text
-        ref={textRef}
-        x={x + DOC_WIDTH / 2}
-        y={y + TEXT_PADDING}
+        x={x + DOC_WIDTH / 2 + 6}
+        y={y + DOC_HEIGHT / 2 + 4}
         textAnchor="middle"
         fontSize="10px"
         fontWeight="600"
         fill="white"
         pointerEvents="none"
-        style={{
-          userSelect: 'none',
-          dominantBaseline: 'hanging',
-          whiteSpace: 'pre-wrap',
-          wordWrap: 'break-word',
-        }}
+        style={{ userSelect: 'none' }}
       >
         {doc.name}
       </text>
@@ -115,5 +92,5 @@ const DocumentNode = ({
   );
 };
 
-export { DOC_WIDTH, DOC_MIN_HEIGHT };
+export { DOC_WIDTH, DOC_HEIGHT };
 export default DocumentNode;
