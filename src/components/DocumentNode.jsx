@@ -1,10 +1,12 @@
-import React from 'react';
+import React, { useState, useRef, useEffect } from 'react';
 
 const DOC_WIDTH = 130;
-const DOC_HEIGHT = 48;
+const DOC_MIN_HEIGHT = 48;
 const DOC_RADIUS = 6;
+const TEXT_PADDING = 8;
+const ICON_WIDTH = 12;
+const ICON_HEIGHT = 16;
 
-// Document icon path (simplified page with folded corner)
 const DocIcon = ({ x, y, color }) => (
   <g>
     <path
@@ -23,38 +25,89 @@ const DocIcon = ({ x, y, color }) => (
   </g>
 );
 
-const DocumentNode = ({ doc, x, y, isHighlighted, isDimmed }) => {
+const DocumentNode = ({
+  doc,
+  x,
+  y,
+  isHighlighted,
+  isDimmed,
+  isDragging,
+  onMouseEnter,
+  onMouseLeave,
+  onMouseDown,
+}) => {
+  const [docHeight, setDocHeight] = useState(DOC_MIN_HEIGHT);
+  const textRef = useRef(null);
+
+  useEffect(() => {
+    if (textRef.current) {
+      const bbox = textRef.current.getBBox();
+      // Calculate required height: icon area + text height + padding
+      const requiredHeight = Math.max(
+        ICON_HEIGHT + TEXT_PADDING * 2,
+        bbox.height + TEXT_PADDING * 2
+      );
+      setDocHeight(Math.max(requiredHeight, DOC_MIN_HEIGHT));
+    }
+  }, [doc.name]);
+
   const isInput = doc.type === 'input';
   const baseFill = isInput ? '#6b7280' : '#374151';
   const highlightFill = isInput ? '#2563eb' : '#059669';
   const fill = isHighlighted ? highlightFill : baseFill;
-  const opacity = isDimmed ? 0.2 : 1;
-  const strokeWidth = isHighlighted ? 2.5 : 1.5;
-  const strokeColor = isHighlighted ? 'white' : 'rgba(0,0,0,0.3)';
+  const opacity = isDimmed ? 0.15 : 1;
+  const strokeWidth = isHighlighted || isDragging ? 2.5 : 1.5;
+  const strokeColor = isHighlighted || isDragging ? 'white' : 'rgba(0,0,0,0.3)';
+  const scale = isDragging ? 1.04 : 1;
+  const cx = x + DOC_WIDTH / 2;
+  const cy = y + docHeight / 2;
 
   return (
-    <g style={{ opacity, transition: 'all 0.2s ease' }}>
+    <g
+      style={{
+        opacity,
+        transition: isDragging ? 'none' : 'opacity 0.2s ease',
+        cursor: isDragging ? 'grabbing' : 'grab',
+        transform: `translate(${cx}px, ${cy}px) scale(${scale}) translate(${-cx}px, ${-cy}px)`,
+      }}
+      onMouseEnter={onMouseEnter}
+      onMouseLeave={onMouseLeave}
+      onMouseDown={onMouseDown}
+    >
       <rect
         x={x}
         y={y}
         width={DOC_WIDTH}
-        height={DOC_HEIGHT}
+        height={docHeight}
         rx={DOC_RADIUS}
         fill={fill}
         stroke={strokeColor}
         strokeWidth={strokeWidth}
-        style={{ filter: isHighlighted ? 'drop-shadow(0 2px 8px rgba(0,0,0,0.4))' : 'none' }}
+        style={{
+          filter:
+            isHighlighted
+              ? 'drop-shadow(0 2px 10px rgba(0,0,0,0.45))'
+              : isDragging
+              ? 'drop-shadow(0 6px 16px rgba(0,0,0,0.35))'
+              : 'none',
+        }}
       />
-      <DocIcon x={x + 8} y={y + (DOC_HEIGHT - 16) / 2} color="rgba(255,255,255,0.6)" />
+      <DocIcon x={x + 8} y={y + TEXT_PADDING} color="rgba(255,255,255,0.6)" />
       <text
-        x={x + DOC_WIDTH / 2 + 6}
-        y={y + DOC_HEIGHT / 2 + 4}
+        ref={textRef}
+        x={x + DOC_WIDTH / 2}
+        y={y + TEXT_PADDING}
         textAnchor="middle"
         fontSize="10px"
         fontWeight="600"
         fill="white"
         pointerEvents="none"
-        style={{ userSelect: 'none' }}
+        style={{
+          userSelect: 'none',
+          dominantBaseline: 'hanging',
+          whiteSpace: 'pre-wrap',
+          wordWrap: 'break-word',
+        }}
       >
         {doc.name}
       </text>
@@ -62,5 +115,5 @@ const DocumentNode = ({ doc, x, y, isHighlighted, isDimmed }) => {
   );
 };
 
-export { DOC_WIDTH, DOC_HEIGHT };
+export { DOC_WIDTH, DOC_MIN_HEIGHT };
 export default DocumentNode;

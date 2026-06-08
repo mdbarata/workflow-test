@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import './App.css';
-import defaultData from './data/test1.json';
+import defaultData from './data/workflow.json';
 import WorkflowCanvas from './components/WorkflowCanvas';
 import FilterBar from './components/FilterBar';
 import JsonImporter from './components/JsonImporter';
