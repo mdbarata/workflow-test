@@ -307,7 +307,7 @@ const WorkflowCanvas = ({ activity, filters }) => {
         <g transform={`translate(${MARGIN.left}, ${MARGIN.top})`}>
 
           {/* Activity title */}
-          <text x={canvasWidth / 2} y={-52} textAnchor="middle" fontSize="18px" fontWeight="700" fill="#1e293b">
+          <text x={canvasWidth / 2} y={-30} textAnchor="middle" fontSize="18px" fontWeight="700" fill="#1e293b">
             {name}
           </text>
 

@@ -1,7 +1,7 @@
-import React from 'react';
+import React, { useRef, useEffect, useState } from 'react';
 
 const DOC_WIDTH = 130;
-const DOC_HEIGHT = 48;
+const DOC_MIN_HEIGHT = 48;
 const DOC_RADIUS = 6;
 
 const DocIcon = ({ x, y, color }) => (
@@ -34,6 +34,21 @@ const DocumentNode = ({
   onMouseDown,
   onHeightChange,
 }) => {
+  const textRef = useRef(null);
+  const [boxHeight, setBoxHeight] = useState(DOC_MIN_HEIGHT);
+
+  useEffect(() => {
+    if (textRef.current) {
+      const textElement = textRef.current;
+      const textHeight = textElement.getBBox().height;
+      const newHeight = Math.max(DOC_MIN_HEIGHT, textHeight + 24);
+      setBoxHeight(newHeight);
+      if (onHeightChange) {
+        onHeightChange(newHeight);
+      }
+    }
+  }, [doc.name, onHeightChange]);
+
   const isInput = doc.type === 'input';
   const baseFill = isInput ? '#6b7280' : '#374151';
   const highlightFill = isInput ? '#2563eb' : '#059669';
@@ -43,7 +58,7 @@ const DocumentNode = ({
   const strokeColor = isHighlighted || isDragging ? 'white' : 'rgba(0,0,0,0.3)';
   const scale = isDragging ? 1.04 : 1;
   const cx = x + DOC_WIDTH / 2;
-  const cy = y + DOC_HEIGHT / 2;
+  const cy = y + boxHeight / 2;
 
   return (
     <g
@@ -61,7 +76,7 @@ const DocumentNode = ({
         x={x}
         y={y}
         width={DOC_WIDTH}
-        height={DOC_HEIGHT}
+        height={boxHeight}
         rx={DOC_RADIUS}
         fill={fill}
         stroke={strokeColor}
@@ -75,10 +90,11 @@ const DocumentNode = ({
               : 'none',
         }}
       />
-      <DocIcon x={x + 8} y={y + (DOC_HEIGHT - 16) / 2} color="rgba(255,255,255,0.6)" />
+      <DocIcon x={x + 8} y={y + (boxHeight - 16) / 2 - 6} color="rgba(255,255,255,0.6)" />
       <text
+        ref={textRef}
         x={x + DOC_WIDTH / 2 + 6}
-        y={y + DOC_HEIGHT / 2 + 4}
+        y={y + boxHeight / 2}
         textAnchor="middle"
         fontSize="10px"
         fontWeight="600"
@@ -86,11 +102,28 @@ const DocumentNode = ({
         pointerEvents="none"
         style={{ userSelect: 'none' }}
       >
-        {doc.name}
+        {doc.name.split(' ').reduce((lines, word, i, words) => {
+          if (i === 0) return [[word]];
+          const lastLine = lines[lines.length - 1];
+          const testLine = [...lastLine, word].join(' ');
+          if (testLine.length > 15) {
+            return [...lines, [word]];
+          }
+          lastLine.push(word);
+          return lines;
+        }, []).map((line, i, arr) => (
+          <tspan
+            key={i}
+            x={x + DOC_WIDTH / 2 + 6}
+            dy={i === 0 ? `-${(arr.length - 1) * 6}px` : '12px'}
+          >
+            {line.join(' ')}
+          </tspan>
+        ))}
       </text>
     </g>
   );
 };
 
-export { DOC_WIDTH, DOC_HEIGHT };
+export { DOC_WIDTH, DOC_MIN_HEIGHT as DOC_HEIGHT };
 export default DocumentNode;
