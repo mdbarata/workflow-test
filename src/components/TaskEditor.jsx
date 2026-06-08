@@ -197,8 +197,8 @@ const Cell = ({ value, onChange, placeholder, wide, list }) => (
         border: '0.5px solid transparent',
         borderRadius: 4,
         background: 'transparent',
-        color: 'var(--color-text-primary)',
-        fontFamily: 'var(--font-sans)',
+        color: '#1e293b',
+        fontFamily: 'system-ui, sans-serif',
         outline: 'none',
       }}
       onFocus={(e) => (e.target.style.borderColor = '#2563eb')}
@@ -295,10 +295,10 @@ const TaskEditor = ({ workflowData, onSave, onClose }) => {
     padding: '6px 8px',
     fontSize: 11,
     fontWeight: 500,
-    color: 'var(--color-text-secondary)',
-    borderBottom: '0.5px solid var(--color-border-tertiary)',
+    color: '#64748b',
+    borderBottom: '0.5px solid #e2e8f0',
     whiteSpace: 'nowrap',
-    background: '#f8fafc',
+    background: '#f1f5f9',
     textAlign: 'left',
   };
 
@@ -325,18 +325,18 @@ const TaskEditor = ({ workflowData, onSave, onClose }) => {
         onClick={(e) => e.stopPropagation()}
       >
         {/* Header */}
-        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '14px 20px', borderBottom: '0.5px solid var(--color-border-tertiary)' }}>
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '14px 20px', borderBottom: '0.5px solid #e2e8f0', background: '#ffffff' }}>
           <div>
             <span style={{ fontSize: 15, fontWeight: 500 }}>Edit tasks</span>
-            <span style={{ marginLeft: 10, fontSize: 12, color: 'var(--color-text-secondary)' }}>
+            <span style={{ marginLeft: 10, fontSize: 12, color: '#64748b' }}>
               Each row is one task. Inputs/outputs and pre/post tasks are comma-separated.
             </span>
           </div>
-          <button onClick={onClose} style={{ background: 'none', border: 'none', fontSize: 18, color: 'var(--color-text-secondary)', cursor: 'pointer', padding: '2px 6px', borderRadius: 4 }}>✕</button>
+          <button onClick={onClose} style={{ background: 'none', border: 'none', fontSize: 18, color: '#64748b', cursor: 'pointer', padding: '2px 6px', borderRadius: 4 }}>✕</button>
         </div>
 
         {/* Activity tabs */}
-        <div style={{ display: 'flex', gap: 4, padding: '8px 20px 0', borderBottom: '0.5px solid var(--color-border-tertiary)' }}>
+        <div style={{ display: 'flex', gap: 4, padding: '8px 20px 0', borderBottom: '0.5px solid #e2e8f0', background: '#f8fafc' }}>
           {['__all__', ...activities].map((act) => (
             <button
               key={act}
@@ -345,10 +345,10 @@ const TaskEditor = ({ workflowData, onSave, onClose }) => {
                 padding: '4px 14px', fontSize: 12, cursor: 'pointer',
                 borderRadius: '6px 6px 0 0',
                 border: '0.5px solid',
-                borderColor: activeAct === act ? 'var(--color-border-secondary)' : 'transparent',
+                borderColor: activeAct === act ? '#e2e8f0' : 'transparent',
                 borderBottom: 'none',
                 background: activeAct === act ? '#ffffff' : 'transparent',
-                color: activeAct === act ? 'var(--color-text-primary)' : 'var(--color-text-secondary)',
+                color: activeAct === act ? '#1e293b' : '#64748b',
                 fontWeight: activeAct === act ? 500 : 400,
                 marginBottom: -1,
               }}
@@ -382,11 +382,11 @@ const TaskEditor = ({ workflowData, onSave, onClose }) => {
               {visibleRows.map((row, i) => (
                 <tr
                   key={row._key}
-                  style={{ borderBottom: '0.5px solid var(--color-border-tertiary)' }}
+                  style={{ borderBottom: '0.5px solid #e2e8f0' }}
                   onMouseEnter={(e) => (e.currentTarget.style.background = '#f1f5f9')}
-                  onMouseLeave={(e) => (e.currentTarget.style.background = '#ffffff')}
+                  onMouseLeave={(e) => (e.currentTarget.style.background = '')}
                 >
-                  <td style={{ padding: '3px 6px', fontSize: 11, color: 'var(--color-text-secondary)', textAlign: 'center' }}>{i + 1}</td>
+                  <td style={{ padding: '3px 6px', fontSize: 11, color: '#64748b', textAlign: 'center' }}>{i + 1}</td>
                   <Cell value={row.taskId} onChange={(v) => updateRow(row._key, 'taskId', v)} placeholder="task1" />
                   <Cell value={row.activity} onChange={(v) => updateRow(row._key, 'activity', v)} placeholder="Activity 1" list="act-list" wide />
                   <Cell value={row.label} onChange={(v) => updateRow(row._key, 'label', v)} placeholder="Task name" wide />
@@ -402,14 +402,14 @@ const TaskEditor = ({ workflowData, onSave, onClose }) => {
                     <button
                       title="Duplicate row"
                       onClick={() => duplicateRow(row._key)}
-                      style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--color-text-secondary)', padding: '2px 4px', borderRadius: 3, fontSize: 13 }}
+                      style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#64748b', padding: '2px 4px', borderRadius: 3, fontSize: 13 }}
                     >⧉</button>
                     <button
                       title="Delete row"
                       onClick={() => deleteRow(row._key)}
-                      style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--color-text-secondary)', padding: '2px 4px', borderRadius: 3, fontSize: 13 }}
-                      onMouseEnter={(e) => (e.currentTarget.style.background = '#f1f5f9')}
-                      onMouseLeave={(e) => (e.currentTarget.style.background = '#ffffff')}
+                      style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#64748b', padding: '2px 4px', borderRadius: 3, fontSize: 13 }}
+                      onMouseEnter={(e) => { e.currentTarget.style.color = '#dc2626'; }}
+                      onMouseLeave={(e) => { e.currentTarget.style.color = '#64748b'; }}
                     >✕</button>
                   </td>
                 </tr>
@@ -422,12 +422,12 @@ const TaskEditor = ({ workflowData, onSave, onClose }) => {
             onClick={addRow}
             style={{
               width: '100%', padding: '9px', background: 'none', border: 'none',
-              borderTop: '0.5px solid var(--color-border-tertiary)',
-              color: 'var(--color-text-secondary)', cursor: 'pointer',
+              borderTop: '0.5px solid #e2e8f0',
+              color: '#64748b', cursor: 'pointer',
               fontSize: 12, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 5,
             }}
             onMouseEnter={(e) => (e.currentTarget.style.background = '#f1f5f9')}
-            onMouseLeave={(e) => (e.currentTarget.style.background = '#ffffff')}
+            onMouseLeave={(e) => (e.currentTarget.style.background = 'none')}
           >
             + Add row
           </button>
@@ -436,10 +436,9 @@ const TaskEditor = ({ workflowData, onSave, onClose }) => {
         {/* Footer */}
         <div style={{
           display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-          padding: '12px 20px', borderTop: '0.5px solid var(--color-border-tertiary)',
-          background: '#ffffff',
+          padding: '12px 20px', borderTop: '0.5px solid #e2e8f0',
         }}>
-          <div style={{ fontSize: 12, color: error ? '#dc2626' : 'var(--color-text-secondary)' }}>
+          <div style={{ fontSize: 12, color: error ? '#dc2626' : '#64748b' }}>
             {error ? `⚠ ${error}` : `${rows.filter(r => r.label.trim()).length} tasks across ${activities.length || 0} activit${activities.length === 1 ? 'y' : 'ies'}`}
           </div>
           <div style={{ display: 'flex', gap: 8 }}>
@@ -448,7 +447,7 @@ const TaskEditor = ({ workflowData, onSave, onClose }) => {
                 <input type="file" accept=".json" onChange={handleImport} style={{ display: 'none' }} />
             </label>
             <button className="btn-secondary" onClick={handleExport}>↓ Export JSON</button>
-            </div>
+          </div>
           <div style={{ display: 'flex', gap: 8 }}>
             <button className="btn-secondary" onClick={onClose}>Cancel</button>
             <button className="btn-primary" onClick={handleSave}>Apply & view diagram</button>
