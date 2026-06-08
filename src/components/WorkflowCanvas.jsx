@@ -9,6 +9,7 @@ import DocumentNode, { DOC_WIDTH, DOC_HEIGHT } from './DocumentNode';
 const MARGIN = { top: 110, right: 220, bottom: 60, left: 200 };
 const TOOL_HEIGHT = 160;
 const TASK_GAP = 18;
+const LANE_GAP = 20;
 const DOC_LEFT_X = 20;
 const DOC_RIGHT_OFFSET = 30;
 // Elbow routing: how far horizontally the line travels before turning
@@ -20,9 +21,10 @@ const getTaskY = (task, tasks, tools) => {
   const tasksInToolBefore = tasks
     .filter((t) => t.tool === task.tool && t.startTime < task.startTime)
     .length;
-  const base = toolIndex * TOOL_HEIGHT + 50;
+  const laneOffset = toolIndex * LANE_GAP;  
+  const base = toolIndex * TOOL_HEIGHT + laneOffset + 50;  
   const offset = tasksInToolBefore * (TASK_HEIGHT + TASK_GAP);
-  const max = toolIndex * TOOL_HEIGHT + TOOL_HEIGHT - TASK_HEIGHT - 10;
+  const max = toolIndex * TOOL_HEIGHT + laneOffset + TOOL_HEIGHT - TASK_HEIGHT - 10;  
   return Math.min(base + offset, max);
 };
 
@@ -311,7 +313,7 @@ const WorkflowCanvas = ({ activity, filters }) => {
 
           {/* ── Tool rows ── */}
           {tools.map((tool, i) => {
-            const toolY = i * TOOL_HEIGHT;
+            const toolY = i * TOOL_HEIGHT + i * LANE_GAP;
             const isActive = filters.tools.length === 0 || filters.tools.includes(tool);
             return (
               <g key={tool}>
@@ -365,7 +367,7 @@ const WorkflowCanvas = ({ activity, filters }) => {
                   strokeDasharray="5,4"
                   strokeOpacity={opacity}
                   strokeLinecap="round"
-                  markerEnd={`url(#${arrowId})`}
+                 // markerEnd={`url(#${arrowId})`}
                   style={{ transition: dragging ? 'none' : 'all 0.18s ease' }}
                 />
               );
@@ -397,7 +399,7 @@ const WorkflowCanvas = ({ activity, filters }) => {
                   stroke={isGold ? '#FFD700' : '#64748b'}
                   strokeWidth={isGold ? 2.5 : 1.8}
                   strokeOpacity={opacity}
-                  markerEnd={`url(#${isGold ? 'arrow-gold' : 'arrow'})`}
+                  // markerEnd={`url(#${isGold ? 'arrow-gold' : 'arrow'})`}
                   style={{ transition: 'all 0.2s ease' }}
                 />
               );
