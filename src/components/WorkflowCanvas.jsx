@@ -395,7 +395,7 @@ const WorkflowCanvas = ({ activity, filters, toolNotes, onToolNoteChange }) => {
                     d={elbowPath(isInput ? pos.x + DOC_WIDTH : pos.x, docCenterY, isInput ? getTaskX(ct) : getTaskX(ct) + ct.duration, ty + TASK_HEIGHT / 2, isInput)}
                     fill="none" stroke={color} strokeWidth={strokeWidth}
                     strokeDasharray="5,4" strokeOpacity={opacity} strokeLinecap="round"
-                    markerEnd={`url(#${arrowId})`}
+                    //markerEnd={`url(#${arrowId})`}
                     style={{ transition: dragging ? 'none' : 'all 0.18s ease' }}
                   />
                 );
@@ -422,7 +422,7 @@ const WorkflowCanvas = ({ activity, filters, toolNotes, onToolNoteChange }) => {
                     <path d={curvedPath(x1, y1, x2, y2)} fill="none"
                       stroke={isGold ? '#FFD700' : '#64748b'} strokeWidth={isGold ? 2.5 : 1.8}
                       strokeOpacity={isGold ? 1 : hoveredTask ? 0.13 : 0.6}
-                      markerEnd={`url(#${isGold ? 'arrow-gold' : 'arrow'})`}
+                      //markerEnd={`url(#${isGold ? 'arrow-gold' : 'arrow'})`}
                       style={{ transition: 'all 0.2s ease' }} />
                     {depTask.tool !== task.tool && fmt && (
                       <g transform={`translate(${midX}, ${midY})`}>
