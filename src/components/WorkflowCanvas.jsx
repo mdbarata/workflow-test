@@ -1,4 +1,4 @@
-import React, { useState, useMemo, useCallback, useEffect } from 'react';
+import React, { useState, useMemo, useCallback, useEffect, useRef } from 'react';
 import TaskNode, { TASK_HEIGHT } from './TaskNode';
 import DocumentNode, { DOC_WIDTH, DOC_HEIGHT } from './DocumentNode';
 
@@ -31,11 +31,9 @@ const curvedPath = (x1, y1, x2, y2) => {
 
 const elbowPath = (x1, y1, x2, y2, isInput) => {
   if (isInput) {
-    const elbowX = x1 + ELBOW_STUB;
-    return `M ${x1} ${y1} H ${elbowX} V ${y2} H ${x2}`;
+    return `M ${x1} ${y1} H ${x1 + ELBOW_STUB} V ${y2} H ${x2}`;
   } else {
-    const elbowX = x2 - ELBOW_STUB;
-    return `M ${x1} ${y1} H ${elbowX} V ${y2} H ${x2}`;
+    return `M ${x1} ${y1} H ${x2 - ELBOW_STUB} V ${y2} H ${x2}`;
   }
 };
 
@@ -81,7 +79,47 @@ const Tooltip = ({ task, responsible, documents, pos }) => {
   );
 };
 
-const WorkflowCanvas = ({ activity, filters }) => {
+// ── Inline tool note panel (HTML overlay, positioned relative to canvas-wrapper) ──
+const ToolNotePanel = ({ tool, note, svgRect, toolY, canvasLeft, marginTop, onClose, onSave }) => {
+  const [text, setText] = useState(note || '');
+  const panelTop = svgRect ? marginTop + toolY + 36 : 0;
+  const panelLeft = svgRect ? canvasLeft + 40 : 0;
+
+  return (
+    <div
+      style={{
+        position: 'absolute', top: panelTop, left: panelLeft,
+        width: 320, background: '#ffffff', border: '1.5px solid #2563eb',
+        borderRadius: 8, boxShadow: '0 8px 24px rgba(0,0,0,0.18)',
+        zIndex: 500, padding: 14,
+      }}
+      onMouseDown={(e) => e.stopPropagation()}
+    >
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 8 }}>
+        <span style={{ fontSize: 13, fontWeight: 600, color: '#1d4ed8' }}>{tool}</span>
+        <button onClick={onClose} style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#94a3b8', fontSize: 16 }}>✕</button>
+      </div>
+      <textarea
+        value={text}
+        onChange={(e) => setText(e.target.value)}
+        placeholder="Add notes about this tool…"
+        style={{
+          width: '100%', height: 100, fontSize: 12, padding: '6px 8px',
+          border: '1px solid #e2e8f0', borderRadius: 6, resize: 'vertical',
+          fontFamily: 'system-ui, sans-serif', color: '#1e293b', background: '#f8fafc',
+        }}
+        autoFocus
+      />
+      <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 6, marginTop: 8 }}>
+        <button className="btn-secondary" onClick={onClose}>Cancel</button>
+        <button className="btn-primary" onClick={() => { onSave(tool, text); onClose(); }}>Save</button>
+      </div>
+    </div>
+  );
+};
+
+// ── Main component ────────────────────────────────────────────────────────────
+const WorkflowCanvas = ({ activity, filters, toolNotes, onToolNoteChange }) => {
   const { tasks, tools, responsibles, documents, name } = activity;
 
   const canvasWidth = Math.max(...tasks.map((t) => t.startTime + t.duration), 600) + 80;
@@ -95,6 +133,9 @@ const WorkflowCanvas = ({ activity, filters }) => {
   );
   const [docHeights, setDocHeights] = useState({});
   const [dragging, setDragging] = useState(null);
+  const [openNoteTool, setOpenNoteTool] = useState(null); // tool name or null
+  const wrapperRef = useRef(null);
+  const svgRef = useRef(null);
 
   const handleDocHeight = useCallback((docId, h) => {
     setDocHeights((prev) => (prev[docId] === h ? prev : { ...prev, [docId]: h }));
@@ -134,11 +175,25 @@ const WorkflowCanvas = ({ activity, filters }) => {
     return byResp && byTool;
   }), [tasks, filters]);
 
-  // Only lanes that have at least one visible task
   const visibleTools = useMemo(() => {
     const set = new Set(visibleTasks.map((t) => t.tool));
     return tools.filter((tool) => set.has(tool));
   }, [tools, visibleTasks]);
+
+  // Docs that have at least one connection to a visible task
+  const visibleDocIds = useMemo(() => {
+    const s = new Set();
+    visibleTasks.forEach((t) => {
+      (t.inputs || []).forEach((id) => s.add(id));
+      (t.outputs || []).forEach((id) => s.add(id));
+    });
+    return s;
+  }, [visibleTasks]);
+
+  const visibleDocuments = useMemo(
+    () => documents.filter((d) => visibleDocIds.has(d.id)),
+    [documents, visibleDocIds]
+  );
 
   const canvasHeight = Math.max(visibleTools.length, 1) * (TOOL_HEIGHT + LANE_GAP);
   const svgWidth = canvasWidth + MARGIN.left + MARGIN.right;
@@ -189,9 +244,14 @@ const WorkflowCanvas = ({ activity, filters }) => {
     return { color, opacity, strokeWidth };
   };
 
+  // Position of the open note panel relative to the wrapper
+  const openNoteToolIndex = openNoteTool ? visibleTools.indexOf(openNoteTool) : -1;
+  const openNoteToolY = openNoteToolIndex >= 0 ? openNoteToolIndex * (TOOL_HEIGHT + LANE_GAP) : 0;
+
   return (
-    <div className="canvas-wrapper">
+    <div className="canvas-wrapper" ref={wrapperRef} style={{ position: 'relative' }}>
       <svg
+        ref={svgRef}
         width={svgWidth} height={svgHeight}
         style={{ background: '#f8f9fb', display: 'block', userSelect: 'none' }}
         onMouseMove={handleSvgMouseMove}
@@ -237,9 +297,10 @@ const WorkflowCanvas = ({ activity, filters }) => {
             {name}
           </text>
 
-          {/* ── Tool lanes — only visible ones, re-indexed from 0 ── */}
+          {/* ── Tool lanes ── */}
           {visibleTools.map((tool, i) => {
             const toolY = i * (TOOL_HEIGHT + LANE_GAP);
+            const hasNote = !!(toolNotes && toolNotes[tool]?.trim());
             return (
               <g key={tool}>
                 <rect x={0} y={toolY} width={canvasWidth} height={TOOL_HEIGHT}
@@ -247,12 +308,27 @@ const WorkflowCanvas = ({ activity, filters }) => {
                 <text x={12} y={toolY + 24} fontSize="12px" fontWeight="700" fill="#1d4ed8">{tool}</text>
                 <line x1={0} y1={toolY + 34} x2={canvasWidth} y2={toolY + 34}
                   stroke="#2563eb" strokeWidth={1} strokeOpacity={0.15} />
+
+                {/* ── Note button ── */}
+                <g
+                  style={{ cursor: 'pointer' }}
+                  onClick={() => setOpenNoteTool(openNoteTool === tool ? null : tool)}
+                >
+                  <circle cx={canvasWidth - 18} cy={toolY + 18} r={10}
+                    fill={hasNote ? '#2563eb' : '#eff6ff'} stroke="#2563eb" strokeWidth={1.5} />
+                  <text x={canvasWidth - 18} y={toolY + 23} textAnchor="middle"
+                    fontSize="13px" fontWeight="700"
+                    fill={hasNote ? '#ffffff' : '#2563eb'}
+                    style={{ pointerEvents: 'none', userSelect: 'none' }}>
+                    {hasNote ? '✎' : '+'}
+                  </text>
+                </g>
               </g>
             );
           })}
 
           {/* ── Document connector lines ── */}
-          {documents.map((doc) => {
+          {visibleDocuments.map((doc) => {
             const pos = docPositions[doc.id];
             if (!pos) return null;
             const isInput = doc.type === 'input';
@@ -335,7 +411,7 @@ const WorkflowCanvas = ({ activity, filters }) => {
           })}
 
           {/* ── Document nodes ── */}
-          {documents.map((doc) => {
+          {visibleDocuments.map((doc) => {
             const pos = docPositions[doc.id];
             if (!pos) return null;
             const isHighlighted = highlightedDocs.has(doc.id);
@@ -356,6 +432,19 @@ const WorkflowCanvas = ({ activity, filters }) => {
           })}
         </g>
       </svg>
+
+      {/* ── Tool note panel (HTML overlay) ── */}
+      {openNoteTool && openNoteToolIndex >= 0 && (
+        <ToolNotePanel
+          tool={openNoteTool}
+          note={toolNotes?.[openNoteTool] || ''}
+          marginTop={MARGIN.top}
+          toolY={openNoteToolY}
+          canvasLeft={MARGIN.left}
+          onClose={() => setOpenNoteTool(null)}
+          onSave={(tool, text) => onToolNoteChange(tool, text)}
+        />
+      )}
 
       <Tooltip
         task={hoveredTask}

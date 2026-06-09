@@ -1,6 +1,6 @@
 import React from 'react';
 
-const FilterBar = ({ activity, filters, onChange, onImport }) => {
+const FilterBar = ({ activity, filters, onChange, onImport, onToolNotes }) => {
   const { responsibles, tools } = activity;
 
   const toggle = (type, key) => {
@@ -76,6 +76,9 @@ const FilterBar = ({ activity, filters, onChange, onImport }) => {
 
       <div className="filter-spacer" />
 
+      <button className="import-btn" style={{ marginRight: 6 }} onClick={onToolNotes}>
+        ☰ Tool notes
+      </button>
       <button className="import-btn" onClick={onImport}>
         ✎ Edit tasks
       </button>
