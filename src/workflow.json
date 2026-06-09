@@ -5,27 +5,9 @@
       "name": "ACTIVITY 1",
       "tools": ["TOOL 1", "TOOL 2", "TOOL 3", "TOOL 4"],
       "responsibles": [
-        {
-          "key": "RESPONSIBLE_A",
-          "name": "RESPONSIBLE A",
-          "color": "#c7e9c0",
-          "borderColor": "#2d6a2d",
-          "taskColor": "#4CAF50"
-        },
-        {
-          "key": "RESPONSIBLE_B",
-          "name": "RESPONSIBLE B",
-          "color": "#b3d9ff",
-          "borderColor": "#003d99",
-          "taskColor": "#1a3a99"
-        },
-        {
-          "key": "RESPONSIBLE_C",
-          "name": "RESPONSIBLE C",
-          "color": "#f0c6ff",
-          "borderColor": "#9900cc",
-          "taskColor": "#d946ef"
-        }
+        { "key": "RESPONSIBLE_A", "name": "RESPONSIBLE A", "color": "#c7e9c0", "borderColor": "#2d6a2d", "taskColor": "#4CAF50" },
+        { "key": "RESPONSIBLE_B", "name": "RESPONSIBLE B", "color": "#b3d9ff", "borderColor": "#003d99", "taskColor": "#1a3a99" },
+        { "key": "RESPONSIBLE_C", "name": "RESPONSIBLE C", "color": "#f0c6ff", "borderColor": "#9900cc", "taskColor": "#d946ef" }
       ],
       "documents": [
         { "id": "doc_in_1", "name": "Document Input 1", "type": "input" },
@@ -37,76 +19,38 @@
       ],
       "tasks": [
         {
-          "id": "task1",
-          "name": "Task 1",
-          "tool": "TOOL 1",
-          "responsible": "RESPONSIBLE_A",
-          "startTime": 100,
-          "duration": 150,
-          "details": "Initial processing of Document Input 1 and 2",
-          "dependencies": [],
-          "inputs": ["doc_in_1", "doc_in_2"],
-          "outputs": []
+          "id": "task1", "name": "Task 1", "tool": "TOOL 1", "responsible": "RESPONSIBLE_A",
+          "startTime": 100, "duration": 150, "details": "Initial processing",
+          "dependencies": [], "inputs": ["doc_in_1", "doc_in_2"], "outputs": []
         },
         {
-          "id": "task2",
-          "name": "Task 2",
-          "tool": "TOOL 2",
-          "responsible": "RESPONSIBLE_A",
-          "startTime": 200,
-          "duration": 150,
-          "details": "Processing Document Input 3",
-          "dependencies": [],
-          "inputs": ["doc_in_3"],
-          "outputs": []
+          "id": "task2", "name": "Task 2", "tool": "TOOL 2", "responsible": "RESPONSIBLE_A",
+          "startTime": 200, "duration": 150, "details": "Processing Document Input 3",
+          "dependencies": [], "inputs": ["doc_in_3"], "outputs": []
         },
         {
-          "id": "task3",
-          "name": "Task 3",
-          "tool": "TOOL 3",
-          "responsible": "RESPONSIBLE_B",
-          "startTime": 400,
-          "duration": 120,
-          "details": "Data validation and verification",
-          "dependencies": ["task2"],
-          "inputs": [],
-          "outputs": ["doc_out_1"]
+          "id": "task3", "name": "Task 3", "tool": "TOOL 3", "responsible": "RESPONSIBLE_B",
+          "startTime": 400, "duration": 120, "details": "Data validation",
+          "dependencies": [{ "id": "task2", "format": "REST/JSON" }],
+          "inputs": [], "outputs": ["doc_out_1"]
         },
         {
-          "id": "task4",
-          "name": "Task 4",
-          "tool": "TOOL 1",
-          "responsible": "RESPONSIBLE_B",
-          "startTime": 300,
-          "duration": 200,
-          "details": "Advanced processing following Task 1",
-          "dependencies": ["task1"],
-          "inputs": [],
-          "outputs": ["doc_out_2"]
+          "id": "task4", "name": "Task 4", "tool": "TOOL 1", "responsible": "RESPONSIBLE_B",
+          "startTime": 300, "duration": 200, "details": "Advanced processing",
+          "dependencies": [{ "id": "task1", "format": "CSV" }],
+          "inputs": [], "outputs": ["doc_out_2"]
         },
         {
-          "id": "task5",
-          "name": "Task 5",
-          "tool": "TOOL 2",
-          "responsible": "RESPONSIBLE_C",
-          "startTime": 400,
-          "duration": 180,
-          "details": "Quality assurance checkpoint",
-          "dependencies": ["task2"],
-          "inputs": [],
-          "outputs": []
+          "id": "task5", "name": "Task 5", "tool": "TOOL 2", "responsible": "RESPONSIBLE_C",
+          "startTime": 400, "duration": 180, "details": "Quality assurance",
+          "dependencies": [{ "id": "task2" }],
+          "inputs": [], "outputs": []
         },
         {
-          "id": "task6",
-          "name": "Task 6",
-          "tool": "TOOL 4",
-          "responsible": "RESPONSIBLE_A",
-          "startTime": 600,
-          "duration": 150,
-          "details": "Final document generation",
-          "dependencies": ["task4", "task5"],
-          "inputs": [],
-          "outputs": ["doc_out_3"]
+          "id": "task6", "name": "Task 6", "tool": "TOOL 4", "responsible": "RESPONSIBLE_A",
+          "startTime": 620, "duration": 150, "details": "Final document generation",
+          "dependencies": [{ "id": "task4", "format": "Webhook" }, { "id": "task5", "format": "File/XML" }],
+          "inputs": [], "outputs": ["doc_out_3"]
         }
       ]
     }

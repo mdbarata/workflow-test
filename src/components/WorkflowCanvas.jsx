@@ -201,13 +201,15 @@ const WorkflowCanvas = ({ activity, filters, toolNotes, onToolNoteChange }) => {
 
   const hoveredTask = tasks.find((t) => t.id === hoveredTaskId) || null;
 
+  const depId = (d) => (typeof d === 'object' ? d.id : d);
+
   const depChain = useMemo(() => {
     if (!hoveredTask) return new Set();
     const chain = new Set();
     const walk = (id) => {
       const t = tasks.find((x) => x.id === id);
       if (!t) return;
-      t.dependencies.forEach((d) => { chain.add(d); walk(d); });
+      t.dependencies.forEach((d) => { chain.add(depId(d)); walk(depId(d)); });
     };
     walk(hoveredTask.id);
     return chain;
@@ -229,7 +231,6 @@ const WorkflowCanvas = ({ activity, filters, toolNotes, onToolNoteChange }) => {
       tasks.filter((t) => t.inputs?.includes(hoveredDocId) || t.outputs?.includes(hoveredDocId)).map((t) => t.id)
     );
   }, [hoveredDocId, tasks]);
-
   const respMap = useMemo(() => {
     const m = {};
     responsibles.forEach((r) => { m[r.key] = r; });
@@ -351,7 +352,7 @@ const WorkflowCanvas = ({ activity, filters, toolNotes, onToolNoteChange }) => {
                 )}
                 fill="none" stroke={color} strokeWidth={strokeWidth}
                 strokeDasharray="5,4" strokeOpacity={opacity} strokeLinecap="round"
-                //markerEnd={`url(#${arrowId})`}
+                markerEnd={`url(#${arrowId})`}
                 style={{ transition: dragging ? 'none' : 'all 0.18s ease' }}
               />
             ));
@@ -359,28 +360,52 @@ const WorkflowCanvas = ({ activity, filters, toolNotes, onToolNoteChange }) => {
 
           {/* ── Task dependency arrows ── */}
           {visibleTasks.map((task) =>
-            task.dependencies.map((depId) => {
-              const dep = visibleTasks.find((t) => t.id === depId);
-              if (!dep) return null;
+            task.dependencies.map((dep) => {
+              const dId = depId(dep);
+              const fmt = typeof dep === 'object' ? dep.format || '' : '';
+              const depTask = visibleTasks.find((t) => t.id === dId);
+              if (!depTask) return null;
               const isGold = hoveredTask &&
                 (hoveredTask.id === task.id || depChain.has(task.id)) &&
-                depChain.has(depId);
+                depChain.has(dId);
+              const crossLane = depTask.tool !== task.tool;
+
+              const x1 = getTaskX(depTask) + depTask.duration;
+              const y1 = getTaskY(depTask, visibleTasks, visibleTools) + TASK_HEIGHT / 2;
+              const x2 = getTaskX(task);
+              const y2 = getTaskY(task, visibleTasks, visibleTools) + TASK_HEIGHT / 2;
+              const midX = (x1 + x2) / 2;
+              const midY = (y1 + y2) / 2;
+
               return (
-                <path
-                  key={`${depId}->${task.id}`}
-                  d={curvedPath(
-                    getTaskX(dep) + dep.duration,
-                    getTaskY(dep, visibleTasks, visibleTools) + TASK_HEIGHT / 2,
-                    getTaskX(task),
-                    getTaskY(task, visibleTasks, visibleTools) + TASK_HEIGHT / 2
+                <g key={`${dId}->${task.id}`}>
+                  <path
+                    d={curvedPath(x1, y1, x2, y2)}
+                    fill="none"
+                    stroke={isGold ? '#FFD700' : '#64748b'}
+                    strokeWidth={isGold ? 2.5 : 1.8}
+                    strokeOpacity={isGold ? 1 : hoveredTask ? 0.13 : 0.6}
+                    markerEnd={`url(#${isGold ? 'arrow-gold' : 'arrow'})`}
+                    style={{ transition: 'all 0.2s ease' }}
+                  />
+                  {crossLane && fmt && (
+                    <g transform={`translate(${midX}, ${midY})`}>
+                      <rect
+                        x={-fmt.length * 3.2 - 4} y={-9} rx={4}
+                        width={fmt.length * 6.4 + 8} height={17}
+                        fill={isGold ? '#FFF8DC' : '#f1f5f9'}
+                        stroke={isGold ? '#FFD700' : '#94a3b8'}
+                        strokeWidth={1}
+                      />
+                      <text
+                        textAnchor="middle" y={4}
+                        fontSize="9px" fontWeight="600"
+                        fill={isGold ? '#92400e' : '#475569'}
+                        style={{ pointerEvents: 'none', userSelect: 'none' }}
+                      >{fmt}</text>
+                    </g>
                   )}
-                  fill="none"
-                  stroke={isGold ? '#FFD700' : '#64748b'}
-                  strokeWidth={isGold ? 2.5 : 1.8}
-                  strokeOpacity={isGold ? 1 : hoveredTask ? 0.13 : 0.6}
-                  //markerEnd={`url(#${isGold ? 'arrow-gold' : 'arrow'})`}
-                  style={{ transition: 'all 0.2s ease' }}
-                />
+                </g>
               );
             })
           )}
