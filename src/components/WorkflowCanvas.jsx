@@ -187,7 +187,7 @@ const savePositions = (actId, pos) => {
   localStorage.setItem(ARCH_POS_KEY(actId), JSON.stringify(pos));
 };
 
-const ArchitectureView = ({ activity, filters, toolNotes, onToolNoteChange, onToolClick }) => {
+const ArchitectureView = ({ activity, filters, toolNotes, onToolNoteChange, onToolClick, onFilterChange }) => {
   const { tasks, tools, responsibles } = activity;
   const [openNoteTool, setOpenNoteTool] = useState(null);
   const [hoveredTool, setHoveredTool] = useState(null);
@@ -360,6 +360,27 @@ const ArchitectureView = ({ activity, filters, toolNotes, onToolNoteChange, onTo
 
   return (
     <div ref={wrapperRef} style={{ position: 'relative', overflow: 'auto', width: '100%', height: '100%', background: '#f8f9fb' }}>
+
+      {/* Filter bar */}
+      <div style={{ position: 'absolute', top: 12, left: 12, zIndex: 100, display: 'flex', gap: 6, flexWrap: 'wrap', maxWidth: 'calc(100% - 280px)' }}>
+        {responsibles.map((r) => {
+          const active = filters.responsibles.includes(r.key);
+          return (
+            <button key={r.key} onClick={() => {
+              const cur = filters.responsibles;
+              onFilterChange({ ...filters, responsibles: active ? cur.filter((k) => k !== r.key) : [...cur, r.key] });
+            }} style={{ padding: '4px 10px', borderRadius: 20, fontSize: 11, fontWeight: 600, cursor: 'pointer', border: `1.5px solid ${r.borderColor}`, background: active ? r.taskColor : '#ffffff', color: active ? '#ffffff' : r.borderColor }}>
+              {r.name}
+            </button>
+          );
+        })}
+        {(filters.responsibles.length > 0 || filters.tools.length > 0) && (
+          <button onClick={() => onFilterChange({ responsibles: [], tools: [] })}
+            style={{ padding: '4px 10px', borderRadius: 20, fontSize: 11, fontWeight: 600, cursor: 'pointer', border: '1.5px solid #ef4444', background: 'transparent', color: '#ef4444' }}>
+            ✕ Clear
+          </button>
+        )}
+      </div>
       <button onClick={handleFit} style={{ position: 'absolute', top: 12, right: 12, zIndex: 100, padding: '8px 12px', background: '#ffffff', border: '1px solid #e2e8f0', borderRadius: 6, cursor: 'pointer', fontSize: 12, fontWeight: 500, color: '#64748b', boxShadow: '0 2px 8px rgba(0,0,0,0.08)' }}>
         🔄 Fit to screen
       </button>
@@ -368,7 +389,7 @@ const ArchitectureView = ({ activity, filters, toolNotes, onToolNoteChange, onTo
         ↺ Reset layout
       </button>
       <div style={{ position: 'absolute', bottom: 12, right: 12, zIndex: 100, padding: '6px 10px', background: '#ffffff', border: '1px solid #e2e8f0', borderRadius: 4, fontSize: 11, color: '#64748b' }}>
-        {(zoom * 100).toFixed(0)}% · drag boxes to rearrange
+        {(zoom * 100).toFixed(0)}% · drag to move · double-click to open
       </div>
 
       <svg ref={svgRef} width={maxX} height={maxY}
@@ -406,7 +427,7 @@ const ArchitectureView = ({ activity, filters, toolNotes, onToolNoteChange, onTo
                 onMouseEnter={() => !draggingTool && setHoveredTool(tool)}
                 onMouseLeave={() => setHoveredTool(null)}
                 onMouseDown={(e) => handleBoxMouseDown(e, tool)}
-                onClick={(e) => { if (!isDragging) { e.stopPropagation(); onToolClick(tool); } }}>
+                onDoubleClick={(e) => { e.stopPropagation(); onToolClick(tool); }}>
                 {/* Shadow */}
                 <rect x={p.x + 3} y={p.y + 3} width={ARCH_BOX_W} height={ARCH_BOX_H} rx={10} fill="rgba(0,0,0,0.07)" />
                 {/* Box */}
@@ -671,7 +692,6 @@ const WorkflowCanvas = ({ activity, filters, toolNotes, onToolNoteChange, onFilt
     onFilterChange({ responsibles: [], tools: [tool] });
     setView('timeline');
   }, [onFilterChange]);
-
   // ── Architecture view ──
   if (view === 'arch') {
     return (
@@ -683,7 +703,7 @@ const WorkflowCanvas = ({ activity, filters, toolNotes, onToolNoteChange, onFilt
         <ArchitectureView
           activity={activity} filters={filters}
           toolNotes={toolNotes} onToolNoteChange={onToolNoteChange}
-          onToolClick={handleToolClick} />
+          onToolClick={handleToolClick} onFilterChange={onFilterChange} />
       </div>
     );
   }
@@ -692,7 +712,7 @@ const WorkflowCanvas = ({ activity, filters, toolNotes, onToolNoteChange, onFilt
     <div className="canvas-wrapper" ref={wrapperRef} style={{ position: 'relative', overflow: 'auto' }}>
 
       {/* View toggle */}
-      <button onClick={() => setView('arch')}
+      <button onClick={() => { onFilterChange({ responsibles: [], tools: [] }); setView('arch'); }}
         style={{ position: 'absolute', top: 12, left: 12, zIndex: 100, padding: '8px 14px', background: '#1e40af', color: '#ffffff', border: 'none', borderRadius: 6, cursor: 'pointer', fontSize: 12, fontWeight: 600, boxShadow: '0 2px 8px rgba(0,0,0,0.15)' }}>
         ⬡ Architecture view
       </button>
