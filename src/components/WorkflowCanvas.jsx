@@ -107,10 +107,11 @@ const ToolNotePanel = ({ tool, note, toolY, onClose, onSave }) => {
 
 
 // ── Architecture View ─────────────────────────────────────────────────────────
-const ARCH_BOX_W = 160;
-const ARCH_BOX_H = 80;
-const ARCH_COL_GAP = 120;
-const ARCH_ROW_GAP = 60;
+const ARCH_BOX_W = 180;
+const ARCH_BOX_H = 90;
+const ARCH_COL_GAP = 100;
+const ARCH_ROW_GAP = 80;
+const ARCH_MAX_COLS = 4; // wrap after this many columns
 
 // Topological sort → assign column (depth) per tool
 const computeToolLayout = (tools, tasks) => {
@@ -139,21 +140,21 @@ const computeToolLayout = (tools, tasks) => {
     });
   }
 
-  // Group by column
-  const cols = {};
-  tools.forEach((t) => {
-    const c = depth[t];
-    if (!cols[c]) cols[c] = [];
-    cols[c].push(t);
-  });
+  // Flatten all tools in depth order, then assign grid positions (row-major, max ARCH_MAX_COLS wide)
+  const ordered = [];
+  const maxDepth = Math.max(...tools.map((t) => depth[t]), 0);
+  for (let d = 0; d <= maxDepth; d++) {
+    tools.filter((t) => depth[t] === d).forEach((t) => ordered.push(t));
+  }
 
-  // Assign x,y positions
   const pos = {};
-  Object.entries(cols).forEach(([col, colTools]) => {
-    const x = parseInt(col) * (ARCH_BOX_W + ARCH_COL_GAP) + 60;
-    colTools.forEach((tool, row) => {
-      pos[tool] = { x, y: row * (ARCH_BOX_H + ARCH_ROW_GAP) + 60 };
-    });
+  ordered.forEach((tool, idx) => {
+    const col = idx % ARCH_MAX_COLS;
+    const row = Math.floor(idx / ARCH_MAX_COLS);
+    pos[tool] = {
+      x: col * (ARCH_BOX_W + ARCH_COL_GAP) + 60,
+      y: row * (ARCH_BOX_H + ARCH_ROW_GAP) + 60,
+    };
   });
 
   return { pos, edges };
@@ -176,6 +177,16 @@ const computeToolEdgeFormats = (tasks) => {
   return map;
 };
 
+const ARCH_POS_KEY = (actId) => `arch_positions_${actId}`;
+
+const loadPositions = (actId) => {
+  try { return JSON.parse(localStorage.getItem(ARCH_POS_KEY(actId)) || 'null'); }
+  catch { return null; }
+};
+const savePositions = (actId, pos) => {
+  localStorage.setItem(ARCH_POS_KEY(actId), JSON.stringify(pos));
+};
+
 const ArchitectureView = ({ activity, filters, toolNotes, onToolNoteChange, onToolClick }) => {
   const { tasks, tools, responsibles } = activity;
   const [openNoteTool, setOpenNoteTool] = useState(null);
@@ -184,10 +195,11 @@ const ArchitectureView = ({ activity, filters, toolNotes, onToolNoteChange, onTo
   const [pan, setPan] = useState({ x: 0, y: 0 });
   const [isPanning, setIsPanning] = useState(false);
   const [panStart, setPanStart] = useState({ x: 0, y: 0 });
+  const [draggingTool, setDraggingTool] = useState(null); // { tool, offsetX, offsetY }
+  const [toolPositions, setToolPositions] = useState(null); // null = use auto layout
   const svgRef = useRef(null);
   const wrapperRef = useRef(null);
 
-  // Apply same filters as timeline
   const visibleTasks = useMemo(() => tasks.filter((t) => {
     const byResp = filters.responsibles.length === 0 || filters.responsibles.includes(t.responsible);
     const byTool = filters.tools.length === 0 || filters.tools.includes(t.tool);
@@ -199,10 +211,17 @@ const ArchitectureView = ({ activity, filters, toolNotes, onToolNoteChange, onTo
     return tools.filter((t) => set.has(t));
   }, [tools, visibleTasks]);
 
-  const { pos, edges } = useMemo(() => computeToolLayout(visibleTools, visibleTasks), [visibleTools, visibleTasks]);
+  const { pos: autoPos, edges } = useMemo(() => computeToolLayout(visibleTools, visibleTasks), [visibleTools, visibleTasks]);
   const edgeFormats = useMemo(() => computeToolEdgeFormats(visibleTasks), [visibleTasks]);
 
-  // Responsible colours per tool
+  // Merge auto positions with user-dragged overrides
+  const pos = useMemo(() => {
+    const saved = toolPositions || loadPositions(activity.id) || {};
+    const merged = { ...autoPos };
+    visibleTools.forEach((tool) => { if (saved[tool]) merged[tool] = saved[tool]; });
+    return merged;
+  }, [autoPos, toolPositions, visibleTools, activity.id]);
+
   const respMap = useMemo(() => { const m = {}; responsibles.forEach((r) => { m[r.key] = r; }); return m; }, [responsibles]);
   const toolResps = useMemo(() => {
     const m = {};
@@ -216,8 +235,8 @@ const ArchitectureView = ({ activity, filters, toolNotes, onToolNoteChange, onTo
   const taskCount = (tool) => visibleTasks.filter((t) => t.tool === tool).length;
 
   const vals = Object.values(pos);
-  const maxX = (vals.length ? vals.reduce((m, p) => Math.max(m, p.x), 0) : 0) + ARCH_BOX_W + 80;
-  const maxY = (vals.length ? vals.reduce((m, p) => Math.max(m, p.y), 0) : 0) + ARCH_BOX_H + 80;
+  const maxX = (vals.length ? vals.reduce((m, p) => Math.max(m, p.x), 0) : 0) + ARCH_BOX_W + 120;
+  const maxY = (vals.length ? vals.reduce((m, p) => Math.max(m, p.y), 0) : 0) + ARCH_BOX_H + 120;
 
   const handleWheel = useCallback((e) => {
     if (!e.ctrlKey && !e.metaKey) return;
@@ -240,16 +259,8 @@ const ArchitectureView = ({ activity, filters, toolNotes, onToolNoteChange, onTo
     return () => el.removeEventListener('wheel', handleWheel);
   }, [handleWheel]);
 
-  const handleMouseDown = useCallback((e) => { if (e.button !== 0) return; setIsPanning(true); setPanStart({ x: e.clientX, y: e.clientY }); }, []);
-  const handleMouseMove = useCallback((e) => {
-    if (!isPanning) return;
-    setPan((prev) => ({ x: prev.x + e.clientX - panStart.x, y: prev.y + e.clientY - panStart.y }));
-    setPanStart({ x: e.clientX, y: e.clientY });
-  }, [isPanning, panStart]);
-  const handleMouseUp = useCallback(() => setIsPanning(false), []);
-
   const handleFit = useCallback(() => {
-    if (!svgRef.current || !wrapperRef.current) return;
+    if (!wrapperRef.current) return;
     const wr = wrapperRef.current.getBoundingClientRect();
     setZoom(Math.min(wr.width / maxX, wr.height / maxY, 1));
     setPan({ x: 0, y: 0 });
@@ -257,29 +268,89 @@ const ArchitectureView = ({ activity, filters, toolNotes, onToolNoteChange, onTo
 
   useEffect(() => { handleFit(); }, [visibleTools.length]); // eslint-disable-line
 
-  // Draw edge: centre-right of from box → centre-left of to box
+  // ── Drag handlers ──
+  const handleBoxMouseDown = useCallback((e, tool) => {
+    e.stopPropagation(); // prevent pan from starting
+    if (e.button !== 0) return;
+    const rect = svgRef.current.getBoundingClientRect();
+    const p = pos[tool];
+    setDraggingTool({
+      tool,
+      offsetX: (e.clientX - rect.left - pan.x) / zoom - p.x,
+      offsetY: (e.clientY - rect.top - pan.y) / zoom - p.y,
+    });
+  }, [pos, pan, zoom]);
+
+  const handleSvgMouseMove = useCallback((e) => {
+    if (draggingTool) {
+      const rect = svgRef.current.getBoundingClientRect();
+      const newX = (e.clientX - rect.left - pan.x) / zoom - draggingTool.offsetX;
+      const newY = (e.clientY - rect.top - pan.y) / zoom - draggingTool.offsetY;
+      setToolPositions((prev) => {
+        const next = { ...(prev || {}), ...pos, [draggingTool.tool]: { x: newX, y: newY } };
+        return next;
+      });
+      return;
+    }
+    if (isPanning) {
+      setPan((prev) => ({ x: prev.x + e.clientX - panStart.x, y: prev.y + e.clientY - panStart.y }));
+      setPanStart({ x: e.clientX, y: e.clientY });
+    }
+  }, [draggingTool, isPanning, panStart, pan, zoom, pos]);
+
+  const handleSvgMouseUp = useCallback(() => {
+    if (draggingTool) {
+      // Persist positions to localStorage
+      setToolPositions((prev) => {
+        const toSave = prev || pos;
+        savePositions(activity.id, toSave);
+        return toSave;
+      });
+      setDraggingTool(null);
+    }
+    setIsPanning(false);
+  }, [draggingTool, pos, activity.id]);
+
+  const handleSvgMouseDown = useCallback((e) => {
+    if (e.button !== 0) return;
+    setIsPanning(true);
+    setPanStart({ x: e.clientX, y: e.clientY });
+  }, []);
+
+  const handleResetLayout = useCallback(() => {
+    setToolPositions(null);
+    localStorage.removeItem(ARCH_POS_KEY(activity.id));
+  }, [activity.id]);
+
+  // Draw edge between two tool boxes — picks best side based on relative position
   const drawEdge = (from, to) => {
     const f = pos[from], t = pos[to];
     if (!f || !t) return null;
-    const x1 = f.x + ARCH_BOX_W, y1 = f.y + ARCH_BOX_H / 2;
-    const x2 = t.x, y2 = t.y + ARCH_BOX_H / 2;
-    const mx = (x1 + x2) / 2;
     const key = `${from}→${to}`;
     const fmts = edgeFormats[key] ? [...edgeFormats[key]].join(', ') : '';
     const isHov = hoveredTool === from || hoveredTool === to;
-    const color = isHov ? '#2563eb' : '#94a3b8';
+    const color = isHov ? '#2563eb' : '#64748b';
+
+    // Connect from right/left depending on horizontal direction
+    const fromRight = f.x + ARCH_BOX_W / 2 < t.x + ARCH_BOX_W / 2;
+    const x1 = fromRight ? f.x + ARCH_BOX_W : f.x;
+    const y1 = f.y + ARCH_BOX_H / 2;
+    const x2 = fromRight ? t.x : t.x + ARCH_BOX_W;
+    const y2 = t.y + ARCH_BOX_H / 2;
+    const mx = (x1 + x2) / 2;
     const midX = (x1 + x2) / 2, midY = (y1 + y2) / 2;
+
     return (
       <g key={key}>
         <path d={`M ${x1} ${y1} C ${mx} ${y1}, ${mx} ${y2}, ${x2} ${y2}`}
-          fill="none" stroke={color} strokeWidth={isHov ? 2.5 : 1.8}
-          strokeOpacity={hoveredTool && !isHov ? 0.15 : 0.8}
-          markerEnd="url(#arch-arrow)" />
+          fill="none" stroke={color} strokeWidth={isHov ? 2.5 : 1.5}
+          strokeOpacity={hoveredTool && !isHov ? 0.12 : 0.75}
+          markerEnd={`url(#arch-arrow-${isHov ? 'blue' : 'gray'})`} />
         {fmts && (
-          <g transform={`translate(${midX}, ${midY - 10})`}>
+          <g transform={`translate(${midX}, ${midY - 12})`}>
             <rect x={-fmts.length * 3 - 4} y={-8} width={fmts.length * 6 + 8} height={16} rx={4}
-              fill="#f1f5f9" stroke={color} strokeWidth={1} />
-            <text textAnchor="middle" y={4} fontSize="9px" fontWeight="600" fill="#475569"
+              fill={isHov ? '#eff6ff' : '#f1f5f9'} stroke={color} strokeWidth={1} />
+            <text textAnchor="middle" y={4} fontSize="9px" fontWeight="600" fill={isHov ? '#1d4ed8' : '#475569'}
               style={{ pointerEvents: 'none', userSelect: 'none' }}>{fmts}</text>
           </g>
         )}
@@ -288,32 +359,37 @@ const ArchitectureView = ({ activity, filters, toolNotes, onToolNoteChange, onTo
   };
 
   return (
-    <div ref={wrapperRef} style={{ position: 'relative', overflow: 'hidden', width: '100%', height: '100%', background: '#f8f9fb' }}>
+    <div ref={wrapperRef} style={{ position: 'relative', overflow: 'auto', width: '100%', height: '100%', background: '#f8f9fb' }}>
       <button onClick={handleFit} style={{ position: 'absolute', top: 12, right: 12, zIndex: 100, padding: '8px 12px', background: '#ffffff', border: '1px solid #e2e8f0', borderRadius: 6, cursor: 'pointer', fontSize: 12, fontWeight: 500, color: '#64748b', boxShadow: '0 2px 8px rgba(0,0,0,0.08)' }}>
         🔄 Fit to screen
       </button>
+      <button onClick={handleResetLayout} title="Reset to automatic layout"
+        style={{ position: 'absolute', top: 12, right: 130, zIndex: 100, padding: '8px 12px', background: '#ffffff', border: '1px solid #e2e8f0', borderRadius: 6, cursor: 'pointer', fontSize: 12, fontWeight: 500, color: '#64748b', boxShadow: '0 2px 8px rgba(0,0,0,0.08)' }}>
+        ↺ Reset layout
+      </button>
       <div style={{ position: 'absolute', bottom: 12, right: 12, zIndex: 100, padding: '6px 10px', background: '#ffffff', border: '1px solid #e2e8f0', borderRadius: 4, fontSize: 11, color: '#64748b' }}>
-        {(zoom * 100).toFixed(0)}%
+        {(zoom * 100).toFixed(0)}% · drag boxes to rearrange
       </div>
 
       <svg ref={svgRef} width={maxX} height={maxY}
-        style={{ display: 'block', userSelect: 'none', cursor: isPanning ? 'grabbing' : 'grab', width: '100%', height: '100%' }}
+        style={{ display: 'block', userSelect: 'none', cursor: draggingTool ? 'grabbing' : isPanning ? 'grabbing' : 'grab' }}
         viewBox={`0 0 ${maxX} ${maxY}`}
-        onMouseDown={handleMouseDown} onMouseMove={handleMouseMove}
-        onMouseUp={handleMouseUp} onMouseLeave={handleMouseUp}>
+        onMouseDown={handleSvgMouseDown} onMouseMove={handleSvgMouseMove}
+        onMouseUp={handleSvgMouseUp} onMouseLeave={handleSvgMouseUp}>
 
         <defs>
-          <marker id="arch-arrow" markerWidth="10" markerHeight="10" refX="8" refY="3.5" orient="auto">
-            <polygon points="0 0, 10 3.5, 0 7" fill="#94a3b8" />
+          <marker id="arch-arrow-gray" markerWidth="10" markerHeight="10" refX="8" refY="3.5" orient="auto">
+            <polygon points="0 0, 10 3.5, 0 7" fill="#64748b" />
+          </marker>
+          <marker id="arch-arrow-blue" markerWidth="10" markerHeight="10" refX="8" refY="3.5" orient="auto">
+            <polygon points="0 0, 10 3.5, 0 7" fill="#2563eb" />
           </marker>
         </defs>
 
         <g transform={`translate(${pan.x}, ${pan.y}) scale(${zoom})`}>
 
-          {/* Edges first (behind boxes) */}
-          {visibleTools.map((from) =>
-            [...(edges[from] || [])].map((to) => drawEdge(from, to))
-          )}
+          {/* Edges (behind boxes) */}
+          {visibleTools.map((from) => [...(edges[from] || [])].map((to) => drawEdge(from, to)))}
 
           {/* Tool boxes */}
           {visibleTools.map((tool) => {
@@ -323,18 +399,23 @@ const ArchitectureView = ({ activity, filters, toolNotes, onToolNoteChange, onTo
             const count = taskCount(tool);
             const hasNote = !!(toolNotes && toolNotes[tool]?.trim());
             const isHov = hoveredTool === tool;
+            const isDragging = draggingTool?.tool === tool;
             return (
-              <g key={tool} style={{ cursor: 'pointer' }}
-                onMouseEnter={() => setHoveredTool(tool)}
+              <g key={tool}
+                style={{ cursor: isDragging ? 'grabbing' : 'grab' }}
+                onMouseEnter={() => !draggingTool && setHoveredTool(tool)}
                 onMouseLeave={() => setHoveredTool(null)}
-                onClick={() => onToolClick(tool)}>
+                onMouseDown={(e) => handleBoxMouseDown(e, tool)}
+                onClick={(e) => { if (!isDragging) { e.stopPropagation(); onToolClick(tool); } }}>
                 {/* Shadow */}
-                <rect x={p.x + 3} y={p.y + 3} width={ARCH_BOX_W} height={ARCH_BOX_H} rx={10}
-                  fill="rgba(0,0,0,0.08)" />
+                <rect x={p.x + 3} y={p.y + 3} width={ARCH_BOX_W} height={ARCH_BOX_H} rx={10} fill="rgba(0,0,0,0.07)" />
                 {/* Box */}
                 <rect x={p.x} y={p.y} width={ARCH_BOX_W} height={ARCH_BOX_H} rx={10}
-                  fill="#ffffff" stroke={isHov ? '#2563eb' : '#cbd5e1'} strokeWidth={isHov ? 2.5 : 1.5} />
-                {/* Colour bar from first responsible */}
+                  fill="#ffffff"
+                  stroke={isDragging ? '#2563eb' : isHov ? '#2563eb' : '#cbd5e1'}
+                  strokeWidth={isDragging || isHov ? 2.5 : 1.5}
+                  style={{ filter: isDragging ? 'drop-shadow(0 6px 16px rgba(0,0,0,0.18))' : 'none' }} />
+                {/* Colour bar */}
                 {resps[0] && <rect x={p.x} y={p.y} width={ARCH_BOX_W} height={8} rx={10} fill={resps[0].taskColor} />}
                 {resps[0] && <rect x={p.x} y={p.y + 4} width={ARCH_BOX_W} height={4} fill={resps[0].taskColor} />}
                 {/* Tool name */}
@@ -347,14 +428,15 @@ const ArchitectureView = ({ activity, filters, toolNotes, onToolNoteChange, onTo
                   style={{ pointerEvents: 'none', userSelect: 'none' }}>{count} task{count !== 1 ? 's' : ''}</text>
                 {/* Responsible dots */}
                 {resps.slice(0, 4).map((r, ri) => (
-                  <circle key={r.key} cx={p.x + 12 + ri * 14} cy={p.y + 64} r={6}
+                  <circle key={r.key} cx={p.x + 14 + ri * 16} cy={p.y + 68} r={6}
                     fill={r.taskColor} stroke="#ffffff" strokeWidth={1.5} />
                 ))}
                 {/* Note button */}
-                <g onClick={(e) => { e.stopPropagation(); setOpenNoteTool(openNoteTool === tool ? null : tool); }}>
-                  <circle cx={p.x + ARCH_BOX_W - 14} cy={p.y + 64} r={8}
+                <g onMouseDown={(e) => e.stopPropagation()}
+                  onClick={(e) => { e.stopPropagation(); setOpenNoteTool(openNoteTool === tool ? null : tool); }}>
+                  <circle cx={p.x + ARCH_BOX_W - 14} cy={p.y + 68} r={9}
                     fill={hasNote ? '#2563eb' : '#eff6ff'} stroke="#2563eb" strokeWidth={1.5} />
-                  <text x={p.x + ARCH_BOX_W - 14} y={p.y + 68} textAnchor="middle"
+                  <text x={p.x + ARCH_BOX_W - 14} y={p.y + 72} textAnchor="middle"
                     fontSize="11px" fontWeight="700" fill={hasNote ? '#fff' : '#2563eb'}
                     style={{ pointerEvents: 'none', userSelect: 'none' }}>{hasNote ? '✎' : '+'}</text>
                 </g>
