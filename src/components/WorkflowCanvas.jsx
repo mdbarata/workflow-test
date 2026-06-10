@@ -361,26 +361,7 @@ const ArchitectureView = ({ activity, filters, toolNotes, onToolNoteChange, onTo
   return (
     <div ref={wrapperRef} style={{ position: 'relative', overflow: 'auto', width: '100%', height: '100%', background: '#f8f9fb' }}>
 
-      {/* Filter bar */}
-      <div style={{ position: 'absolute', top: 12, left: 12, zIndex: 100, display: 'flex', gap: 6, flexWrap: 'wrap', maxWidth: 'calc(100% - 280px)' }}>
-        {responsibles.map((r) => {
-          const active = filters.responsibles.includes(r.key);
-          return (
-            <button key={r.key} onClick={() => {
-              const cur = filters.responsibles;
-              onFilterChange({ ...filters, responsibles: active ? cur.filter((k) => k !== r.key) : [...cur, r.key] });
-            }} style={{ padding: '4px 10px', borderRadius: 20, fontSize: 11, fontWeight: 600, cursor: 'pointer', border: `1.5px solid ${r.borderColor}`, background: active ? r.taskColor : '#ffffff', color: active ? '#ffffff' : r.borderColor }}>
-              {r.name}
-            </button>
-          );
-        })}
-        {(filters.responsibles.length > 0 || filters.tools.length > 0) && (
-          <button onClick={() => onFilterChange({ responsibles: [], tools: [] })}
-            style={{ padding: '4px 10px', borderRadius: 20, fontSize: 11, fontWeight: 600, cursor: 'pointer', border: '1.5px solid #ef4444', background: 'transparent', color: '#ef4444' }}>
-            ✕ Clear
-          </button>
-        )}
-      </div>
+      
       <button onClick={handleFit} style={{ position: 'absolute', top: 12, right: 12, zIndex: 100, padding: '8px 12px', background: '#ffffff', border: '1px solid #e2e8f0', borderRadius: 6, cursor: 'pointer', fontSize: 12, fontWeight: 500, color: '#64748b', boxShadow: '0 2px 8px rgba(0,0,0,0.08)' }}>
         🔄 Fit to screen
       </button>
