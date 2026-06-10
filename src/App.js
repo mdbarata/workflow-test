@@ -152,6 +152,7 @@ const App = () => {
           filters={filters}
           toolNotes={toolNotes}
           onToolNoteChange={handleToolNoteChange}
+          onFilterChange={setFilters}
         />
       </div>
 

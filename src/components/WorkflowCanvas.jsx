@@ -105,9 +105,299 @@ const ToolNotePanel = ({ tool, note, toolY, onClose, onSave }) => {
   );
 };
 
+
+// ── Architecture View ─────────────────────────────────────────────────────────
+const ARCH_BOX_W = 160;
+const ARCH_BOX_H = 80;
+const ARCH_COL_GAP = 120;
+const ARCH_ROW_GAP = 60;
+
+// Topological sort → assign column (depth) per tool
+const computeToolLayout = (tools, tasks) => {
+  const toolSet = new Set(tools);
+  const edges = {};
+  tools.forEach((t) => { edges[t] = new Set(); });
+
+  tasks.forEach((task) => {
+    task.dependencies.forEach((dep) => {
+      const fromTool = tasks.find((t) => t.id === depId(dep))?.tool;
+      // Only add edge if both tools are visible
+      if (fromTool && fromTool !== task.tool && toolSet.has(fromTool) && toolSet.has(task.tool)) {
+        edges[fromTool].add(task.tool);
+      }
+    });
+  });
+
+  // Assign depth via longest path — cap iterations to tools.length to prevent infinite loop on cycles
+  const depth = {};
+  tools.forEach((t) => { depth[t] = 0; });
+  for (let pass = 0; pass < tools.length; pass++) {
+    tools.forEach((from) => {
+      edges[from].forEach((to) => {
+        if (depth[to] <= depth[from]) depth[to] = depth[from] + 1;
+      });
+    });
+  }
+
+  // Group by column
+  const cols = {};
+  tools.forEach((t) => {
+    const c = depth[t];
+    if (!cols[c]) cols[c] = [];
+    cols[c].push(t);
+  });
+
+  // Assign x,y positions
+  const pos = {};
+  Object.entries(cols).forEach(([col, colTools]) => {
+    const x = parseInt(col) * (ARCH_BOX_W + ARCH_COL_GAP) + 60;
+    colTools.forEach((tool, row) => {
+      pos[tool] = { x, y: row * (ARCH_BOX_H + ARCH_ROW_GAP) + 60 };
+    });
+  });
+
+  return { pos, edges };
+};
+
+// Collect all formats per tool-pair
+const computeToolEdgeFormats = (tasks) => {
+  const map = {}; // "from->to" → Set(format)
+  tasks.forEach((task) => {
+    task.dependencies.forEach((dep) => {
+      const fromTool = tasks.find((t) => t.id === depId(dep))?.tool;
+      if (fromTool && fromTool !== task.tool) {
+        const key = `${fromTool}→${task.tool}`;
+        if (!map[key]) map[key] = new Set();
+        const fmt = typeof dep === 'object' ? dep.format : '';
+        if (fmt) map[key].add(fmt);
+      }
+    });
+  });
+  return map;
+};
+
+const ArchitectureView = ({ activity, filters, toolNotes, onToolNoteChange, onToolClick }) => {
+  const { tasks, tools, responsibles } = activity;
+  const [openNoteTool, setOpenNoteTool] = useState(null);
+  const [hoveredTool, setHoveredTool] = useState(null);
+  const [zoom, setZoom] = useState(1);
+  const [pan, setPan] = useState({ x: 0, y: 0 });
+  const [isPanning, setIsPanning] = useState(false);
+  const [panStart, setPanStart] = useState({ x: 0, y: 0 });
+  const svgRef = useRef(null);
+  const wrapperRef = useRef(null);
+
+  // Apply same filters as timeline
+  const visibleTasks = useMemo(() => tasks.filter((t) => {
+    const byResp = filters.responsibles.length === 0 || filters.responsibles.includes(t.responsible);
+    const byTool = filters.tools.length === 0 || filters.tools.includes(t.tool);
+    return byResp && byTool;
+  }), [tasks, filters]);
+
+  const visibleTools = useMemo(() => {
+    const set = new Set(visibleTasks.map((t) => t.tool));
+    return tools.filter((t) => set.has(t));
+  }, [tools, visibleTasks]);
+
+  const { pos, edges } = useMemo(() => computeToolLayout(visibleTools, visibleTasks), [visibleTools, visibleTasks]);
+  const edgeFormats = useMemo(() => computeToolEdgeFormats(visibleTasks), [visibleTasks]);
+
+  // Responsible colours per tool
+  const respMap = useMemo(() => { const m = {}; responsibles.forEach((r) => { m[r.key] = r; }); return m; }, [responsibles]);
+  const toolResps = useMemo(() => {
+    const m = {};
+    visibleTools.forEach((tool) => {
+      const resps = [...new Set(visibleTasks.filter((t) => t.tool === tool).map((t) => t.responsible))];
+      m[tool] = resps.map((k) => respMap[k]).filter(Boolean);
+    });
+    return m;
+  }, [visibleTools, visibleTasks, respMap]);
+
+  const taskCount = (tool) => visibleTasks.filter((t) => t.tool === tool).length;
+
+  const vals = Object.values(pos);
+  const maxX = (vals.length ? vals.reduce((m, p) => Math.max(m, p.x), 0) : 0) + ARCH_BOX_W + 80;
+  const maxY = (vals.length ? vals.reduce((m, p) => Math.max(m, p.y), 0) : 0) + ARCH_BOX_H + 80;
+
+  const handleWheel = useCallback((e) => {
+    if (!e.ctrlKey && !e.metaKey) return;
+    e.preventDefault();
+    setZoom((prev) => {
+      const nz = Math.min(Math.max(prev * (e.deltaY > 0 ? 0.9 : 1.1), 0.3), 3);
+      if (svgRef.current) {
+        const rect = svgRef.current.getBoundingClientRect();
+        const r = nz / prev;
+        setPan((p) => ({ x: (e.clientX - rect.left) - ((e.clientX - rect.left) - p.x) * r, y: (e.clientY - rect.top) - ((e.clientY - rect.top) - p.y) * r }));
+      }
+      return nz;
+    });
+  }, []);
+
+  useEffect(() => {
+    const el = svgRef.current;
+    if (!el) return;
+    el.addEventListener('wheel', handleWheel, { passive: false });
+    return () => el.removeEventListener('wheel', handleWheel);
+  }, [handleWheel]);
+
+  const handleMouseDown = useCallback((e) => { if (e.button !== 0) return; setIsPanning(true); setPanStart({ x: e.clientX, y: e.clientY }); }, []);
+  const handleMouseMove = useCallback((e) => {
+    if (!isPanning) return;
+    setPan((prev) => ({ x: prev.x + e.clientX - panStart.x, y: prev.y + e.clientY - panStart.y }));
+    setPanStart({ x: e.clientX, y: e.clientY });
+  }, [isPanning, panStart]);
+  const handleMouseUp = useCallback(() => setIsPanning(false), []);
+
+  const handleFit = useCallback(() => {
+    if (!svgRef.current || !wrapperRef.current) return;
+    const wr = wrapperRef.current.getBoundingClientRect();
+    setZoom(Math.min(wr.width / maxX, wr.height / maxY, 1));
+    setPan({ x: 0, y: 0 });
+  }, [maxX, maxY]);
+
+  useEffect(() => { handleFit(); }, [visibleTools.length]); // eslint-disable-line
+
+  // Draw edge: centre-right of from box → centre-left of to box
+  const drawEdge = (from, to) => {
+    const f = pos[from], t = pos[to];
+    if (!f || !t) return null;
+    const x1 = f.x + ARCH_BOX_W, y1 = f.y + ARCH_BOX_H / 2;
+    const x2 = t.x, y2 = t.y + ARCH_BOX_H / 2;
+    const mx = (x1 + x2) / 2;
+    const key = `${from}→${to}`;
+    const fmts = edgeFormats[key] ? [...edgeFormats[key]].join(', ') : '';
+    const isHov = hoveredTool === from || hoveredTool === to;
+    const color = isHov ? '#2563eb' : '#94a3b8';
+    const midX = (x1 + x2) / 2, midY = (y1 + y2) / 2;
+    return (
+      <g key={key}>
+        <path d={`M ${x1} ${y1} C ${mx} ${y1}, ${mx} ${y2}, ${x2} ${y2}`}
+          fill="none" stroke={color} strokeWidth={isHov ? 2.5 : 1.8}
+          strokeOpacity={hoveredTool && !isHov ? 0.15 : 0.8}
+          markerEnd="url(#arch-arrow)" />
+        {fmts && (
+          <g transform={`translate(${midX}, ${midY - 10})`}>
+            <rect x={-fmts.length * 3 - 4} y={-8} width={fmts.length * 6 + 8} height={16} rx={4}
+              fill="#f1f5f9" stroke={color} strokeWidth={1} />
+            <text textAnchor="middle" y={4} fontSize="9px" fontWeight="600" fill="#475569"
+              style={{ pointerEvents: 'none', userSelect: 'none' }}>{fmts}</text>
+          </g>
+        )}
+      </g>
+    );
+  };
+
+  return (
+    <div ref={wrapperRef} style={{ position: 'relative', overflow: 'hidden', width: '100%', height: '100%', background: '#f8f9fb' }}>
+      <button onClick={handleFit} style={{ position: 'absolute', top: 12, right: 12, zIndex: 100, padding: '8px 12px', background: '#ffffff', border: '1px solid #e2e8f0', borderRadius: 6, cursor: 'pointer', fontSize: 12, fontWeight: 500, color: '#64748b', boxShadow: '0 2px 8px rgba(0,0,0,0.08)' }}>
+        🔄 Fit to screen
+      </button>
+      <div style={{ position: 'absolute', bottom: 12, right: 12, zIndex: 100, padding: '6px 10px', background: '#ffffff', border: '1px solid #e2e8f0', borderRadius: 4, fontSize: 11, color: '#64748b' }}>
+        {(zoom * 100).toFixed(0)}%
+      </div>
+
+      <svg ref={svgRef} width={maxX} height={maxY}
+        style={{ display: 'block', userSelect: 'none', cursor: isPanning ? 'grabbing' : 'grab', width: '100%', height: '100%' }}
+        viewBox={`0 0 ${maxX} ${maxY}`}
+        onMouseDown={handleMouseDown} onMouseMove={handleMouseMove}
+        onMouseUp={handleMouseUp} onMouseLeave={handleMouseUp}>
+
+        <defs>
+          <marker id="arch-arrow" markerWidth="10" markerHeight="10" refX="8" refY="3.5" orient="auto">
+            <polygon points="0 0, 10 3.5, 0 7" fill="#94a3b8" />
+          </marker>
+        </defs>
+
+        <g transform={`translate(${pan.x}, ${pan.y}) scale(${zoom})`}>
+
+          {/* Edges first (behind boxes) */}
+          {visibleTools.map((from) =>
+            [...(edges[from] || [])].map((to) => drawEdge(from, to))
+          )}
+
+          {/* Tool boxes */}
+          {visibleTools.map((tool) => {
+            const p = pos[tool];
+            if (!p) return null;
+            const resps = toolResps[tool] || [];
+            const count = taskCount(tool);
+            const hasNote = !!(toolNotes && toolNotes[tool]?.trim());
+            const isHov = hoveredTool === tool;
+            return (
+              <g key={tool} style={{ cursor: 'pointer' }}
+                onMouseEnter={() => setHoveredTool(tool)}
+                onMouseLeave={() => setHoveredTool(null)}
+                onClick={() => onToolClick(tool)}>
+                {/* Shadow */}
+                <rect x={p.x + 3} y={p.y + 3} width={ARCH_BOX_W} height={ARCH_BOX_H} rx={10}
+                  fill="rgba(0,0,0,0.08)" />
+                {/* Box */}
+                <rect x={p.x} y={p.y} width={ARCH_BOX_W} height={ARCH_BOX_H} rx={10}
+                  fill="#ffffff" stroke={isHov ? '#2563eb' : '#cbd5e1'} strokeWidth={isHov ? 2.5 : 1.5} />
+                {/* Colour bar from first responsible */}
+                {resps[0] && <rect x={p.x} y={p.y} width={ARCH_BOX_W} height={8} rx={10} fill={resps[0].taskColor} />}
+                {resps[0] && <rect x={p.x} y={p.y + 4} width={ARCH_BOX_W} height={4} fill={resps[0].taskColor} />}
+                {/* Tool name */}
+                <text x={p.x + ARCH_BOX_W / 2} y={p.y + 30} textAnchor="middle"
+                  fontSize="12px" fontWeight="700" fill="#1e293b"
+                  style={{ pointerEvents: 'none', userSelect: 'none' }}>{tool}</text>
+                {/* Task count */}
+                <text x={p.x + ARCH_BOX_W / 2} y={p.y + 48} textAnchor="middle"
+                  fontSize="10px" fill="#64748b"
+                  style={{ pointerEvents: 'none', userSelect: 'none' }}>{count} task{count !== 1 ? 's' : ''}</text>
+                {/* Responsible dots */}
+                {resps.slice(0, 4).map((r, ri) => (
+                  <circle key={r.key} cx={p.x + 12 + ri * 14} cy={p.y + 64} r={6}
+                    fill={r.taskColor} stroke="#ffffff" strokeWidth={1.5} />
+                ))}
+                {/* Note button */}
+                <g onClick={(e) => { e.stopPropagation(); setOpenNoteTool(openNoteTool === tool ? null : tool); }}>
+                  <circle cx={p.x + ARCH_BOX_W - 14} cy={p.y + 64} r={8}
+                    fill={hasNote ? '#2563eb' : '#eff6ff'} stroke="#2563eb" strokeWidth={1.5} />
+                  <text x={p.x + ARCH_BOX_W - 14} y={p.y + 68} textAnchor="middle"
+                    fontSize="11px" fontWeight="700" fill={hasNote ? '#fff' : '#2563eb'}
+                    style={{ pointerEvents: 'none', userSelect: 'none' }}>{hasNote ? '✎' : '+'}</text>
+                </g>
+              </g>
+            );
+          })}
+        </g>
+      </svg>
+
+      {openNoteTool && pos[openNoteTool] && (
+        <div style={{ position: 'absolute', top: (pos[openNoteTool].y + ARCH_BOX_H + 8) * zoom + pan.y, left: pos[openNoteTool].x * zoom + pan.x, width: 300, background: '#ffffff', border: '1.5px solid #2563eb', borderRadius: 8, boxShadow: '0 8px 24px rgba(0,0,0,0.18)', zIndex: 500, padding: 14 }}
+          onMouseDown={(e) => e.stopPropagation()}>
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 8 }}>
+            <span style={{ fontSize: 13, fontWeight: 600, color: '#1d4ed8' }}>{openNoteTool}</span>
+            <button onClick={() => setOpenNoteTool(null)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#94a3b8', fontSize: 16 }}>✕</button>
+          </div>
+          <ArchNoteEditor tool={openNoteTool} note={toolNotes?.[openNoteTool] || ''} onSave={(tool, text) => { onToolNoteChange(tool, text); setOpenNoteTool(null); }} onClose={() => setOpenNoteTool(null)} />
+        </div>
+      )}
+    </div>
+  );
+};
+
+const ArchNoteEditor = ({ tool, note, onSave, onClose }) => {
+  const [text, setText] = useState(note);
+  return (
+    <>
+      <textarea value={text} onChange={(e) => setText(e.target.value)} placeholder={`Notes about ${tool}…`} autoFocus
+        style={{ width: '100%', height: 90, fontSize: 12, padding: '6px 8px', border: '1px solid #e2e8f0', borderRadius: 6, resize: 'vertical', fontFamily: 'system-ui, sans-serif', color: '#1e293b', background: '#f8fafc' }} />
+      <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 6, marginTop: 8 }}>
+        <button className="btn-secondary" onClick={onClose}>Cancel</button>
+        <button className="btn-primary" onClick={() => onSave(tool, text)}>Save</button>
+      </div>
+    </>
+  );
+};
+
+
 // ── Main component ────────────────────────────────────────────────────────────
-const WorkflowCanvas = ({ activity, filters, toolNotes, onToolNoteChange }) => {
+const WorkflowCanvas = ({ activity, filters, toolNotes, onToolNoteChange, onFilterChange }) => {
   const { tasks, tools, responsibles, documents, name } = activity;
+
+  const [view, setView] = useState('timeline'); // 'timeline' | 'arch'
 
   const canvasWidth = Math.max(...tasks.map((t) => t.startTime + t.duration), 600) + 20;
 
@@ -294,8 +584,36 @@ const WorkflowCanvas = ({ activity, filters, toolNotes, onToolNoteChange }) => {
   for (let i = 0; i < openNoteToolIndex; i++)
     openNoteToolY += getToolHeight(visibleTools[i], collapsedTools) + LANE_GAP;
 
+  // ── Tool click from arch view: filter to that tool + switch to timeline ──
+  const handleToolClick = useCallback((tool) => {
+    onFilterChange({ responsibles: [], tools: [tool] });
+    setView('timeline');
+  }, [onFilterChange]);
+
+  // ── Architecture view ──
+  if (view === 'arch') {
+    return (
+      <div style={{ position: 'relative', width: '100%', height: '100%' }}>
+        <button onClick={() => setView('timeline')}
+          style={{ position: 'absolute', top: 12, left: 12, zIndex: 100, padding: '8px 14px', background: '#1e40af', color: '#ffffff', border: 'none', borderRadius: 6, cursor: 'pointer', fontSize: 12, fontWeight: 600, boxShadow: '0 2px 8px rgba(0,0,0,0.15)' }}>
+          ← Timeline view
+        </button>
+        <ArchitectureView
+          activity={activity} filters={filters}
+          toolNotes={toolNotes} onToolNoteChange={onToolNoteChange}
+          onToolClick={handleToolClick} />
+      </div>
+    );
+  }
+
   return (
     <div className="canvas-wrapper" ref={wrapperRef} style={{ position: 'relative', overflow: 'auto' }}>
+
+      {/* View toggle */}
+      <button onClick={() => setView('arch')}
+        style={{ position: 'absolute', top: 12, left: 12, zIndex: 100, padding: '8px 14px', background: '#1e40af', color: '#ffffff', border: 'none', borderRadius: 6, cursor: 'pointer', fontSize: 12, fontWeight: 600, boxShadow: '0 2px 8px rgba(0,0,0,0.15)' }}>
+        ⬡ Architecture view
+      </button>
 
       <button onClick={handleResetZoomPan} title="Fit to screen (Ctrl+Scroll to zoom, drag to pan)"
         style={{ position: 'absolute', top: 12, right: 12, zIndex: 100, padding: '8px 12px', background: '#ffffff', border: '1px solid #e2e8f0', borderRadius: 6, cursor: 'pointer', fontSize: 12, fontWeight: 500, color: '#64748b', boxShadow: '0 2px 8px rgba(0,0,0,0.08)' }}
@@ -395,7 +713,7 @@ const WorkflowCanvas = ({ activity, filters, toolNotes, onToolNoteChange }) => {
                     d={elbowPath(isInput ? pos.x + DOC_WIDTH : pos.x, docCenterY, isInput ? getTaskX(ct) : getTaskX(ct) + ct.duration, ty + TASK_HEIGHT / 2, isInput)}
                     fill="none" stroke={color} strokeWidth={strokeWidth}
                     strokeDasharray="5,4" strokeOpacity={opacity} strokeLinecap="round"
-                    //markerEnd={`url(#${arrowId})`}
+                    markerEnd={`url(#${arrowId})`}
                     style={{ transition: dragging ? 'none' : 'all 0.18s ease' }}
                   />
                 );
@@ -422,7 +740,7 @@ const WorkflowCanvas = ({ activity, filters, toolNotes, onToolNoteChange }) => {
                     <path d={curvedPath(x1, y1, x2, y2)} fill="none"
                       stroke={isGold ? '#FFD700' : '#64748b'} strokeWidth={isGold ? 2.5 : 1.8}
                       strokeOpacity={isGold ? 1 : hoveredTask ? 0.13 : 0.6}
-                      //markerEnd={`url(#${isGold ? 'arrow-gold' : 'arrow'})`}
+                      markerEnd={`url(#${isGold ? 'arrow-gold' : 'arrow'})`}
                       style={{ transition: 'all 0.2s ease' }} />
                     {depTask.tool !== task.tool && fmt && (
                       <g transform={`translate(${midX}, ${midY})`}>
