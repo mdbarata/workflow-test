@@ -1,5 +1,5 @@
 import React, { useState, useMemo, useCallback, useEffect, useRef } from 'react';
-import TaskNode, { TASK_HEIGHT } from './TaskNode';
+import TaskNode, { TASK_HEIGHT, getTaskHeight } from './TaskNode';
 import DocumentNode, { DOC_WIDTH, DOC_HEIGHT } from './DocumentNode';
 
 const MARGIN = { top: 110, right: 180, bottom: 60, left: 200 };
@@ -688,13 +688,15 @@ const WorkflowCanvas = ({ activity, filters, toolNotes, onToolNoteChange, onFilt
             const arrowId = color === '#2563eb' ? 'arrow-doc-blue' : color === '#059669' ? 'arrow-doc-green' : 'arrow-doc';
             const docCenterY = pos.y + (docHeights[doc.id] || DOC_HEIGHT) / 2;
             return connectedTasks.map((ct) => {
-              const ty = getTaskY(ct, visibleTasks, visibleTools, collapsedTools);
+              const ty = getTaskY(ct, visibleTasks, visibleTools, collapsedTools) + getTaskHeight(ct.name, ct.duration) / 2;
               if (ty < -1000) return null;
               return (
                 <path key={`${doc.id}<->${ct.id}`}
                   d={elbowPath(isInput ? pos.x + DOC_WIDTH : pos.x, docCenterY, isInput ? getTaskX(ct) : getTaskX(ct) + ct.duration, ty + TASK_HEIGHT / 2, isInput)}
                   fill="none" stroke={color} strokeWidth={strokeWidth} strokeDasharray="5,4" strokeOpacity={opacity} strokeLinecap="round"
-                  markerEnd={`url(#${arrowId})`} style={{ transition: dragging ? 'none' : 'all 0.18s ease' }} />
+                  //markerEnd={`url(#${arrowId})`} 
+                  style={{ transition: dragging ? 'none' : 'all 0.18s ease' }} 
+                  />
               );
             });
           })}
