@@ -4,6 +4,7 @@ import defaultData from './data/workflow.json';
 import WorkflowCanvas from './components/WorkflowCanvas';
 import FilterBar from './components/FilterBar';
 import TaskEditor from './components/TaskEditor';
+import ActivityLinksView from './components/ActivityLinksView';
 
 // ── Bulk tool notes editor modal ──────────────────────────────────────────────
 const ToolNotesEditor = ({ tools, toolNotes, onChange, onClose }) => {
@@ -96,6 +97,7 @@ const App = () => {
   const [filters, setFilters] = useState({ responsibles: [], tools: [] });
   const [showEditor, setShowEditor] = useState(false);
   const [showToolNotes, setShowToolNotes] = useState(false);
+  const [showLinks, setShowLinks] = useState(false);
   // toolNotes: { [toolName]: string } — shared across all activities
   const [toolNotes, setToolNotes] = useState({});
 
@@ -124,36 +126,46 @@ const App = () => {
 
   return (
     <div className="workflow-d3-container">
-      {activities.length > 1 && (
-        <div className="activity-tabs">
-          {activities.map((act, i) => (
-            <button
-              key={act.id}
-              className={`activity-tab ${i === activeActivityIndex ? 'active' : ''}`}
-              onClick={() => { setActiveActivityIndex(i); setFilters({ responsibles: [], tools: [] }); }}
-            >
-              {act.name}
-            </button>
-          ))}
-        </div>
-      )}
+      <div className="activity-tabs">
+        {activities.length > 1 && activities.map((act, i) => (
+          <button
+            key={act.id}
+            className={`activity-tab ${!showLinks && i === activeActivityIndex ? 'active' : ''}`}
+            onClick={() => { setActiveActivityIndex(i); setFilters({ responsibles: [], tools: [] }); setShowLinks(false); }}
+          >
+            {act.name}
+          </button>
+        ))}
+        <button
+          className={`activity-tab ${showLinks ? 'active' : ''}`}
+          onClick={() => setShowLinks(true)}
+        >
+          Activity links
+        </button>
+      </div>
 
-      <FilterBar
-        activity={activity}
-        filters={filters}
-        onChange={setFilters}
-        onImport={() => setShowEditor(true)}
-        onToolNotes={() => setShowToolNotes(true)}
-      />
-
-      <div className="svg-container">
-        <WorkflowCanvas
+      {!showLinks && (
+        <FilterBar
           activity={activity}
           filters={filters}
-          toolNotes={toolNotes}
-          onToolNoteChange={handleToolNoteChange}
-          onFilterChange={setFilters}
+          onChange={setFilters}
+          onImport={() => setShowEditor(true)}
+          onToolNotes={() => setShowToolNotes(true)}
         />
+      )}
+
+      <div className="svg-container">
+        {showLinks ? (
+          <ActivityLinksView activities={activities} onEditTasks={() => setShowEditor(true)} />
+        ) : (
+          <WorkflowCanvas
+            activity={activity}
+            filters={filters}
+            toolNotes={toolNotes}
+            onToolNoteChange={handleToolNoteChange}
+            onFilterChange={setFilters}
+          />
+        )}
       </div>
 
       {showEditor && (
