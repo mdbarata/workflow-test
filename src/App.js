@@ -5,6 +5,7 @@ import WorkflowCanvas from './components/WorkflowCanvas';
 import FilterBar from './components/FilterBar';
 import TaskEditor from './components/TaskEditor';
 import ActivityLinksView from './components/ActivityLinksView';
+import { loadAppState, clearAppState, useAutoSave } from './useWorkflowPersistence';
 
 // ── Bulk tool notes editor modal ──────────────────────────────────────────────
 const ToolNotesEditor = ({ tools, toolNotes, onChange, onClose }) => {
@@ -92,17 +93,38 @@ const ToolNotesEditor = ({ tools, toolNotes, onChange, onClose }) => {
 
 // ── App ───────────────────────────────────────────────────────────────────────
 const App = () => {
-  const [workflowData, setWorkflowData] = useState(defaultData);
-  const [activeActivityIndex, setActiveActivityIndex] = useState(0);
-  const [filters, setFilters] = useState({ responsibles: [], tools: [] });
+  const saved = loadAppState();
+
+  const [workflowData, setWorkflowData] = useState(saved?.workflowData || defaultData);
+  const [activeActivityIndex, setActiveActivityIndex] = useState(saved?.activeActivityIndex || 0);
+  const [filters, setFilters] = useState(saved?.filters || { responsibles: [], tools: [] });
   const [showEditor, setShowEditor] = useState(false);
   const [showToolNotes, setShowToolNotes] = useState(false);
-  const [showLinks, setShowLinks] = useState(false);
+  const [showLinks, setShowLinks] = useState(saved?.showLinks || false);
   // toolNotes: { [toolName]: string } — shared across all activities
-  const [toolNotes, setToolNotes] = useState({});
+  const [toolNotes, setToolNotes] = useState(saved?.toolNotes || {});
+  // docPositions: { [activityId]: { [docId]: { x, y } } } — per-activity drag layout
+  const [docPositions, setDocPositions] = useState(saved?.docPositions || {});
+
+  useAutoSave({ workflowData, activeActivityIndex, filters, showLinks, toolNotes, docPositions });
 
   const activities = workflowData.activities || [];
   const activity = activities[activeActivityIndex];
+
+  const handleDocPositionsChange = (activityId, positions) => {
+    setDocPositions((prev) => ({ ...prev, [activityId]: positions }));
+  };
+
+  const handleResetSession = () => {
+    if (!window.confirm('Clear saved layout, notes, and loaded data? This cannot be undone.')) return;
+    clearAppState();
+    setWorkflowData(defaultData);
+    setActiveActivityIndex(0);
+    setFilters({ responsibles: [], tools: [] });
+    setShowLinks(false);
+    setToolNotes({});
+    setDocPositions({});
+  };
 
   const handleSave = (newData) => {
     setWorkflowData(newData);
@@ -142,6 +164,14 @@ const App = () => {
         >
           Activity links
         </button>
+        <button
+          className="activity-tab"
+          title="Clear saved session and reload default data"
+          onClick={handleResetSession}
+          style={{ marginLeft: 'auto', color: '#94a3b8' }}
+        >
+          ↺ Reset session
+        </button>
       </div>
 
       {!showLinks && (
@@ -164,6 +194,8 @@ const App = () => {
             toolNotes={toolNotes}
             onToolNoteChange={handleToolNoteChange}
             onFilterChange={setFilters}
+            docPositions={docPositions[activity.id]}
+            onDocPositionsChange={(positions) => handleDocPositionsChange(activity.id, positions)}
           />
         )}
       </div>

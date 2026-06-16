@@ -1,5 +1,5 @@
 import React, { useState, useMemo, useCallback, useEffect, useRef } from 'react';
-import TaskNode, { TASK_HEIGHT, getTaskHeight } from './TaskNode';
+import TaskNode, { TASK_HEIGHT } from './TaskNode';
 import DocumentNode, { DOC_WIDTH, DOC_HEIGHT } from './DocumentNode';
 
 const MARGIN = { top: 110, right: 180, bottom: 60, left: 200 };
@@ -91,7 +91,6 @@ const ToolNotePanel = ({ tool, note, toolY, onClose, onSave }) => {
   );
 };
 
-// ── Zoom controls UI ──────────────────────────────────────────────────────────
 const ZoomControls = ({ zoom, onZoom, onFit }) => (
   <div style={{ position: 'absolute', bottom: 16, right: 16, zIndex: 100, display: 'flex', alignItems: 'center', gap: 4, background: '#ffffff', border: '1px solid #e2e8f0', borderRadius: 8, padding: '4px 8px', boxShadow: '0 2px 8px rgba(0,0,0,0.08)' }}>
     <button onClick={() => onZoom(-1)} style={zBtnStyle} title="Zoom out">−</button>
@@ -103,7 +102,6 @@ const ZoomControls = ({ zoom, onZoom, onFit }) => (
 );
 const zBtnStyle = { background: 'none', border: 'none', cursor: 'pointer', fontSize: 16, fontWeight: 600, color: '#64748b', padding: '0 4px', lineHeight: 1, borderRadius: 4, display: 'flex', alignItems: 'center', justifyContent: 'center', width: 24, height: 24 };
 
-// ── Architecture helpers ──────────────────────────────────────────────────────
 const ARCH_BOX_W = 180;
 const ARCH_BOX_H = 90;
 const ARCH_COL_GAP = 100;
@@ -153,7 +151,6 @@ const computeToolEdgeFormats = (tasks) => {
   return map;
 };
 
-// ── Architecture View ─────────────────────────────────────────────────────────
 const ArchitectureView = ({ activity, filters, toolNotes, onToolNoteChange, onToolClick, onFilterChange }) => {
   const { tasks, tools, responsibles } = activity;
   const [openNoteTool, setOpenNoteTool] = useState(null);
@@ -178,9 +175,9 @@ const ArchitectureView = ({ activity, filters, toolNotes, onToolNoteChange, onTo
   const edgeFormats = useMemo(() => computeToolEdgeFormats(visibleTasks), [visibleTasks]);
 
   const pos = useMemo(() => {
-    const saved = toolPositions || loadPositions(activity.id) || {};
+    const savedPos = toolPositions || loadPositions(activity.id) || {};
     const merged = { ...autoPos };
-    visibleTools.forEach((tool) => { if (saved[tool]) merged[tool] = saved[tool]; });
+    visibleTools.forEach((tool) => { if (savedPos[tool]) merged[tool] = savedPos[tool]; });
     return merged;
   }, [autoPos, toolPositions, visibleTools, activity.id]);
 
@@ -232,7 +229,6 @@ const ArchitectureView = ({ activity, filters, toolNotes, onToolNoteChange, onTo
   const handleStepZoom = useCallback((dir) => {
     setZoom((prev) => {
       const nz = Math.min(Math.max(prev + dir * ZOOM_STEP, MIN_ZOOM), MAX_ZOOM);
-      // zoom toward center
       if (wrapperRef.current) {
         const wr = wrapperRef.current.getBoundingClientRect();
         const cx = wr.width / 2, cy = wr.height / 2;
@@ -276,8 +272,7 @@ const ArchitectureView = ({ activity, filters, toolNotes, onToolNoteChange, onTo
   const handleSvgMouseDown = useCallback((e) => { if (e.button !== 0) return; setIsPanning(true); setPanStart({ x: e.clientX, y: e.clientY }); }, []);
   const handleResetLayout = useCallback(() => { setToolPositions(null); localStorage.removeItem(ARCH_POS_KEY(activity.id)); }, [activity.id]);
 
-  // ── Draw edge: arrow near start of line, not glued to box ──
-  const GAP = 20; // space between box edge and where arrow sits
+  const GAP = 20;
   const drawEdge = (from, to) => {
     const f = pos[from], t = pos[to];
     if (!f || !t) return null;
@@ -287,15 +282,12 @@ const ArchitectureView = ({ activity, filters, toolNotes, onToolNoteChange, onTo
     const color = isHov ? '#2563eb' : '#64748b';
     const fromRight = f.x + ARCH_BOX_W / 2 < t.x + ARCH_BOX_W / 2;
 
-    // Line goes from box edge → target box edge
     const lx1 = fromRight ? f.x + ARCH_BOX_W : f.x;
     const ly1 = f.y + ARCH_BOX_H / 2;
     const lx2 = fromRight ? t.x : t.x + ARCH_BOX_W;
     const ly2 = t.y + ARCH_BOX_H / 2;
     const mx = (lx1 + lx2) / 2;
 
-    // Arrow marker sits GAP ahead of the source box, on the bezier curve
-    // We approximate this as a short straight segment from lx1→(lx1+GAP), then the full curve from there
     const ax1 = lx1, ay1 = ly1;
     const ax2 = fromRight ? lx1 + GAP : lx1 - GAP, ay2 = ly1;
 
@@ -304,12 +296,10 @@ const ArchitectureView = ({ activity, filters, toolNotes, onToolNoteChange, onTo
 
     return (
       <g key={key}>
-        {/* Short stub with arrowhead near source */}
         <line x1={ax1} y1={ay1} x2={ax2} y2={ay2}
           stroke={color} strokeWidth={isHov ? 2 : 1.5}
           strokeOpacity={hoveredTool && !isHov ? 0.12 : 0.8}
           markerEnd={`url(#${markerId})`} />
-        {/* Main bezier curve, starts after the stub */}
         <path d={`M ${ax2} ${ly1} C ${mx} ${ly1}, ${mx} ${ly2}, ${lx2} ${ly2}`}
           fill="none" stroke={color} strokeWidth={isHov ? 2 : 1.5}
           strokeOpacity={hoveredTool && !isHov ? 0.12 : 0.8} />
@@ -327,29 +317,6 @@ const ArchitectureView = ({ activity, filters, toolNotes, onToolNoteChange, onTo
 
   return (
     <div ref={wrapperRef} style={{ position: 'relative', overflow: 'hidden', width: '100%', height: '100%', background: '#f8f9fb' }}>
-      
-  
-      {/* Filter chips 
-      
-      <div style={{ position: 'absolute', top: 12, left: 12, zIndex: 100, display: 'flex', gap: 6, flexWrap: 'wrap', maxWidth: 'calc(100% - 280px)' }}>
-        {responsibles.map((r) => {
-          const active = filters.responsibles.includes(r.key);
-          return (
-            <button key={r.key} onClick={() => {
-              const cur = filters.responsibles;
-              onFilterChange({ ...filters, responsibles: active ? cur.filter((k) => k !== r.key) : [...cur, r.key] });
-            }} style={{ padding: '4px 10px', borderRadius: 20, fontSize: 11, fontWeight: 600, cursor: 'pointer', border: `1.5px solid ${r.borderColor}`, background: active ? r.taskColor : '#ffffff', color: active ? '#ffffff' : r.borderColor }}>
-              {r.name}
-            </button>
-          );
-        })}
-        {(filters.responsibles.length > 0 || filters.tools.length > 0) && (
-          <button onClick={() => onFilterChange({ responsibles: [], tools: [] })}
-            style={{ padding: '4px 10px', borderRadius: 20, fontSize: 11, fontWeight: 600, cursor: 'pointer', border: '1.5px solid #ef4444', background: 'transparent', color: '#ef4444' }}>✕ Clear</button>
-        )}
-      </div>
-      */}
-
       <button onClick={handleResetLayout} style={{ position: 'absolute', top: 12, right: 12, zIndex: 100, padding: '8px 12px', background: '#ffffff', border: '1px solid #e2e8f0', borderRadius: 6, cursor: 'pointer', fontSize: 12, fontWeight: 500, color: '#64748b', boxShadow: '0 2px 8px rgba(0,0,0,0.08)' }}>
         ↺ Reset layout
       </button>
@@ -363,7 +330,6 @@ const ArchitectureView = ({ activity, filters, toolNotes, onToolNoteChange, onTo
         onMouseUp={handleSvgMouseUp} onMouseLeave={handleSvgMouseUp}>
 
         <defs>
-          {/* Small arrowhead markers */}
           <marker id="arch-arr-gray" markerWidth="6" markerHeight="6" refX="3" refY="3" orient="auto">
             <polygon points="0 0, 6 3, 0 6" fill="#64748b" />
           </marker>
@@ -372,10 +338,8 @@ const ArchitectureView = ({ activity, filters, toolNotes, onToolNoteChange, onTo
           </marker>
         </defs>
 
-        {/* Edges */}
         {visibleTools.map((from) => [...(edges[from] || [])].map((to) => drawEdge(from, to)))}
 
-        {/* Tool boxes */}
         {visibleTools.map((tool) => {
           const p = pos[tool];
           if (!p) return null;
@@ -439,7 +403,11 @@ const ArchNoteEditor = ({ tool, note, onSave, onClose }) => {
 };
 
 // ── Main component ────────────────────────────────────────────────────────────
-const WorkflowCanvas = ({ activity, filters, toolNotes, onToolNoteChange, onFilterChange }) => {
+// docPositions / onDocPositionsChange (optional props): when provided, the
+// canvas reads its initial document layout from docPositions instead of
+// always recomputing defaults, and reports every change upward so the
+// parent (App.js) can persist it (e.g. to localStorage) across sessions.
+const WorkflowCanvas = ({ activity, filters, toolNotes, onToolNoteChange, onFilterChange, docPositions: persistedDocPositions, onDocPositionsChange }) => {
   const { tasks, tools, responsibles, documents, name } = activity;
   const [view, setView] = useState('timeline');
   const canvasWidth = Math.max(...tasks.map((t) => t.startTime + t.duration), 600) + 20;
@@ -447,7 +415,9 @@ const WorkflowCanvas = ({ activity, filters, toolNotes, onToolNoteChange, onFilt
   const [hoveredTaskId, setHoveredTaskId] = useState(null);
   const [hoveredDocId, setHoveredDocId] = useState(null);
   const [tooltipPos, setTooltipPos] = useState({ x: 0, y: 0 });
-  const [docPositions, setDocPositions] = useState(() => buildDefaultPositions(documents, tools.length * (TOOL_HEIGHT + LANE_GAP), canvasWidth));
+  const [docPositions, setDocPositions] = useState(() =>
+    persistedDocPositions || buildDefaultPositions(documents, tools.length * (TOOL_HEIGHT + LANE_GAP), canvasWidth)
+  );
   const [docHeights, setDocHeights] = useState({});
   const [dragging, setDragging] = useState(null);
   const [openNoteTool, setOpenNoteTool] = useState(null);
@@ -464,10 +434,20 @@ const WorkflowCanvas = ({ activity, filters, toolNotes, onToolNoteChange, onFilt
     setDocHeights((prev) => (prev[docId] === h ? prev : { ...prev, [docId]: h }));
   }, []);
 
+  // When the activity changes, load that activity's persisted layout if we
+  // have one, otherwise fall back to the computed default.
   useEffect(() => {
-    setDocPositions(buildDefaultPositions(documents, tools.length * (TOOL_HEIGHT + LANE_GAP), canvasWidth));
+    setDocPositions(
+      persistedDocPositions || buildDefaultPositions(documents, tools.length * (TOOL_HEIGHT + LANE_GAP), canvasWidth)
+    );
     setDocHeights({});
   }, [activity.id]); // eslint-disable-line
+
+  // Report every doc-position change upward so the parent can persist it.
+  // (App.js debounces the actual localStorage write, so this can fire freely.)
+  useEffect(() => {
+    if (onDocPositionsChange) onDocPositionsChange(docPositions);
+  }, [docPositions]); // eslint-disable-line
 
   const toggleToolCollapse = useCallback((tool) => {
     setCollapsedTools((prev) => { const next = new Set(prev); next.has(tool) ? next.delete(tool) : next.add(tool); saveCollapsedTools(next); return next; });
@@ -495,7 +475,6 @@ const WorkflowCanvas = ({ activity, filters, toolNotes, onToolNoteChange, onFilt
     return () => el.removeEventListener('wheel', handleWheel);
   }, [handleWheel]);
 
-  // Fit: scale so full SVG width fills the container, never below MIN_ZOOM
   const handleFit = useCallback(() => {
     if (!svgRef.current || !wrapperRef.current) return;
     const wr = wrapperRef.current.getBoundingClientRect();
@@ -506,7 +485,6 @@ const WorkflowCanvas = ({ activity, filters, toolNotes, onToolNoteChange, onFilt
     setPan({ x: 0, y: 0 });
   }, []);
 
-  // Re-fit whenever the diagram size changes
   useEffect(() => { handleFit(); }, [canvasWidth, tools.length]); // eslint-disable-line
 
   const handleStepZoom = useCallback((dir) => {
@@ -637,7 +615,6 @@ const WorkflowCanvas = ({ activity, filters, toolNotes, onToolNoteChange, onFilt
         </defs>
 
         <g transform={`translate(${MARGIN.left}, ${MARGIN.top})`}>
-          {/* Legend */}
           <g transform={`translate(0, -${MARGIN.top - 16})`}>
             {responsibles.map((r, i) => (
               <g key={r.key} transform={`translate(${i * 280}, 0)`}>
@@ -651,7 +628,6 @@ const WorkflowCanvas = ({ activity, filters, toolNotes, onToolNoteChange, onFilt
 
           <text x={canvasWidth / 2} y={-30} textAnchor="middle" fontSize="18px" fontWeight="700" fill="#1e293b">{name}</text>
 
-          {/* Tool lanes */}
           {visibleTools.map((tool, i) => {
             let toolY = 0;
             for (let j = 0; j < i; j++) toolY += getToolHeight(visibleTools[j], collapsedTools) + LANE_GAP;
@@ -677,7 +653,6 @@ const WorkflowCanvas = ({ activity, filters, toolNotes, onToolNoteChange, onFilt
             );
           })}
 
-          {/* Document connector lines */}
           {visibleDocuments.map((doc) => {
             const pos = docPositions[doc.id];
             if (!pos) return null;
@@ -688,20 +663,17 @@ const WorkflowCanvas = ({ activity, filters, toolNotes, onToolNoteChange, onFilt
             const arrowId = color === '#2563eb' ? 'arrow-doc-blue' : color === '#059669' ? 'arrow-doc-green' : 'arrow-doc';
             const docCenterY = pos.y + (docHeights[doc.id] || DOC_HEIGHT) / 2;
             return connectedTasks.map((ct) => {
-              const ty = getTaskY(ct, visibleTasks, visibleTools, collapsedTools) + getTaskHeight(ct.name, ct.duration) / 2;
+              const ty = getTaskY(ct, visibleTasks, visibleTools, collapsedTools);
               if (ty < -1000) return null;
               return (
                 <path key={`${doc.id}<->${ct.id}`}
                   d={elbowPath(isInput ? pos.x + DOC_WIDTH : pos.x, docCenterY, isInput ? getTaskX(ct) : getTaskX(ct) + ct.duration, ty + TASK_HEIGHT / 2, isInput)}
                   fill="none" stroke={color} strokeWidth={strokeWidth} strokeDasharray="5,4" strokeOpacity={opacity} strokeLinecap="round"
-                  //markerEnd={`url(#${arrowId})`} 
-                  style={{ transition: dragging ? 'none' : 'all 0.18s ease' }} 
-                  />
+                  markerEnd={`url(#${arrowId})`} style={{ transition: dragging ? 'none' : 'all 0.18s ease' }} />
               );
             });
           })}
 
-          {/* Task dependency arrows */}
           {visibleTasks.map((task) =>
             task.dependencies.map((dep) => {
               const dId = depId(dep);
@@ -733,7 +705,6 @@ const WorkflowCanvas = ({ activity, filters, toolNotes, onToolNoteChange, onFilt
             })
           )}
 
-          {/* Tasks */}
           {visibleTasks.map((task) => {
             const taskY = getTaskY(task, visibleTasks, visibleTools, collapsedTools);
             if (taskY < -1000) return null;
@@ -750,7 +721,6 @@ const WorkflowCanvas = ({ activity, filters, toolNotes, onToolNoteChange, onFilt
             );
           })}
 
-          {/* Document nodes */}
           {visibleDocuments.map((doc) => {
             const pos = docPositions[doc.id];
             if (!pos) return null;
