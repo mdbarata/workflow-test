@@ -20,16 +20,22 @@ const getCollapsedTools = () => {
   catch { return new Set(); }
 };
 const saveCollapsedTools = (set) => localStorage.setItem(STORAGE_KEY, JSON.stringify([...set]));
-const getToolHeight = (tool, collapsedTools) => collapsedTools.has(tool) ? COLLAPSED_HEIGHT : TOOL_HEIGHT;
+const getToolHeight = (tool, collapsedTools, tasks) => {
+  if (collapsedTools.has(tool)) return COLLAPSED_HEIGHT;
+  const count = tasks ? tasks.filter((t) => t.tool === tool).length : 1;
+  const needed = 50 + count * (TASK_HEIGHT + TASK_GAP) + 10;
+  return Math.max(TOOL_HEIGHT, needed);
+};
 
 const getTaskY = (task, tasks, tools, collapsedTools) => {
   const toolIndex = tools.indexOf(task.tool);
   if (toolIndex === -1 || collapsedTools.has(task.tool)) return -9999;
   const tasksInToolBefore = tasks.filter((t) => t.tool === task.tool && t.startTime < task.startTime).length;
   let baseY = 50;
-  for (let i = 0; i < toolIndex; i++) baseY += getToolHeight(tools[i], collapsedTools) + LANE_GAP;
+  for (let i = 0; i < toolIndex; i++) baseY += getToolHeight(tools[i], collapsedTools, tasks) + LANE_GAP;
   const offset = tasksInToolBefore * (TASK_HEIGHT + TASK_GAP);
-  const maxY = baseY + TOOL_HEIGHT - TASK_HEIGHT - 10;
+  const thisToolHeight = getToolHeight(task.tool, collapsedTools, tasks);
+  const maxY = baseY + thisToolHeight - TASK_HEIGHT - 10;
   return Math.min(baseY + offset, maxY);
 };
 
@@ -443,6 +449,15 @@ const WorkflowCanvas = ({ activity, filters, toolNotes, onToolNoteChange, onFilt
     setDocHeights({});
   }, [activity.id]); // eslint-disable-line
 
+  // Backfill positions for any document missing one (e.g. newly added via
+  // TaskEditor after the layout was already loaded/persisted), so it still renders.
+  useEffect(() => {
+    const missing = documents.filter((d) => !docPositions[d.id]);
+    if (missing.length === 0) return;
+    const defaults = buildDefaultPositions(missing, tools.length * (TOOL_HEIGHT + LANE_GAP), canvasWidth);
+    setDocPositions((prev) => ({ ...defaults, ...prev }));
+  }, [documents]); // eslint-disable-line
+
   // Report every doc-position change upward so the parent can persist it.
   // (App.js debounces the actual localStorage write, so this can fire freely.)
   useEffect(() => {
@@ -539,7 +554,7 @@ const WorkflowCanvas = ({ activity, filters, toolNotes, onToolNoteChange, onFilt
   const visibleTools = useMemo(() => { const s = new Set(visibleTasks.map((t) => t.tool)); return tools.filter((tool) => s.has(tool)); }, [tools, visibleTasks]);
   const visibleDocIds = useMemo(() => { const s = new Set(); visibleTasks.forEach((t) => { (t.inputs || []).forEach((id) => s.add(id)); (t.outputs || []).forEach((id) => s.add(id)); }); return s; }, [visibleTasks]);
   const visibleDocuments = useMemo(() => documents.filter((d) => visibleDocIds.has(d.id)), [documents, visibleDocIds]);
-  const canvasHeight = visibleTools.reduce((sum, tool) => sum + getToolHeight(tool, collapsedTools) + LANE_GAP, 0);
+  const canvasHeight = visibleTools.reduce((sum, tool) => sum + getToolHeight(tool, collapsedTools, visibleTasks) + LANE_GAP, 0);
   const svgWidth = canvasWidth + MARGIN.left + MARGIN.right;
   const svgHeight = canvasHeight + MARGIN.top + MARGIN.bottom;
 
@@ -575,7 +590,7 @@ const WorkflowCanvas = ({ activity, filters, toolNotes, onToolNoteChange, onFilt
 
   const openNoteToolIndex = openNoteTool ? visibleTools.indexOf(openNoteTool) : -1;
   let openNoteToolY = 0;
-  for (let i = 0; i < openNoteToolIndex; i++) openNoteToolY += getToolHeight(visibleTools[i], collapsedTools) + LANE_GAP;
+  for (let i = 0; i < openNoteToolIndex; i++) openNoteToolY += getToolHeight(visibleTools[i], collapsedTools, visibleTasks) + LANE_GAP;
 
   const handleToolClick = useCallback((tool) => { onFilterChange({ responsibles: [], tools: [tool] }); setView('timeline'); }, [onFilterChange]);
 
@@ -630,9 +645,9 @@ const WorkflowCanvas = ({ activity, filters, toolNotes, onToolNoteChange, onFilt
 
           {visibleTools.map((tool, i) => {
             let toolY = 0;
-            for (let j = 0; j < i; j++) toolY += getToolHeight(visibleTools[j], collapsedTools) + LANE_GAP;
+            for (let j = 0; j < i; j++) toolY += getToolHeight(visibleTools[j], collapsedTools, visibleTasks) + LANE_GAP;
             const isCollapsed = collapsedTools.has(tool);
-            const toolDisplayHeight = getToolHeight(tool, collapsedTools);
+            const toolDisplayHeight = getToolHeight(tool, collapsedTools, visibleTasks);
             const hasNote = !!(toolNotes && toolNotes[tool]?.trim());
             return (
               <g key={tool}>

@@ -151,9 +151,9 @@ const workflowToRows = (data) => {
 };
 
 // ── Cell ──────────────────────────────────────────────────────────────────────
-const Cell = ({ value, onChange, placeholder, wide, list, numeric }) => (
-  <td style={{ padding: '3px 4px', minWidth: wide ? 110 : numeric ? 70 : 80 }}>
-    <input
+const Cell = ({ value, onChange, placeholder, wide, extraWide, list, numeric }) => (
+  <td style={{ padding: '3px 4px', minWidth: extraWide ? 240 : wide ? 110 : numeric ? 70 : 80 }}>
+       <input
       value={value}
       onChange={(e) => onChange(e.target.value)}
       placeholder={placeholder}
@@ -290,7 +290,7 @@ const TaskEditor = ({ workflowData, onSave, onClose }) => {
                 <th style={{ ...thStyle, width: 28 }}>#</th>
                 <th style={thStyle}>Task ID</th>
                 <th style={{ ...thStyle, minWidth: 110 }}>Activity</th>
-                <th style={{ ...thStyle, minWidth: 110 }}>Label</th>
+                <th style={{ ...thStyle, minWidth: 240 }}>Label</th>
                 <th style={{ ...thStyle, minWidth: 120 }}>Responsible</th>
                 <th style={{ ...thStyle, minWidth: 100 }}>Tool</th>
                 <th style={{ ...thStyle, minWidth: 70 }}>Start</th>
@@ -312,7 +312,7 @@ const TaskEditor = ({ workflowData, onSave, onClose }) => {
                   <td style={{ padding: '3px 6px', fontSize: 11, color: '#64748b', textAlign: 'center' }}>{i + 1}</td>
                   <Cell value={row.taskId}      onChange={(v) => updateRow(row._key, 'taskId', v)}      placeholder="task1" />
                   <Cell value={row.activity}    onChange={(v) => updateRow(row._key, 'activity', v)}    placeholder="Activity 1" list="act-list" wide />
-                  <Cell value={row.label}       onChange={(v) => updateRow(row._key, 'label', v)}       placeholder="Task name" wide />
+                  <Cell value={row.label}       onChange={(v) => updateRow(row._key, 'label', v)}       placeholder="Task name" extraWide />
                   <Cell value={row.responsible} onChange={(v) => updateRow(row._key, 'responsible', v)} placeholder="Responsible A" list="resp-list" wide />
                   <Cell value={row.tool}        onChange={(v) => updateRow(row._key, 'tool', v)}        placeholder="Tool 1" list="tool-list" />
                   <Cell value={row.startTime}   onChange={(v) => updateRow(row._key, 'startTime', v)}   placeholder="auto" numeric />
