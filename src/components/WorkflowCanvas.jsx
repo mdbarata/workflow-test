@@ -520,11 +520,13 @@ const WorkflowCanvas = ({ activity, filters, toolNotes, onToolNoteChange, onFilt
   const handleSvgMouseMove = useCallback((e) => {
     if (dragging) {
       const rect = e.currentTarget.getBoundingClientRect();
+      const mouseDocX = (e.clientX - rect.left) / zoom - pan.x / zoom - MARGIN.left;
+      const mouseDocY = (e.clientY - rect.top) / zoom - pan.y / zoom - MARGIN.top;
       setDocPositions((prev) => ({
         ...prev,
         [dragging.id]: {
-          x: (e.clientX - rect.left - MARGIN.left - dragging.offsetX - pan.x) / zoom,
-          y: (e.clientY - rect.top - MARGIN.top - dragging.offsetY - pan.y) / zoom,
+          x: mouseDocX - dragging.offsetX,
+          y: mouseDocY - dragging.offsetY,
         },
       }));
       return;
@@ -542,7 +544,9 @@ const WorkflowCanvas = ({ activity, filters, toolNotes, onToolNoteChange, onFilt
     e.preventDefault(); e.stopPropagation(); setIsPanning(false);
     const rect = e.currentTarget.closest('svg').getBoundingClientRect();
     const pos = docPositions[docId];
-    setDragging({ id: docId, offsetX: (e.clientX - rect.left - MARGIN.left - pan.x) / zoom - pos.x, offsetY: (e.clientY - rect.top - MARGIN.top - pan.y) / zoom - pos.y });
+    const mouseDocX = (e.clientX - rect.left) / zoom - pan.x / zoom - MARGIN.left;
+    const mouseDocY = (e.clientY - rect.top) / zoom - pan.y / zoom - MARGIN.top;
+    setDragging({ id: docId, offsetX: mouseDocX - pos.x, offsetY: mouseDocY - pos.y });
   }, [docPositions, pan, zoom]);
 
   const visibleTasks = useMemo(() => tasks.filter((t) => {

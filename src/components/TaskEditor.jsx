@@ -151,9 +151,9 @@ const workflowToRows = (data) => {
 };
 
 // ── Cell ──────────────────────────────────────────────────────────────────────
-const Cell = ({ value, onChange, placeholder, wide, extraWide, list, numeric }) => (
-  <td style={{ padding: '3px 4px', minWidth: extraWide ? 240 : wide ? 110 : numeric ? 70 : 80 }}>
-       <input
+const Cell = ({ value, onChange, placeholder, wide, list, numeric }) => (
+  <td style={{ padding: '3px 4px', minWidth: wide ? 110 : numeric ? 70 : 80 }}>
+    <input
       value={value}
       onChange={(e) => onChange(e.target.value)}
       placeholder={placeholder}
@@ -176,6 +176,8 @@ const TaskEditor = ({ workflowData, onSave, onClose }) => {
   const [rows, setRows] = useState(() => workflowToRows(workflowData));
   const [activeAct, setActiveAct] = useState('__all__');
   const [error, setError] = useState(null);
+  const [dragKey, setDragKey] = useState(null);
+  const [dragOverKey, setDragOverKey] = useState(null);
 
   const activities = useMemo(() => [...new Set(rows.map((r) => r.activity).filter(Boolean))], [rows]);
   const tools      = useMemo(() => [...new Set(rows.map((r) => r.tool).filter(Boolean))], [rows]);
@@ -198,6 +200,19 @@ const TaskEditor = ({ workflowData, onSave, onClose }) => {
   };
 
   const deleteRow = (key) => setRows((prev) => prev.filter((r) => r._key !== key));
+
+  const moveRow = useCallback((draggedKey, targetKey) => {
+    if (draggedKey === targetKey) return;
+    setRows((prev) => {
+      const from = prev.findIndex((r) => r._key === draggedKey);
+      const to = prev.findIndex((r) => r._key === targetKey);
+      if (from === -1 || to === -1) return prev;
+      const next = [...prev];
+      const [moved] = next.splice(from, 1);
+      next.splice(to, 0, moved);
+      return next;
+    });
+  }, []);
 
   const duplicateRow = (key) => {
     const idx = rows.findIndex((r) => r._key === key);
@@ -287,10 +302,11 @@ const TaskEditor = ({ workflowData, onSave, onClose }) => {
           <table style={{ width: '100%', borderCollapse: 'collapse', minWidth: 1200 }}>
             <thead>
               <tr>
+                <th style={{ ...thStyle, width: 20 }}></th>
                 <th style={{ ...thStyle, width: 28 }}>#</th>
                 <th style={thStyle}>Task ID</th>
                 <th style={{ ...thStyle, minWidth: 110 }}>Activity</th>
-                <th style={{ ...thStyle, minWidth: 240 }}>Label</th>
+                <th style={{ ...thStyle, minWidth: 110 }}>Label</th>
                 <th style={{ ...thStyle, minWidth: 120 }}>Responsible</th>
                 <th style={{ ...thStyle, minWidth: 100 }}>Tool</th>
                 <th style={{ ...thStyle, minWidth: 70 }}>Start</th>
@@ -306,13 +322,24 @@ const TaskEditor = ({ workflowData, onSave, onClose }) => {
             </thead>
             <tbody>
               {visibleRows.map((row, i) => (
-                <tr key={row._key} style={{ borderBottom: '0.5px solid #e2e8f0' }}
-                  onMouseEnter={(e) => (e.currentTarget.style.background = '#f1f5f9')}
-                  onMouseLeave={(e) => (e.currentTarget.style.background = '')}>
+                <tr key={row._key}
+                  onDragOver={(e) => { e.preventDefault(); if (dragOverKey !== row._key) setDragOverKey(row._key); }}
+                  onDrop={(e) => { e.preventDefault(); if (dragKey) moveRow(dragKey, row._key); setDragKey(null); setDragOverKey(null); }}
+                  style={{
+                    borderBottom: '0.5px solid #e2e8f0',
+                    background: dragOverKey === row._key && dragKey !== row._key ? '#dbeafe' : undefined,
+                    opacity: dragKey === row._key ? 0.4 : 1,
+                  }}
+                  onMouseEnter={(e) => { if (!dragKey) e.currentTarget.style.background = '#f1f5f9'; }}
+                  onMouseLeave={(e) => { if (!dragKey) e.currentTarget.style.background = ''; }}>
+                  <td draggable
+                    onDragStart={(e) => { e.stopPropagation(); setDragKey(row._key); }}
+                    onDragEnd={() => { setDragKey(null); setDragOverKey(null); }}
+                    style={{ padding: '3px 2px', textAlign: 'center', cursor: 'grab', color: '#cbd5e1', fontSize: 13 }} title="Drag to reorder">⠿</td>
                   <td style={{ padding: '3px 6px', fontSize: 11, color: '#64748b', textAlign: 'center' }}>{i + 1}</td>
                   <Cell value={row.taskId}      onChange={(v) => updateRow(row._key, 'taskId', v)}      placeholder="task1" />
                   <Cell value={row.activity}    onChange={(v) => updateRow(row._key, 'activity', v)}    placeholder="Activity 1" list="act-list" wide />
-                  <Cell value={row.label}       onChange={(v) => updateRow(row._key, 'label', v)}       placeholder="Task name" extraWide />
+                  <Cell value={row.label}       onChange={(v) => updateRow(row._key, 'label', v)}       placeholder="Task name" wide />
                   <Cell value={row.responsible} onChange={(v) => updateRow(row._key, 'responsible', v)} placeholder="Responsible A" list="resp-list" wide />
                   <Cell value={row.tool}        onChange={(v) => updateRow(row._key, 'tool', v)}        placeholder="Tool 1" list="tool-list" />
                   <Cell value={row.startTime}   onChange={(v) => updateRow(row._key, 'startTime', v)}   placeholder="auto" numeric />
