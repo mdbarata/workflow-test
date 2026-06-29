@@ -34,9 +34,7 @@ const getTaskY = (task, tasks, tools, collapsedTools) => {
   let baseY = 50;
   for (let i = 0; i < toolIndex; i++) baseY += getToolHeight(tools[i], collapsedTools, tasks) + LANE_GAP;
   const offset = tasksInToolBefore * (TASK_HEIGHT + TASK_GAP);
-  const thisToolHeight = getToolHeight(task.tool, collapsedTools, tasks);
-  const maxY = baseY + thisToolHeight - TASK_HEIGHT - 10;
-  return Math.min(baseY + offset, maxY);
+  return baseY + offset;
 };
 
 const getTaskX = (task) => task.startTime;
@@ -46,15 +44,27 @@ const elbowPath = (x1, y1, x2, y2, isInput) => isInput
   ? `M ${x1} ${y1} H ${x1 + ELBOW_STUB} V ${y2} H ${x2}`
   : `M ${x1} ${y1} H ${x2 - ELBOW_STUB} V ${y2} H ${x2}`;
 
-const buildDefaultPositions = (documents, canvasHeight, canvasWidth) => {
-  const inputDocs = documents.filter((d) => d.type === 'input');
-  const outputDocs = documents.filter((d) => d.type === 'output');
-  const getY = (i, total) => { const s = Math.min(canvasHeight / total, 90); return (canvasHeight - total * s) / 2 + 10 + i * s; };
-  const positions = {};
-  inputDocs.forEach((doc, i) => { positions[doc.id] = { x: -MARGIN.left + DOC_LEFT_X, y: getY(i, inputDocs.length) }; });
-  outputDocs.forEach((doc, i) => { positions[doc.id] = { x: canvasWidth + DOC_RIGHT_OFFSET, y: getY(i, outputDocs.length) }; });
-  return positions;
-};
+  const buildDefaultPositions = (documents, tasks, tools, collapsedTools, canvasWidth) => {
+    const positions = {};
+    documents.forEach((doc) => {
+      const isInput = doc.type === 'input';
+      const connected = tasks.filter((t) =>
+        isInput ? t.inputs?.includes(doc.id) : t.outputs?.includes(doc.id)
+      );
+      const x = isInput ? -MARGIN.left + DOC_LEFT_X : canvasWidth + DOC_RIGHT_OFFSET;
+      let y;
+      if (connected.length > 0) {
+        const ys = connected.map((t) => getTaskY(t, tasks, tools, collapsedTools) + TASK_HEIGHT / 2);
+        y = ys.reduce((a, b) => a + b, 0) / ys.length;
+      } else {
+        // fallback: centre in canvas
+        const canvasHeight = tools.reduce((sum, tool) => sum + getToolHeight(tool, collapsedTools, tasks) + LANE_GAP, 0);
+        y = canvasHeight / 2;
+      }
+      positions[doc.id] = { x, y };
+    });
+    return positions;
+  };
 
 const Tooltip = ({ task, responsible, documents, pos }) => {
   if (!task) return null;
@@ -422,8 +432,8 @@ const WorkflowCanvas = ({ activity, filters, toolNotes, onToolNoteChange, onFilt
   const [hoveredDocId, setHoveredDocId] = useState(null);
   const [tooltipPos, setTooltipPos] = useState({ x: 0, y: 0 });
   const [docPositions, setDocPositions] = useState(() =>
-    persistedDocPositions || buildDefaultPositions(documents, tools.length * (TOOL_HEIGHT + LANE_GAP), canvasWidth)
-  );
+  persistedDocPositions || buildDefaultPositions(documents, tasks, tools, new Set(), canvasWidth)
+);
   const [docHeights, setDocHeights] = useState({});
   const [dragging, setDragging] = useState(null);
   const [openNoteTool, setOpenNoteTool] = useState(null);
@@ -444,7 +454,7 @@ const WorkflowCanvas = ({ activity, filters, toolNotes, onToolNoteChange, onFilt
   // have one, otherwise fall back to the computed default.
   useEffect(() => {
     setDocPositions(
-      persistedDocPositions || buildDefaultPositions(documents, tools.length * (TOOL_HEIGHT + LANE_GAP), canvasWidth)
+      persistedDocPositions || buildDefaultPositions(documents, tasks, tools, collapsedTools, canvasWidth)
     );
     setDocHeights({});
   }, [activity.id]); // eslint-disable-line
@@ -454,7 +464,7 @@ const WorkflowCanvas = ({ activity, filters, toolNotes, onToolNoteChange, onFilt
   useEffect(() => {
     const missing = documents.filter((d) => !docPositions[d.id]);
     if (missing.length === 0) return;
-    const defaults = buildDefaultPositions(missing, tools.length * (TOOL_HEIGHT + LANE_GAP), canvasWidth);
+    const defaults = buildDefaultPositions(missing, tasks, tools, collapsedTools, canvasWidth);
     setDocPositions((prev) => ({ ...defaults, ...prev }));
   }, [documents]); // eslint-disable-line
 
