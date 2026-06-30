@@ -1,6 +1,7 @@
 import React, { useState, useMemo, useCallback, useEffect, useRef } from 'react';
 import TaskNode, { TASK_HEIGHT } from './TaskNode';
 import DocumentNode, { DOC_WIDTH, DOC_HEIGHT } from './DocumentNode';
+import { downloadStaticHtml } from '../exportStaticHtml';
 
 const MARGIN = { top: 110, right: 180, bottom: 60, left: 200 };
 const TOOL_HEIGHT = 160;
@@ -625,6 +626,11 @@ const WorkflowCanvas = ({ activity, filters, toolNotes, onToolNoteChange, onFilt
       <button onClick={() => { onFilterChange({ responsibles: [], tools: [] }); setView('arch'); }}
         style={{ position: 'absolute', top: 12, left: 12, zIndex: 100, padding: '8px 14px', background: '#1e40af', color: '#ffffff', border: 'none', borderRadius: 6, cursor: 'pointer', fontSize: 12, fontWeight: 600, boxShadow: '0 2px 8px rgba(0,0,0,0.15)' }}>
         ⬡ Architecture view
+      </button>
+      <button onClick={() => downloadStaticHtml(activity)}
+        title="Download a read-only, self-contained HTML file of this diagram — nothing is uploaded or stored remotely"
+        style={{ position: 'absolute', top: 12, left: 168, zIndex: 100, padding: '8px 14px', background: '#ffffff', color: '#1e40af', border: '1.5px solid #1e40af', borderRadius: 6, cursor: 'pointer', fontSize: 12, fontWeight: 600, boxShadow: '0 2px 8px rgba(0,0,0,0.08)' }}>
+        ⬇ Export viewer
       </button>
 
       <ZoomControls zoom={zoom} onZoom={handleStepZoom} onFit={handleFit} />
