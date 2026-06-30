@@ -126,7 +126,32 @@ const App = () => {
     setDocPositions({});
   };
 
-  const handleSave = (newData) => {
+  const handleSave = (newData, activityIdMap) => {
+    if (activityIdMap && Object.keys(activityIdMap).length > 0) {
+      // A stage was renamed, which changes its derived id. Migrate any
+      // layout/notes data that was keyed by the old id so it isn't orphaned.
+      setDocPositions((prev) => {
+        const next = { ...prev };
+        Object.entries(activityIdMap).forEach(([oldId, newId]) => {
+          if (next[oldId] && !next[newId]) {
+            next[newId] = next[oldId];
+            delete next[oldId];
+          }
+        });
+        return next;
+      });
+      Object.entries(activityIdMap).forEach(([oldId, newId]) => {
+        try {
+          const oldKey = `arch_positions_${oldId}`;
+          const newKey = `arch_positions_${newId}`;
+          const saved = localStorage.getItem(oldKey);
+          if (saved && !localStorage.getItem(newKey)) {
+            localStorage.setItem(newKey, saved);
+          }
+          localStorage.removeItem(oldKey);
+        } catch { /* ignore storage errors */ }
+      });
+    }
     setWorkflowData(newData);
     setActiveActivityIndex(0);
     setFilters({ responsibles: [], tools: [] });

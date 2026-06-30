@@ -1,4 +1,4 @@
-import React, { useState, useMemo, useCallback } from 'react';
+import React, { useState, useMemo, useCallback, useEffect } from 'react';
 
 // ── Responsible palette ───────────────────────────────────────────────────────
 const RESP_PRESETS = [
@@ -98,6 +98,7 @@ const rowsToWorkflow = (rows) => {
       startTime: startTimes[r.taskId] || DEFAULT_START,
       duration: parseInt(r.duration, 10) || DEFAULT_DURATION,
       details: r.notes || '',
+      alternativeTools: splitList(r.altTools),
       // Zip pre-task IDs with interface formats → [{id, format?}, ...]
       dependencies: splitList(r.pre).map((id, i) => {
         const fmt = splitList(r.preFormats)[i] || '';
@@ -117,7 +118,7 @@ let _uid = 1;
 const emptyRow = (activityName = '') => ({
   _key: _uid++, taskId: '', activity: activityName, label: '', responsible: '', tool: '',
   startTime: '', duration: String(DEFAULT_DURATION), inputs: '', outputs: '',
-  pre: '', preFormats: '', post: '', notes: '',
+  pre: '', preFormats: '', post: '', notes: '', altTools: '',
 });
 
 // ── Seed rows from existing workflowData ──────────────────────────────────────
@@ -144,6 +145,7 @@ const workflowToRows = (data) => {
         preFormats: joinList(preFmts),
         post: '',
         notes: t.details || '',
+        altTools: joinList(t.alternativeTools || []),
       });
     });
   });
@@ -171,6 +173,74 @@ const Cell = ({ value, onChange, placeholder, wide, list, numeric }) => (
   </td>
 );
 
+// ── Rename controls (bulk rename across all rows) ─────────────────────────────
+const RenameButton = ({ label, currentValue, onRename }) => {
+  const [editing, setEditing] = useState(false);
+  const [val, setVal] = useState(currentValue);
+
+  if (!editing) {
+    return (
+      <button title={label} onClick={() => { setVal(currentValue); setEditing(true); }}
+        style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#64748b', fontSize: 12, padding: '4px 6px', marginBottom: -1 }}
+        onMouseEnter={(e) => (e.currentTarget.style.color = '#2563eb')}
+        onMouseLeave={(e) => (e.currentTarget.style.color = '#64748b')}>
+        ✎
+      </button>
+    );
+  }
+
+  const commit = () => { onRename(val.trim()); setEditing(false); };
+
+  return (
+    <input
+      autoFocus
+      value={val}
+      onChange={(e) => setVal(e.target.value)}
+      onBlur={commit}
+      onKeyDown={(e) => { if (e.key === 'Enter') commit(); if (e.key === 'Escape') setEditing(false); }}
+      style={{ fontSize: 12, padding: '3px 6px', border: '1px solid #2563eb', borderRadius: 4, marginBottom: -1, width: 140 }}
+    />
+  );
+};
+
+const RenameDropdown = ({ label, options, onRename }) => {
+  const [open, setOpen] = useState(false);
+  const [target, setTarget] = useState('');
+  const [val, setVal] = useState('');
+
+  if (!options.length) return null;
+
+  if (!open) {
+    return (
+      <button onClick={() => setOpen(true)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#64748b', fontSize: 11, padding: '4px 8px', marginBottom: -1 }}
+        onMouseEnter={(e) => (e.currentTarget.style.color = '#2563eb')}
+        onMouseLeave={(e) => (e.currentTarget.style.color = '#64748b')}>
+        {label}
+      </button>
+    );
+  }
+
+  const commit = () => {
+    if (target && val.trim()) onRename(target, val.trim());
+    setOpen(false); setTarget(''); setVal('');
+  };
+
+  return (
+    <div style={{ display: 'flex', alignItems: 'center', gap: 4, marginBottom: -1 }}>
+      <select value={target} onChange={(e) => { setTarget(e.target.value); setVal(e.target.value); }}
+        style={{ fontSize: 11, padding: '3px 4px', border: '1px solid #e2e8f0', borderRadius: 4 }}>
+        <option value="">select…</option>
+        {options.map((o) => <option key={o} value={o}>{o}</option>)}
+      </select>
+      <input value={val} onChange={(e) => setVal(e.target.value)} placeholder="new name" autoFocus={!!target}
+        onKeyDown={(e) => { if (e.key === 'Enter') commit(); if (e.key === 'Escape') { setOpen(false); setTarget(''); } }}
+        style={{ fontSize: 11, padding: '3px 6px', border: '1px solid #2563eb', borderRadius: 4, width: 110 }} />
+      <button onClick={commit} style={{ fontSize: 11, padding: '3px 6px', background: '#1e40af', color: '#fff', border: 'none', borderRadius: 4, cursor: 'pointer' }}>✓</button>
+      <button onClick={() => { setOpen(false); setTarget(''); }} style={{ fontSize: 11, padding: '3px 6px', background: 'none', border: 'none', color: '#94a3b8', cursor: 'pointer' }}>✕</button>
+    </div>
+  );
+};
+
 // ── Main component ────────────────────────────────────────────────────────────
 const TaskEditor = ({ workflowData, onSave, onClose }) => {
   const [rows, setRows] = useState(() => workflowToRows(workflowData));
@@ -184,15 +254,37 @@ const TaskEditor = ({ workflowData, onSave, onClose }) => {
   const responsibles = useMemo(() => [...new Set(rows.map((r) => r.responsible).filter(Boolean))], [rows]);
   const taskIds    = useMemo(() => rows.map((r) => r.taskId).filter(Boolean), [rows]);
 
-  const visibleRows = useMemo(
-    () => (activeAct === '__all__' ? rows : rows.filter((r) => r.activity === activeAct)),
-    [rows, activeAct]
-  );
+  // Pin the set of row keys visible on the current tab. This set is only
+  // recomputed when the tab changes or rows are added/removed — NOT when a
+  // row's `activity` field is edited — so typing a new stage name on a row
+  // doesn't yank it out of view mid-keystroke.
+  const rowKeySignature = useMemo(() => rows.map((r) => r._key).join(','), [rows]);
+  const [pinnedKeys, setPinnedKeys] = useState(null);
+
+  useEffect(() => {
+    if (activeAct === '__all__') { setPinnedKeys(null); return; }
+    setPinnedKeys(new Set(rows.filter((r) => r.activity === activeAct).map((r) => r._key)));
+    
+  }, [activeAct, rowKeySignature]);
+
+  const visibleRows = useMemo(() => {
+    if (activeAct === '__all__' || !pinnedKeys) return rows;
+    return rows.filter((r) => pinnedKeys.has(r._key));
+  }, [rows, activeAct, pinnedKeys]);
 
   const updateRow = useCallback((key, field, value) => {
     setRows((prev) => prev.map((r) => (r._key === key ? { ...r, [field]: value } : r)));
     setError(null);
   }, []);
+
+  // Bulk-rename every row whose `field` equals `oldVal` to `newVal`.
+  // Used to rename a stage/tool/responsible everywhere at once.
+  const renameValue = useCallback((field, oldVal, newVal) => {
+    if (!newVal || !newVal.trim() || newVal === oldVal) return;
+    setRows((prev) => prev.map((r) => (r[field] === oldVal ? { ...r, [field]: newVal } : r)));
+    if (field === 'activity' && activeAct === oldVal) setActiveAct(newVal);
+    setError(null);
+  }, [activeAct]);
 
   const addRow = () => {
     const actName = activeAct === '__all__' ? (activities[0] || '') : activeAct;
@@ -255,7 +347,7 @@ const TaskEditor = ({ workflowData, onSave, onClose }) => {
   const handleSave = () => {
     const filled = rows.filter((r) => r.label.trim());
     if (!filled.length) { setError('Add at least one task with a label.'); return; }
-    if (filled.some((r) => !r.activity.trim())) { setError('Some tasks are missing an activity name.'); return; }
+    if (filled.some((r) => !r.activity.trim())) { setError('Some tasks are missing a stage name.'); return; }
     const withIds = rows.map((r, i) => ({ ...r, taskId: r.taskId.trim() || `task${i + 1}` }));
     onSave(rowsToWorkflow(withIds));
     onClose();
@@ -282,8 +374,8 @@ const TaskEditor = ({ workflowData, onSave, onClose }) => {
           <button onClick={onClose} style={{ background: 'none', border: 'none', fontSize: 18, color: '#64748b', cursor: 'pointer', padding: '2px 6px', borderRadius: 4 }}>✕</button>
         </div>
 
-        {/* Activity tabs */}
-        <div style={{ display: 'flex', gap: 4, padding: '8px 20px 0', borderBottom: '0.5px solid #e2e8f0', background: '#f8fafc' }}>
+        {/* Stage tabs */}
+        <div style={{ display: 'flex', alignItems: 'center', gap: 4, padding: '8px 20px 0', borderBottom: '0.5px solid #e2e8f0', background: '#f8fafc' }}>
           {['__all__', ...activities].map((act) => (
             <button key={act} onClick={() => setActiveAct(act)} style={{
               padding: '4px 14px', fontSize: 12, cursor: 'pointer', borderRadius: '6px 6px 0 0',
@@ -295,6 +387,16 @@ const TaskEditor = ({ workflowData, onSave, onClose }) => {
               {act === '__all__' ? 'All' : act}
             </button>
           ))}
+          {activeAct !== '__all__' && (
+            <RenameButton
+              label="Rename stage"
+              currentValue={activeAct}
+              onRename={(newVal) => renameValue('activity', activeAct, newVal)}
+            />
+          )}
+          <div style={{ flex: 1 }} />
+          <RenameDropdown label="Rename tool…" options={tools} onRename={(oldVal, newVal) => renameValue('tool', oldVal, newVal)} />
+          <RenameDropdown label="Rename responsible…" options={responsibles} onRename={(oldVal, newVal) => renameValue('responsible', oldVal, newVal)} />
         </div>
 
         {/* Table */}
@@ -305,7 +407,7 @@ const TaskEditor = ({ workflowData, onSave, onClose }) => {
                 <th style={{ ...thStyle, width: 20 }}></th>
                 <th style={{ ...thStyle, width: 28 }}>#</th>
                 <th style={thStyle}>Task ID</th>
-                <th style={{ ...thStyle, minWidth: 110 }}>Activity</th>
+                <th style={{ ...thStyle, minWidth: 110 }}>Stage</th>
                 <th style={{ ...thStyle, minWidth: 110 }}>Label</th>
                 <th style={{ ...thStyle, minWidth: 120 }}>Responsible</th>
                 <th style={{ ...thStyle, minWidth: 100 }}>Tool</th>
@@ -317,6 +419,7 @@ const TaskEditor = ({ workflowData, onSave, onClose }) => {
                 <th style={{ ...thStyle, minWidth: 130 }}>Interface format</th>
                 <th style={{ ...thStyle, minWidth: 120 }}>Post-tasks</th>
                 <th style={{ ...thStyle, minWidth: 160 }}>Notes</th>
+                <th style={{ ...thStyle, minWidth: 140 }}>Alt. tools</th>
                 <th style={{ ...thStyle, width: 60 }}></th>
               </tr>
             </thead>
@@ -338,7 +441,7 @@ const TaskEditor = ({ workflowData, onSave, onClose }) => {
                     style={{ padding: '3px 2px', textAlign: 'center', cursor: 'grab', color: '#cbd5e1', fontSize: 13 }} title="Drag to reorder">⠿</td>
                   <td style={{ padding: '3px 6px', fontSize: 11, color: '#64748b', textAlign: 'center' }}>{i + 1}</td>
                   <Cell value={row.taskId}      onChange={(v) => updateRow(row._key, 'taskId', v)}      placeholder="task1" />
-                  <Cell value={row.activity}    onChange={(v) => updateRow(row._key, 'activity', v)}    placeholder="Activity 1" list="act-list" wide />
+                  <Cell value={row.activity}    onChange={(v) => updateRow(row._key, 'activity', v)}    placeholder="Stage 1" list="act-list" wide />
                   <Cell value={row.label}       onChange={(v) => updateRow(row._key, 'label', v)}       placeholder="Task name" wide />
                   <Cell value={row.responsible} onChange={(v) => updateRow(row._key, 'responsible', v)} placeholder="Responsible A" list="resp-list" wide />
                   <Cell value={row.tool}        onChange={(v) => updateRow(row._key, 'tool', v)}        placeholder="Tool 1" list="tool-list" />
@@ -350,6 +453,7 @@ const TaskEditor = ({ workflowData, onSave, onClose }) => {
                   <Cell value={row.preFormats}  onChange={(v) => updateRow(row._key, 'preFormats', v)}  placeholder="REST/JSON, CSV" wide />
                   <Cell value={row.post}        onChange={(v) => updateRow(row._key, 'post', v)}        placeholder="task3" list="id-list" wide />
                   <Cell value={row.notes}       onChange={(v) => updateRow(row._key, 'notes', v)}       placeholder="Details…" wide />
+                  <Cell value={row.altTools}    onChange={(v) => updateRow(row._key, 'altTools', v)}    placeholder="e.g. Figma, Sketch" wide />
                   <td style={{ padding: '3px 4px', whiteSpace: 'nowrap' }}>
                     <button title="Duplicate row" onClick={() => duplicateRow(row._key)}
                       style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#64748b', padding: '2px 4px', borderRadius: 3, fontSize: 13 }}>⧉</button>
@@ -373,7 +477,7 @@ const TaskEditor = ({ workflowData, onSave, onClose }) => {
         {/* Footer */}
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '12px 20px', borderTop: '0.5px solid #e2e8f0', background: '#ffffff' }}>
           <div style={{ fontSize: 12, color: error ? '#dc2626' : '#64748b' }}>
-            {error ? `⚠ ${error}` : `${rows.filter(r => r.label.trim()).length} tasks across ${activities.length || 0} activit${activities.length === 1 ? 'y' : 'ies'}`}
+            {error ? `⚠ ${error}` : `${rows.filter(r => r.label.trim()).length} tasks across ${activities.length || 0} stage${activities.length === 1 ? '' : 's'}`}
           </div>
           <div style={{ display: 'flex', gap: 8 }}>
             <button className="btn-secondary" onClick={handleAutoArrange} title="Recalculate start times from dependencies">
