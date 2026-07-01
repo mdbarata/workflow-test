@@ -6,6 +6,7 @@ import FilterBar from './components/FilterBar';
 import TaskEditor from './components/TaskEditor';
 import ActivityLinksView from './components/ActivityLinksView';
 import { loadAppState, clearAppState, useAutoSave } from './useWorkflowPersistence';
+import FeedbackViewerModal from './components/FeedbackViewerModal';
 
 // ── Bulk tool notes editor modal ──────────────────────────────────────────────
 const ToolNotesEditor = ({ tools, toolNotes, onChange, onClose }) => {
@@ -105,8 +106,11 @@ const App = () => {
   const [toolNotes, setToolNotes] = useState(saved?.toolNotes || {});
   // docPositions: { [activityId]: { [docId]: { x, y } } } — per-activity drag layout
   const [docPositions, setDocPositions] = useState(saved?.docPositions || {});
+  // feedbackItems: array of imported reviewer comments
+  const [feedbackItems, setFeedbackItems] = useState(saved?.feedbackItems || []);
+  const [showFeedbackModal, setShowFeedbackModal] = useState(false);
 
-  useAutoSave({ workflowData, activeActivityIndex, filters, showLinks, toolNotes, docPositions });
+  useAutoSave({ workflowData, activeActivityIndex, filters, showLinks, toolNotes, docPositions, feedbackItems });
 
   const activities = workflowData.activities || [];
   const activity = activities[activeActivityIndex];
@@ -124,6 +128,7 @@ const App = () => {
     setShowLinks(false);
     setToolNotes({});
     setDocPositions({});
+    setFeedbackItems([]);
   };
 
   const handleSave = (newData, activityIdMap) => {
@@ -191,9 +196,16 @@ const App = () => {
         </button>
         <button
           className="activity-tab"
+          onClick={() => setShowFeedbackModal(true)}
+          style={{ marginLeft: 'auto', color: '#1e40af', background: feedbackItems.length > 0 ? '#eff6ff' : undefined, fontWeight: 600, border: '1px solid #bfdbfe', borderRadius: '6px', padding: '4px 12px' }}
+        >
+          💬 Feedback {feedbackItems.length > 0 && <span style={{ background: '#2563eb', color: '#fff', borderRadius: '10px', padding: '1px 6px', fontSize: '10px', marginLeft: '6px' }}>{feedbackItems.length}</span>}
+        </button>
+        <button
+          className="activity-tab"
           title="Clear saved session and reload default data"
           onClick={handleResetSession}
-          style={{ marginLeft: 'auto', color: '#94a3b8' }}
+          style={{ color: '#94a3b8' }}
         >
           ↺ Reset session
         </button>
@@ -241,6 +253,18 @@ const App = () => {
           toolNotes={toolNotes}
           onChange={setToolNotes}
           onClose={() => setShowToolNotes(false)}
+        />
+      )}
+
+      {showFeedbackModal && (
+        <FeedbackViewerModal
+          isOpen={showFeedbackModal}
+          onClose={() => setShowFeedbackModal(false)}
+          feedbackItems={feedbackItems}
+          onImportFeedback={(newItems) => setFeedbackItems((prev) => [...prev, ...newItems])}
+          onDeleteComment={(id) => setFeedbackItems((prev) => prev.filter(c => c.id !== id))}
+          onClearAll={() => { if (window.confirm('Clear all imported feedback?')) setFeedbackItems([]); }}
+          workflowData={workflowData}
         />
       )}
     </div>
