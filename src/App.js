@@ -99,6 +99,7 @@ const App = () => {
   const [workflowData, setWorkflowData] = useState(saved?.workflowData || defaultData);
   const [activeActivityIndex, setActiveActivityIndex] = useState(saved?.activeActivityIndex || 0);
   const [filters, setFilters] = useState(saved?.filters || { responsibles: [], tools: [] });
+  const [searchQuery, setSearchQuery] = useState('');
   const [showEditor, setShowEditor] = useState(false);
   const [showToolNotes, setShowToolNotes] = useState(false);
   const [showLinks, setShowLinks] = useState(saved?.showLinks || false);
@@ -183,7 +184,7 @@ const App = () => {
           <button
             key={act.id}
             className={`activity-tab ${!showLinks && i === activeActivityIndex ? 'active' : ''}`}
-            onClick={() => { setActiveActivityIndex(i); setFilters({ responsibles: [], tools: [] }); setShowLinks(false); }}
+            onClick={() => { setActiveActivityIndex(i); setFilters({ responsibles: [], tools: [] }); setShowLinks(false); setSearchQuery(''); }}
           >
             {act.name}
           </button>
@@ -218,6 +219,8 @@ const App = () => {
           onChange={setFilters}
           onImport={() => setShowEditor(true)}
           onToolNotes={() => setShowToolNotes(true)}
+          searchQuery={searchQuery}
+          onSearchChange={setSearchQuery}
         />
       )}
 
@@ -235,6 +238,7 @@ const App = () => {
             onDocPositionsChange={(positions) => handleDocPositionsChange(activity.id, positions)}
             workflowData={workflowData}
             activeActivityIndex={activeActivityIndex}
+            searchQuery={searchQuery}
           />
         )}
       </div>

@@ -1,7 +1,20 @@
-import React from 'react';
+import React, { useState, useEffect } from 'react';
 
-const FilterBar = ({ activity, filters, onChange, onImport, onToolNotes }) => {
+const FilterBar = ({ activity, filters, onChange, onImport, onToolNotes, searchQuery, onSearchChange }) => {
   const { responsibles, tools } = activity;
+
+  // Local state so typing is always instant (no React state round-trip stutter)
+  const [localSearch, setLocalSearch] = useState(searchQuery || '');
+
+  // When the parent resets searchQuery to '' (e.g. on tab switch), mirror that here
+  useEffect(() => {
+    if (!searchQuery) setLocalSearch('');
+  }, [searchQuery]);
+
+  const handleSearchChange = (val) => {
+    setLocalSearch(val);
+    onSearchChange && onSearchChange(val);
+  };
 
   const toggle = (type, key) => {
     const current = filters[type];
@@ -18,6 +31,24 @@ const FilterBar = ({ activity, filters, onChange, onImport, onToolNotes }) => {
 
   return (
     <div className="filter-bar">
+      {/* Search box — uses local state so typing is always responsive */}
+      <div style={{ display: 'flex', alignItems: 'center', gap: 4, background: '#f1f5f9', border: '1.5px solid #cbd5e1', borderRadius: 8, padding: '3px 10px', minWidth: 180, maxWidth: 240 }}>
+        <span style={{ fontSize: 13, color: '#94a3b8', flexShrink: 0 }}>🔍</span>
+        <input
+          type="text"
+          value={localSearch}
+          onChange={(e) => handleSearchChange(e.target.value)}
+          placeholder="Search tasks, tools…"
+          style={{ border: 'none', background: 'none', outline: 'none', fontSize: 11, color: '#1e293b', width: '100%', fontFamily: 'inherit' }}
+        />
+        {localSearch && (
+          <button onClick={() => handleSearchChange('')}
+            style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#94a3b8', fontSize: 12, padding: 0, lineHeight: 1 }}>✕</button>
+        )}
+      </div>
+
+      <div className="filter-divider" />
+
       <div className="filter-section">
         <span className="filter-label">RESPONSIBLE</span>
         <div className="filter-chips">

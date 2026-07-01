@@ -444,8 +444,9 @@ const ArchitectureView = ({ activity, filters, toolNotes, onToolNoteChange, onTo
           const hasNote = !!(toolNotes && toolNotes[tool]?.trim());
           const isHov = hoveredTool === tool;
           const isDragging = draggingTool?.tool === tool;
+          const isSearchMatch = !searchMatchTools || searchMatchTools.has(tool);
           return (
-            <g key={tool} style={{ cursor: isDragging ? 'grabbing' : 'grab' }}
+            <g key={tool} style={{ cursor: isDragging ? 'grabbing' : 'grab', opacity: isSearchMatch ? 1 : 0.18, transition: 'opacity 0.2s ease' }}
               onMouseEnter={() => !draggingTool && setHoveredTool(tool)}
               onMouseLeave={() => setHoveredTool(null)}
               onMouseDown={(e) => handleBoxMouseDown(e, tool)}
@@ -503,11 +504,70 @@ const ArchNoteEditor = ({ tool, note, onSave, onClose }) => {
 // canvas reads its initial document layout from docPositions instead of
 // always recomputing defaults, and reports every change upward so the
 // parent (App.js) can persist it (e.g. to localStorage) across sessions.
-const WorkflowCanvas = ({ activity, filters, toolNotes, onToolNoteChange, onFilterChange, docPositions: persistedDocPositions, onDocPositionsChange, workflowData, activeActivityIndex }) => {
+const WorkflowCanvas = ({ activity, filters, toolNotes, onToolNoteChange, onFilterChange, docPositions: persistedDocPositions, onDocPositionsChange, workflowData, activeActivityIndex, searchQuery }) => {
   const { tasks, tools, responsibles, documents, name } = activity;
   const [view, setView] = useState('timeline');
   const [showExportModal, setShowExportModal] = useState(false);
   const canvasWidth = Math.max(...tasks.map((t) => t.startTime + t.duration), 600) + 20;
+
+  // ── Search matching ──────────────────────────────────────────────────────────
+  const sq = (searchQuery || '').trim().toLowerCase();
+  const searchMatchTaskIds = useMemo(() => {
+    if (!sq) return null; // null = no search active (show all)
+    const matched = new Set();
+    const docMap = {};
+    (documents || []).forEach((d) => { docMap[d.id] = d.name || ''; });
+    tasks.forEach((t) => {
+      const resp = responsibles.find((r) => r.key === t.responsible);
+      const docNames = [];
+      (t.inputs || []).forEach((id) => { if (docMap[id]) docNames.push(docMap[id]); });
+      (t.outputs || []).forEach((id) => { if (docMap[id]) docNames.push(docMap[id]); });
+      const tNote = toolNotes?.[t.tool] || '';
+      const hay = [
+        JSON.stringify(t),
+        resp?.name || '',
+        activity.name || '',
+        docNames.join(' '),
+        tNote,
+      ].join(' ').toLowerCase();
+      if (hay.includes(sq)) matched.add(t.id);
+    });
+    return matched;
+  }, [sq, tasks, responsibles, activity.name, documents, toolNotes]);
+
+  const searchMatchTools = useMemo(() => {
+    if (!sq) return null;
+    const matched = new Set();
+    tools.forEach((tool) => {
+      const tNote = toolNotes?.[tool] || '';
+      if (tool.toLowerCase().includes(sq) || tNote.toLowerCase().includes(sq)) {
+        matched.add(tool);
+      }
+    });
+    if (searchMatchTaskIds) {
+      tasks.forEach((t) => { if (searchMatchTaskIds.has(t.id)) matched.add(t.tool); });
+    }
+    return matched;
+  }, [sq, tools, tasks, searchMatchTaskIds, toolNotes]);
+
+  const searchMatchDocIds = useMemo(() => {
+    if (!sq) return null;
+    const matched = new Set();
+    (documents || []).forEach((d) => {
+      if ((d.name || '').toLowerCase().includes(sq) || (d.id || '').toLowerCase().includes(sq)) {
+        matched.add(d.id);
+      }
+    });
+    if (searchMatchTaskIds) {
+      tasks.forEach((t) => {
+        if (searchMatchTaskIds.has(t.id)) {
+          (t.inputs || []).forEach((id) => matched.add(id));
+          (t.outputs || []).forEach((id) => matched.add(id));
+        }
+      });
+    }
+    return matched;
+  }, [sq, documents, tasks, searchMatchTaskIds]);
 
   const [hoveredTaskId, setHoveredTaskId] = useState(null);
   const [hoveredDocId, setHoveredDocId] = useState(null);
@@ -827,10 +887,15 @@ const WorkflowCanvas = ({ activity, filters, toolNotes, onToolNoteChange, onFilt
             const resp = respMap[task.responsible];
             const isHovered = task.id === hoveredTaskId;
             const isDocRelated = docHoverTaskIds.has(task.id);
+            const isSearchMatch = !searchMatchTaskIds || searchMatchTaskIds.has(task.id);
             return (
               <TaskNode key={task.id} task={task} x={getTaskX(task)} y={taskY} width={task.duration}
                 responsible={resp} isHovered={isHovered || isDocRelated}
-                isDimmed={(!!hoveredTask && !isHovered && !depChain.has(task.id)) || (!!hoveredDocId && !isDocRelated)}
+                isDimmed={
+                  (!isSearchMatch) ||
+                  (!!hoveredTask && !isHovered && !depChain.has(task.id)) ||
+                  (!!hoveredDocId && !isDocRelated)
+                }
                 isDepHighlighted={depChain.has(task.id)}
                 onMouseEnter={(e) => { setHoveredTaskId(task.id); setTooltipPos({ x: e.clientX, y: e.clientY }); }}
                 onMouseLeave={() => setHoveredTaskId(null)} />
@@ -841,9 +906,10 @@ const WorkflowCanvas = ({ activity, filters, toolNotes, onToolNoteChange, onFilt
             const pos = docPositions[doc.id];
             if (!pos) return null;
             const isHighlighted = highlightedDocs.has(doc.id);
+            const isSearchMatchDoc = !searchMatchDocIds || searchMatchDocIds.has(doc.id);
             return (
               <DocumentNode key={doc.id} doc={doc} x={pos.x} y={pos.y} isHighlighted={isHighlighted}
-                isDimmed={(!!hoveredTask && !isHighlighted) || (!!hoveredDocId && hoveredDocId !== doc.id && !isHighlighted)}
+                isDimmed={(!isSearchMatchDoc) || (!!hoveredTask && !isHighlighted) || (!!hoveredDocId && hoveredDocId !== doc.id && !isHighlighted)}
                 isDragging={dragging?.id === doc.id}
                 onMouseEnter={() => setHoveredDocId(doc.id)} onMouseLeave={() => setHoveredDocId(null)}
                 onMouseDown={(e) => handleDocMouseDown(e, doc.id)} onHeightChange={(h) => handleDocHeight(doc.id, h)} />

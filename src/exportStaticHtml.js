@@ -407,7 +407,7 @@ const VIEWER_JS = `
       var cx = getTaskX(task) + w / 2;
       var firstBaselineY = taskYVal + PAD_Y + LINE_HEIGHT - 2;
 
-      svg += '<g class="task-node" data-task-id="' + escapeHtml(task.id) + '" style="cursor:pointer;">';
+      svg += '<g class="task-node" data-id="' + escapeHtml(task.id) + '" data-task-id="' + escapeHtml(task.id) + '" style="cursor:pointer;">';
       svg += '<rect x="' + getTaskX(task) + '" y="' + taskYVal + '" width="' + w + '" height="' + h + '" rx="' + TASK_RADIUS + '" fill="' + fill + '" stroke="rgba(0,0,0,0.25)" stroke-width="1.5" class="task-rect"/>';
       lines.forEach(function(line, i) {
         svg += '<text x="' + cx + '" y="' + (firstBaselineY + i * LINE_HEIGHT) + '" text-anchor="middle" font-size="' + FONT_SIZE + 'px" font-weight="bold" fill="white" pointer-events="none">' + escapeHtml(line) + '</text>';
@@ -764,7 +764,7 @@ const VIEWER_JS = `
       var count = tasks.filter(function(t) { return t.tool === tool; }).length;
       var hasNote = !!(toolNotes[tool] && toolNotes[tool].trim());
 
-      svg += '<g class="arch-box" data-tool="' + escapeHtml(tool) + '" style="cursor:default">';
+      svg += '<g class="arch-box arch-box-g" data-tool="' + escapeHtml(tool) + '" style="cursor:default">';
       svg += '<rect x="' + (p.x + 3) + '" y="' + (p.y + 3) + '" width="' + ARCH_BOX_W + '" height="' + ARCH_BOX_H + '" rx="10" fill="rgba(0,0,0,0.07)"/>';
       svg += '<rect x="' + p.x + '" y="' + p.y + '" width="' + ARCH_BOX_W + '" height="' + ARCH_BOX_H + '" rx="10" fill="#ffffff" stroke="#cbd5e1" stroke-width="1.5"/>';
       if (resps[0]) {
@@ -1161,7 +1161,14 @@ const VIEWER_JS = `
   }
 
   tabBtns.forEach(function(btn) {
-    btn.addEventListener('click', function() { activateTab(btn.getAttribute('data-tab')); });
+    btn.addEventListener('click', function() {
+      var searchEl = document.getElementById('global-search');
+      if (searchEl) {
+        searchEl.value = '';
+        if (typeof applySearch === 'function') applySearch('');
+      }
+      activateTab(btn.getAttribute('data-tab'));
+    });
   });
 
   // View toggles (timeline ↔ arch)
@@ -1382,6 +1389,116 @@ const VIEWER_JS = `
     tnmEl.style.display = 'flex';
   };
 
+  // ── Global search ─────────────────────────────────────────────────────────
+  var searchInput = document.getElementById('global-search');
+  var searchClear = document.getElementById('global-search-clear');
+
+  function applySearch(q) {
+    q = (q || '').trim().toLowerCase();
+    if (searchClear) searchClear.style.display = q ? 'block' : 'none';
+
+    // Gather all task nodes in the current active panel
+    var activePanel = document.querySelector('.tab-panel.active');
+    if (!activePanel) return;
+
+    var idx = parseInt(activePanel.getAttribute('data-index') || '0', 10);
+    var act = activities[idx];
+    if (!act) return;
+
+    var taskNodes = activePanel.querySelectorAll('.task-node');
+    if (!q) {
+      // No search: restore all
+      taskNodes.forEach(function(el) { el.classList.remove('dimmed'); });
+      activePanel.querySelectorAll('.doc-node').forEach(function(el) { el.classList.remove('dimmed'); });
+      activePanel.querySelectorAll('.arch-box-g').forEach(function(el) { el.style.opacity = ''; });
+      return;
+    }
+
+    // Build matching set for current activity
+    var matchTaskIds = new Set();
+    var matchTools = new Set();
+    var docMap = {};
+    (act.documents || []).forEach(function(d) { docMap[d.id] = d.name || ''; });
+
+    (act.tasks || []).forEach(function(t) {
+      var respName = '';
+      (act.responsibles || []).forEach(function(r) { if (r.key === t.responsible) respName = r.name || ''; });
+      var docNames = [];
+      (t.inputs || []).forEach(function(id) { if (docMap[id]) docNames.push(docMap[id]); });
+      (t.outputs || []).forEach(function(id) { if (docMap[id]) docNames.push(docMap[id]); });
+      var tNote = toolNotes[t.tool] || '';
+      var hay = [
+        JSON.stringify(t),
+        respName,
+        act.name || '',
+        docNames.join(' '),
+        tNote,
+      ].join(' ').toLowerCase();
+      if (hay.indexOf(q) !== -1) {
+        matchTaskIds.add(t.id);
+        matchTools.add(t.tool);
+      }
+    });
+
+    (act.tools || []).forEach(function(tool) {
+      var tNote = toolNotes[tool] || '';
+      if (tool.toLowerCase().indexOf(q) !== -1 || tNote.toLowerCase().indexOf(q) !== -1) {
+        matchTools.add(tool);
+      }
+    });
+
+    if (matchTaskIds.size > 0) {
+      (act.tasks || []).forEach(function(t) {
+        if (matchTaskIds.has(t.id)) matchTools.add(t.tool);
+      });
+    }
+
+    // Dim timeline tasks
+    taskNodes.forEach(function(el) {
+      var taskId = el.getAttribute('data-id');
+      if (matchTaskIds.has(taskId)) {
+        el.classList.remove('dimmed');
+      } else {
+        el.classList.add('dimmed');
+      }
+    });
+
+    // Dim document nodes
+    activePanel.querySelectorAll('.doc-node').forEach(function(el) {
+      var docId = el.getAttribute('data-doc-id');
+      var docName = docMap[docId] || '';
+      var isMatch = (docId && docId.toLowerCase().indexOf(q) !== -1) || (docName && docName.toLowerCase().indexOf(q) !== -1);
+      if (!isMatch) {
+        (act.tasks || []).forEach(function(t) {
+          if (matchTaskIds.has(t.id) && ((t.inputs || []).indexOf(docId) !== -1 || (t.outputs || []).indexOf(docId) !== -1)) {
+            isMatch = true;
+          }
+        });
+      }
+      if (isMatch) {
+        el.classList.remove('dimmed');
+      } else {
+        el.classList.add('dimmed');
+      }
+    });
+
+    // Dim arch boxes
+    activePanel.querySelectorAll('.arch-box-g').forEach(function(el) {
+      var tool = el.getAttribute('data-tool');
+      el.style.opacity = matchTools.has(tool) ? '1' : '0.15';
+    });
+  }
+
+  if (searchInput) {
+    searchInput.addEventListener('input', function() { applySearch(searchInput.value); });
+    if (searchClear) {
+      searchClear.addEventListener('click', function() {
+        searchInput.value = '';
+        applySearch('');
+      });
+    }
+  }
+
   updateFbCount();
   renderFbList();
 
@@ -1494,6 +1611,11 @@ function buildHtml(workflowData, options) {
   <div class="topbar">
     <span class="badge">READ-ONLY</span>
     <span>${scope === 'all' ? 'All Activities' : esc(visibleActivities[0]?.name || 'Workflow')}</span>
+    <div style="display:flex;align-items:center;gap:6px;background:#f1f5f9;border:1.5px solid #cbd5e1;border-radius:8px;padding:3px 10px;min-width:200px;max-width:280px;margin-left:16px;">
+      <span style="font-size:13px;color:#94a3b8;flex-shrink:0;">🔍</span>
+      <input id="global-search" type="text" placeholder="Search tasks, tools…" style="border:none;background:none;outline:none;font-size:11px;color:#1e293b;width:100%;font-family:inherit;" />
+      <button id="global-search-clear" style="display:none;background:none;border:none;cursor:pointer;color:#94a3b8;font-size:12px;padding:0;line-height:1;">✕</button>
+    </div>
     <button id="feedback-toggle-btn" class="feedback-topbtn" style="margin-left:auto;">
       💬 Leave Feedback <span id="feedback-count" class="feedback-count-badge" style="display:none;">0</span>
     </button>
