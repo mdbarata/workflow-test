@@ -1434,6 +1434,9 @@ function buildHtml(workflowData, options) {
           <span id="fb-target-badge" class="feedback-badge" style="margin:0;flex:1;">General Workflow</span>
           <button id="fb-clear-target" type="button" style="background:none;border:none;color:#64748b;cursor:pointer;font-size:11px;text-decoration:underline;">Reset</button>
         </div>
+        <div style="font-size:11px;color:#1e40af;background:#eff6ff;padding:6px 8px;border-radius:6px;border:1px solid #bfdbfe;line-height:1.3;margin:2px 0;">
+          💡 <strong>Tip:</strong> Click any <strong>Tool lane</strong>, <strong>Architecture box</strong>, or <strong>Link</strong> in the diagram to attach your comment directly to that item!
+        </div>
         <label id="fb-note-label">Comment</label>
         <textarea id="fb-text" placeholder="Write your observation, question, or suggestion..."></textarea>
         <button id="fb-submit-btn" type="button" class="feedback-btn-primary">Add Comment</button>

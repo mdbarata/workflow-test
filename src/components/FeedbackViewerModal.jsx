@@ -99,6 +99,24 @@ const FeedbackViewerModal = ({ isOpen, onClose, feedbackItems = [], onImportFeed
 
   const displayList = activeTab === 'matched' ? matched : activeTab === 'unmatched' ? unmatched : feedbackItems;
 
+  const groupedTargets = useMemo(() => {
+    const map = {};
+    displayList.forEach((item) => {
+      const isUnmatched = unmatched.includes(item);
+      const baseLabel = item.targetType === 'tool'
+        ? `Tool: ${item.targetKey}${item.activityName ? ` (${item.activityName})` : ''}`
+        : item.targetType === 'activity'
+        ? `Activity: ${item.targetKey}`
+        : item.targetType === 'link'
+        ? `Link: ${item.targetKey}`
+        : 'General Workflow';
+      const label = isUnmatched ? `⚠️ Target Modified: ${baseLabel}` : `📌 ${baseLabel}`;
+      if (!map[label]) map[label] = { isUnmatched, items: [] };
+      map[label].items.push(item);
+    });
+    return map;
+  }, [displayList, unmatched]);
+
   return (
     <div style={styles.overlay}>
       <div style={styles.modal}>
@@ -166,7 +184,7 @@ const FeedbackViewerModal = ({ isOpen, onClose, feedbackItems = [], onImportFeed
           </div>
         )}
 
-        {/* Comments List */}
+        {/* Comments List grouped by target */}
         <div style={styles.body}>
           {feedbackItems.length === 0 ? (
             <div style={styles.emptyState}>
@@ -176,50 +194,44 @@ const FeedbackViewerModal = ({ isOpen, onClose, feedbackItems = [], onImportFeed
                 When stakeholders review your HTML export and download their feedback JSON, drop the file above to see their notes here!
               </div>
             </div>
-          ) : displayList.length === 0 ? (
+          ) : Object.keys(groupedTargets).length === 0 ? (
             <div style={styles.emptyState}>No comments in this category.</div>
           ) : (
-            displayList.map((item) => {
-              const isUnmatched = unmatched.includes(item);
-              const label = item.targetType === 'tool'
-                ? `Tool: ${item.targetKey}${item.activityName ? ` (${item.activityName})` : ''}`
-                : item.targetType === 'activity'
-                ? `Activity: ${item.targetKey}`
-                : item.targetType === 'link'
-                ? `Link: ${item.targetKey}`
-                : 'General Workflow';
-
-              return (
-                <div key={item.id || Math.random()} style={{ ...styles.card, ...(isUnmatched ? styles.cardUnmatched : {}) }}>
-                  <div style={styles.cardHeader}>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-                      <span style={{ fontWeight: 700, color: '#0f172a', fontSize: '13px' }}>
-                        {item.author || 'Anonymous'}
-                      </span>
-                      {item.sourceFile && (
-                        <span style={{ fontSize: '10px', color: '#94a3b8', background: '#f1f5f9', padding: '1px 5px', borderRadius: '4px' }}>
-                          from {item.sourceFile}
-                        </span>
-                      )}
-                    </div>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                      <span style={{ fontSize: '11px', color: '#64748b' }}>
-                        {new Date(item.timestamp || Date.now()).toLocaleString([], { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' })}
-                      </span>
-                      <button onClick={() => onDeleteComment(item.id)} style={styles.delBtn} title="Dismiss comment">✕</button>
-                    </div>
-                  </div>
-
-                  <div style={{ display: 'flex', gap: '6px', alignItems: 'center', marginBottom: '8px' }}>
-                    <span style={{ ...styles.targetBadge, ...(isUnmatched ? styles.targetBadgeUnmatched : {}) }}>
-                      {isUnmatched ? '⚠️ Target Modified: ' : '📌 '}{label}
-                    </span>
-                  </div>
-
-                  <div style={styles.cardText}>{item.text}</div>
+            Object.entries(groupedTargets).map(([groupLabel, groupData]) => (
+              <div key={groupLabel} style={{ marginBottom: '8px' }}>
+                <div style={{ ...styles.groupHeader, ...(groupData.isUnmatched ? styles.groupHeaderUnmatched : {}) }}>
+                  <span>{groupLabel}</span>
+                  <span style={{ fontSize: '11px', fontWeight: 600, opacity: 0.8 }}>
+                    {groupData.items.length} {groupData.items.length === 1 ? 'comment' : 'comments'}
+                  </span>
                 </div>
-              );
-            })
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', paddingLeft: '6px', borderLeft: '2px solid #e2e8f0', marginTop: '8px' }}>
+                  {groupData.items.map((item) => (
+                    <div key={item.id || Math.random()} style={{ ...styles.card, ...(groupData.isUnmatched ? styles.cardUnmatched : {}) }}>
+                      <div style={styles.cardHeader}>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                          <span style={{ fontWeight: 700, color: '#0f172a', fontSize: '13px' }}>
+                            {item.author || 'Anonymous'}
+                          </span>
+                          {item.sourceFile && (
+                            <span style={{ fontSize: '10px', color: '#94a3b8', background: '#f1f5f9', padding: '1px 5px', borderRadius: '4px' }}>
+                              from {item.sourceFile}
+                            </span>
+                          )}
+                        </div>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                          <span style={{ fontSize: '11px', color: '#64748b' }}>
+                            {new Date(item.timestamp || Date.now()).toLocaleString([], { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' })}
+                          </span>
+                          <button onClick={() => onDeleteComment(item.id)} style={styles.delBtn} title="Dismiss comment">✕</button>
+                        </div>
+                      </div>
+                      <div style={styles.cardText}>{item.text}</div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            ))
           )}
         </div>
 
@@ -314,6 +326,14 @@ const styles = {
     fontSize: '11px', fontWeight: 600, border: '1px solid #bfdbfe'
   },
   targetBadgeUnmatched: {
+    background: '#fef3c7', color: '#b45309', borderColor: '#fde68a'
+  },
+  groupHeader: {
+    background: '#eff6ff', color: '#1e40af', padding: '8px 12px', borderRadius: '6px',
+    fontSize: '12px', fontWeight: 700, border: '1px solid #bfdbfe', display: 'flex',
+    alignItems: 'center', justifyContent: 'space-between'
+  },
+  groupHeaderUnmatched: {
     background: '#fef3c7', color: '#b45309', borderColor: '#fde68a'
   },
   cardText: {
