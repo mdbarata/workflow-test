@@ -845,7 +845,8 @@ const WorkflowCanvas = ({ activity, filters, toolNotes, onToolNoteChange, onFilt
                 <path key={`${doc.id}<->${ct.id}`}
                   d={elbowPath(isInput ? pos.x + DOC_WIDTH : pos.x, docCenterY, isInput ? getTaskX(ct) : getTaskX(ct) + ct.duration, ty + TASK_HEIGHT / 2, isInput)}
                   fill="none" stroke={color} strokeWidth={strokeWidth} strokeDasharray="5,4" strokeOpacity={opacity} strokeLinecap="round"
-                  markerEnd={`url(#${arrowId})`} style={{ transition: dragging ? 'none' : 'all 0.18s ease' }} />
+                //markerEnd={`url(#${arrowId})`} style={{ transition: dragging ? 'none' : 'all 0.18s ease' }} 
+                />
               );
             });
           })}
