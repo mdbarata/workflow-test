@@ -367,7 +367,7 @@ const VIEWER_JS = `
         var x1 = isInput ? pos.x + DOC_WIDTH : pos.x;
         var x2 = isInput ? getTaskX(ct) : getTaskX(ct) + ct.duration;
         var d = elbowPath(x1, docCenterY, x2, ty + tH / 2, isInput);
-        svg += '<path class="doc-line" data-doc="' + escapeHtml(doc.id) + '" data-task="' + escapeHtml(ct.id) + '" d="' + d + '" fill="none" stroke="#94a3b8" stroke-width="1.5" stroke-dasharray="5,4" stroke-opacity="0.35" stroke-linecap="round" marker-end="url(#arrow-doc)"/>';
+        svg += '<path class="doc-line" data-doc="' + escapeHtml(doc.id) + '" data-task="' + escapeHtml(ct.id) + '" d="' + d + '" fill="none" stroke="#94a3b8" stroke-width="1.5" stroke-dasharray="5,4" stroke-opacity="0.35" stroke-linecap="round"/>';
       });
     });
 
