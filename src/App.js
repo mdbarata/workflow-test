@@ -221,6 +221,8 @@ const App = () => {
             onFilterChange={setFilters}
             docPositions={docPositions[activity.id]}
             onDocPositionsChange={(positions) => handleDocPositionsChange(activity.id, positions)}
+            workflowData={workflowData}
+            activeActivityIndex={activeActivityIndex}
           />
         )}
       </div>

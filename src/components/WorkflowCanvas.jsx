@@ -3,6 +3,38 @@ import TaskNode, { TASK_HEIGHT } from './TaskNode';
 import DocumentNode, { DOC_WIDTH, DOC_HEIGHT } from './DocumentNode';
 import { downloadStaticHtml } from '../exportStaticHtml';
 
+// ── Export options modal ──────────────────────────────────────────────────────
+const ExportModal = ({ onExport, onClose }) => {
+  const [scope, setScope] = React.useState('current');
+  return (
+    <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.45)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 2000, backdropFilter: 'blur(3px)' }} onClick={onClose}>
+      <div style={{ background: '#ffffff', borderRadius: 12, width: 420, boxShadow: '0 20px 60px rgba(0,0,0,0.3)', overflow: 'hidden' }} onClick={(e) => e.stopPropagation()}>
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '14px 20px', borderBottom: '0.5px solid #e2e8f0' }}>
+          <span style={{ fontSize: 15, fontWeight: 500 }}>Export read-only viewer</span>
+          <button onClick={onClose} style={{ background: 'none', border: 'none', fontSize: 18, color: '#64748b', cursor: 'pointer' }}>✕</button>
+        </div>
+        <div style={{ padding: '20px 20px 8px' }}>
+          <p style={{ fontSize: 12, color: '#64748b', margin: '0 0 16px' }}>Choose what to include in the exported HTML file. The viewer will be fully interactive (zoom, pan, filter, collapse) but read-only.</p>
+          {[{ value: 'current', label: 'Current activity', desc: 'Timeline diagram for the selected activity' },
+            { value: 'all', label: 'All activities', desc: 'All timelines + architecture views + activity links' }].map((opt) => (
+            <label key={opt.value} style={{ display: 'flex', alignItems: 'flex-start', gap: 10, padding: '10px 12px', marginBottom: 8, borderRadius: 8, border: `1.5px solid ${scope === opt.value ? '#2563eb' : '#e2e8f0'}`, background: scope === opt.value ? '#eff6ff' : '#fff', cursor: 'pointer', transition: 'all .15s' }}>
+              <input type="radio" name="scope" checked={scope === opt.value} onChange={() => setScope(opt.value)} style={{ marginTop: 2 }} />
+              <div>
+                <div style={{ fontSize: 13, fontWeight: 600, color: '#1e293b' }}>{opt.label}</div>
+                <div style={{ fontSize: 11, color: '#64748b', marginTop: 2 }}>{opt.desc}</div>
+              </div>
+            </label>
+          ))}
+        </div>
+        <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8, padding: '12px 20px', borderTop: '0.5px solid #e2e8f0' }}>
+          <button className="btn-secondary" onClick={onClose}>Cancel</button>
+          <button className="btn-primary" onClick={() => { onExport(scope); onClose(); }}>⬇ Export</button>
+        </div>
+      </div>
+    </div>
+  );
+};
+
 const MARGIN = { top: 110, right: 180, bottom: 60, left: 200 };
 const TOOL_HEIGHT = 160;
 const COLLAPSED_HEIGHT = 34;
@@ -424,9 +456,10 @@ const ArchNoteEditor = ({ tool, note, onSave, onClose }) => {
 // canvas reads its initial document layout from docPositions instead of
 // always recomputing defaults, and reports every change upward so the
 // parent (App.js) can persist it (e.g. to localStorage) across sessions.
-const WorkflowCanvas = ({ activity, filters, toolNotes, onToolNoteChange, onFilterChange, docPositions: persistedDocPositions, onDocPositionsChange }) => {
+const WorkflowCanvas = ({ activity, filters, toolNotes, onToolNoteChange, onFilterChange, docPositions: persistedDocPositions, onDocPositionsChange, workflowData, activeActivityIndex }) => {
   const { tasks, tools, responsibles, documents, name } = activity;
   const [view, setView] = useState('timeline');
+  const [showExportModal, setShowExportModal] = useState(false);
   const canvasWidth = Math.max(...tasks.map((t) => t.startTime + t.duration), 600) + 20;
 
   const [hoveredTaskId, setHoveredTaskId] = useState(null);
@@ -627,7 +660,7 @@ const WorkflowCanvas = ({ activity, filters, toolNotes, onToolNoteChange, onFilt
         style={{ position: 'absolute', top: 12, left: 12, zIndex: 100, padding: '8px 14px', background: '#1e40af', color: '#ffffff', border: 'none', borderRadius: 6, cursor: 'pointer', fontSize: 12, fontWeight: 600, boxShadow: '0 2px 8px rgba(0,0,0,0.15)' }}>
         ⬡ Architecture view
       </button>
-      <button onClick={() => downloadStaticHtml(activity)}
+      <button onClick={() => setShowExportModal(true)}
         title="Download a read-only, self-contained HTML file of this diagram — nothing is uploaded or stored remotely"
         style={{ position: 'absolute', top: 12, left: 168, zIndex: 100, padding: '8px 14px', background: '#ffffff', color: '#1e40af', border: '1.5px solid #1e40af', borderRadius: 6, cursor: 'pointer', fontSize: 12, fontWeight: 600, boxShadow: '0 2px 8px rgba(0,0,0,0.08)' }}>
         ⬇ Export viewer
@@ -776,6 +809,18 @@ const WorkflowCanvas = ({ activity, filters, toolNotes, onToolNoteChange, onFilt
           onClose={() => setOpenNoteTool(null)} onSave={(tool, text) => onToolNoteChange(tool, text)} />
       )}
       <Tooltip task={hoveredTask} responsible={hoveredTask ? respMap[hoveredTask.responsible] : null} documents={documents} pos={tooltipPos} />
+
+      {showExportModal && (
+        <ExportModal
+          onClose={() => setShowExportModal(false)}
+          onExport={(scope) => downloadStaticHtml(workflowData || { activities: [activity] }, {
+            collapsedTools: [...collapsedTools],
+            toolNotes: toolNotes || {},
+            scope,
+            activeActivityIndex: activeActivityIndex || 0,
+          })}
+        />
+      )}
     </div>
   );
 };
