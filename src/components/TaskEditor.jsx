@@ -99,10 +99,12 @@ const rowsToWorkflow = (rows) => {
       duration: parseInt(r.duration, 10) || DEFAULT_DURATION,
       details: r.notes || '',
       alternativeTools: splitList(r.altTools),
-      // Zip pre-task IDs with interface formats → [{id, format?}, ...]
+      // Zip pre-task IDs with interface formats → [{id, format?, type?, status?}, ...]
       dependencies: splitList(r.pre).map((id, i) => {
         const fmt = splitList(r.preFormats)[i] || '';
-        return fmt ? { id, format: fmt } : { id };
+        const type = splitList(r.preTypes)[i] || splitList(r.preTypes)[0] || 'undefined';
+        const status = splitList(r.preStatuses)[i] || splitList(r.preStatuses)[0] || 'undefined';
+        return { id, format: fmt, type, status };
       }),
       inputs: splitList(r.inputs).map(slugify),
       outputs: splitList(r.outputs).map(slugify),
@@ -113,12 +115,15 @@ const rowsToWorkflow = (rows) => {
   return { activities };
 };
 
+const TYPE_ICONS = { file: '📄', plugin: '🔌', undefined: '⚪' };
+const STATUS_ICONS = { impl: '🟢', plan: '🟡', undefined: '⚪' };
+
 // ── Empty row factory ─────────────────────────────────────────────────────────
 let _uid = 1;
 const emptyRow = (activityName = '') => ({
   _key: _uid++, taskId: '', activity: activityName, label: '', responsible: '', tool: '',
   startTime: '', duration: String(DEFAULT_DURATION), inputs: '', outputs: '',
-  pre: '', preFormats: '', notes: '', altTools: '',
+  pre: '', preFormats: '', preTypes: 'undefined', preStatuses: 'undefined', notes: '', altTools: '',
 });
 
 // ── Seed rows from existing workflowData ──────────────────────────────────────
@@ -126,10 +131,12 @@ const workflowToRows = (data) => {
   const rows = [];
   (data.activities || []).forEach((act) => {
     (act.tasks || []).forEach((t) => {
-      // dependencies may be [{id, format}] or plain strings
+      // dependencies may be [{id, format, type, status}] or plain strings
       const deps = (t.dependencies || []);
       const preIds = deps.map((d) => (typeof d === 'object' ? d.id : d));
       const preFmts = deps.map((d) => (typeof d === 'object' ? d.format || '' : ''));
+      const preTypes = deps.map((d) => (typeof d === 'object' ? d.type || 'undefined' : 'undefined'));
+      const preStatuses = deps.map((d) => (typeof d === 'object' ? d.status || 'undefined' : 'undefined'));
       rows.push({
         _key: _uid++,
         taskId: t.id,
@@ -143,6 +150,8 @@ const workflowToRows = (data) => {
         outputs: joinList((t.outputs || []).map((id) => act.documents.find((d) => d.id === id)?.name || id)),
         pre: joinList(preIds),
         preFormats: joinList(preFmts),
+        preTypes: joinList(preTypes),
+        preStatuses: joinList(preStatuses),
         notes: t.details || '',
         altTools: joinList(t.alternativeTools || []),
       });
@@ -416,6 +425,8 @@ const TaskEditor = ({ workflowData, onSave, onClose }) => {
                 <th style={{ ...thStyle, minWidth: 140 }}>Outputs</th>
                 <th style={{ ...thStyle, minWidth: 120 }}>Pre-tasks</th>
                 <th style={{ ...thStyle, minWidth: 130 }}>Interface format</th>
+                <th style={{ ...thStyle, minWidth: 50, textAlign: 'center' }} title="Interface Type">Type</th>
+                <th style={{ ...thStyle, minWidth: 50, textAlign: 'center' }} title="Interface Status">Status</th>
                 <th style={{ ...thStyle, minWidth: 160 }}>Notes</th>
                 <th style={{ ...thStyle, minWidth: 140 }}>Alt. tools</th>
                 <th style={{ ...thStyle, width: 60 }}></th>
@@ -449,6 +460,32 @@ const TaskEditor = ({ workflowData, onSave, onClose }) => {
                   <Cell value={row.outputs} onChange={(v) => updateRow(row._key, 'outputs', v)} placeholder="Doc C" wide />
                   <Cell value={row.pre} onChange={(v) => updateRow(row._key, 'pre', v)} placeholder="task1, task2" list="id-list" wide />
                   <Cell value={row.preFormats} onChange={(v) => updateRow(row._key, 'preFormats', v)} placeholder="REST/JSON, CSV" wide />
+                  <td style={{ padding: '3px 4px', textAlign: 'center' }}>
+                    <div style={{ position: 'relative', width: 34, height: 26, margin: '0 auto', display: 'flex', alignItems: 'center', justifyContent: 'center', background: '#f8fafc', border: '1px solid #cbd5e1', borderRadius: 4, cursor: 'pointer' }}>
+                      <span style={{ fontSize: 14, pointerEvents: 'none', userSelect: 'none' }}>
+                        {TYPE_ICONS[row.preTypes] || TYPE_ICONS.undefined}
+                      </span>
+                      <select value={row.preTypes || 'undefined'} onChange={(e) => updateRow(row._key, 'preTypes', e.target.value)}
+                        style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', opacity: 0, cursor: 'pointer' }}>
+                        <option value="undefined">⚪ Undefined</option>
+                        <option value="file">📄 File format</option>
+                        <option value="plugin">🔌 Plug-in / Native</option>
+                      </select>
+                    </div>
+                  </td>
+                  <td style={{ padding: '3px 4px', textAlign: 'center' }}>
+                    <div style={{ position: 'relative', width: 34, height: 26, margin: '0 auto', display: 'flex', alignItems: 'center', justifyContent: 'center', background: '#f8fafc', border: '1px solid #cbd5e1', borderRadius: 4, cursor: 'pointer' }}>
+                      <span style={{ fontSize: 14, pointerEvents: 'none', userSelect: 'none' }}>
+                        {STATUS_ICONS[row.preStatuses] || STATUS_ICONS.undefined}
+                      </span>
+                      <select value={row.preStatuses || 'undefined'} onChange={(e) => updateRow(row._key, 'preStatuses', e.target.value)}
+                        style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', opacity: 0, cursor: 'pointer' }}>
+                        <option value="undefined">⚪ Undefined</option>
+                        <option value="impl">🟢 Implemented</option>
+                        <option value="plan">🟡 Planned / Wip</option>
+                      </select>
+                    </div>
+                  </td>
                   <Cell value={row.notes} onChange={(v) => updateRow(row._key, 'notes', v)} placeholder="Details…" wide />
                   <Cell value={row.altTools} onChange={(v) => updateRow(row._key, 'altTools', v)} placeholder="e.g. Figma, Sketch" wide />
                   <td style={{ padding: '3px 4px', whiteSpace: 'nowrap' }}>

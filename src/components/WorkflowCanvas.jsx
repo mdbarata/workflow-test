@@ -214,9 +214,13 @@ const computeToolEdgeFormats = (tasks) => {
       const fromTool = tasks.find((t) => t.id === depId(dep))?.tool;
       if (fromTool && fromTool !== task.tool) {
         const key = `${fromTool}→${task.tool}`;
-        if (!map[key]) map[key] = new Set();
+        if (!map[key]) map[key] = { formats: new Set(), types: new Set(), statuses: new Set() };
         const fmt = typeof dep === 'object' ? dep.format : '';
-        if (fmt) map[key].add(fmt);
+        const type = typeof dep === 'object' ? dep.type || 'file' : 'file';
+        const status = typeof dep === 'object' ? dep.status || 'impl' : 'impl';
+        if (fmt) map[key].formats.add(fmt);
+        map[key].types.add(type);
+        map[key].statuses.add(status);
       }
     });
   });
@@ -349,9 +353,12 @@ const ArchitectureView = ({ activity, filters, toolNotes, onToolNoteChange, onTo
     const f = pos[from], t = pos[to];
     if (!f || !t) return null;
     const key = `${from}→${to}`;
-    const fmts = edgeFormats[key] ? [...edgeFormats[key]].join(', ') : '';
+    const edgeData = edgeFormats[key];
+    const fmts = edgeData && edgeData.formats ? [...edgeData.formats].join(', ') : '';
+    const isPlanned = edgeData && edgeData.statuses ? edgeData.statuses.has('plan') : false;
+    const isPlugin = edgeData && edgeData.types ? edgeData.types.has('plugin') : false;
     const isHov = hoveredTool === from || hoveredTool === to;
-    const color = isHov ? '#2563eb' : '#64748b';
+    const color = isHov ? '#2563eb' : isPlanned ? '#d97706' : '#64748b';
     const fromRight = f.x + ARCH_BOX_W / 2 < t.x + ARCH_BOX_W / 2;
 
     const lx1 = fromRight ? f.x + ARCH_BOX_W : f.x;
@@ -364,23 +371,37 @@ const ArchitectureView = ({ activity, filters, toolNotes, onToolNoteChange, onTo
     const ax2 = fromRight ? lx1 + GAP : lx1 - GAP, ay2 = ly1;
 
     const midX = (lx1 + lx2) / 2, midY = (ly1 + ly2) / 2;
-    const markerId = isHov ? 'arch-arr-blue' : 'arch-arr-gray';
+    const markerId = isHov ? 'arch-arr-blue' : isPlanned ? 'arch-arr-orange' : 'arch-arr-gray';
+
+    let labelTxt = fmts;
+    if (!labelTxt && isPlugin) labelTxt = 'Plug-in';
+    const isFile = edgeData && edgeData.types ? edgeData.types.has('file') : false;
+    if (labelTxt) {
+      if (isPlugin) labelTxt = '🔌 ' + labelTxt;
+      else if (isFile) labelTxt = '📄 ' + labelTxt;
+    }
+    const badgeW = labelTxt ? labelTxt.length * 6.5 + 12 : 0;
+    const badgeFill = isPlugin ? '#faf5ff' : isPlanned ? '#fffbeb' : isHov ? '#eff6ff' : '#f1f5f9';
+    const badgeStroke = isPlugin ? '#9333ea' : isPlanned ? '#d97706' : color;
+    const badgeTextFill = isPlugin ? '#6b21a8' : isPlanned ? '#b45309' : isHov ? '#1d4ed8' : '#475569';
 
     return (
       <g key={key}>
         <line x1={ax1} y1={ay1} x2={ax2} y2={ay2}
           stroke={color} strokeWidth={isHov ? 2 : 1.5}
+          strokeDasharray={isPlanned ? '6,4' : undefined}
           strokeOpacity={hoveredTool && !isHov ? 0.12 : 0.8}
           markerEnd={`url(#${markerId})`} />
         <path d={`M ${ax2} ${ly1} C ${mx} ${ly1}, ${mx} ${ly2}, ${lx2} ${ly2}`}
           fill="none" stroke={color} strokeWidth={isHov ? 2 : 1.5}
+          strokeDasharray={isPlanned ? '6,4' : undefined}
           strokeOpacity={hoveredTool && !isHov ? 0.12 : 0.8} />
-        {fmts && (
+        {labelTxt && (
           <g transform={`translate(${midX}, ${midY - 12})`}>
-            <rect x={-fmts.length * 3 - 4} y={-8} width={fmts.length * 6 + 8} height={16} rx={4}
-              fill={isHov ? '#eff6ff' : '#f1f5f9'} stroke={color} strokeWidth={1} />
-            <text textAnchor="middle" y={4} fontSize="9px" fontWeight="600" fill={isHov ? '#1d4ed8' : '#475569'}
-              style={{ pointerEvents: 'none', userSelect: 'none' }}>{fmts}</text>
+            <rect x={-badgeW / 2} y={-8} width={badgeW} height={16} rx={4}
+              fill={badgeFill} stroke={badgeStroke} strokeWidth={1} />
+            <text textAnchor="middle" y={4} fontSize="9px" fontWeight="600" fill={badgeTextFill}
+              style={{ pointerEvents: 'none', userSelect: 'none' }}>{labelTxt}</text>
           </g>
         )}
       </g>
@@ -407,6 +428,9 @@ const ArchitectureView = ({ activity, filters, toolNotes, onToolNoteChange, onTo
           </marker>
           <marker id="arch-arr-blue" markerWidth="6" markerHeight="6" refX="3" refY="3" orient="auto">
             <polygon points="0 0, 6 3, 0 6" fill="#2563eb" />
+          </marker>
+          <marker id="arch-arr-orange" markerWidth="6" markerHeight="6" refX="3" refY="3" orient="auto">
+            <polygon points="0 0, 6 3, 0 6" fill="#d97706" />
           </marker>
         </defs>
 
@@ -700,6 +724,7 @@ const WorkflowCanvas = ({ activity, filters, toolNotes, onToolNoteChange, onFilt
         <defs>
           <marker id="arrow" markerWidth="10" markerHeight="10" refX="8" refY="3.5" orient="auto"><polygon points="0 0, 10 3.5, 0 7" fill="#64748b" /></marker>
           <marker id="arrow-gold" markerWidth="10" markerHeight="10" refX="8" refY="3.5" orient="auto"><polygon points="0 0, 10 3.5, 0 7" fill="#FFD700" /></marker>
+          <marker id="arrow-orange" markerWidth="10" markerHeight="10" refX="8" refY="3.5" orient="auto"><polygon points="0 0, 10 3.5, 0 7" fill="#d97706" /></marker>
           <marker id="arrow-doc" markerWidth="8" markerHeight="8" refX="7" refY="3.5" orient="auto"><polygon points="0 0, 8 3.5, 0 7" fill="#94a3b8" /></marker>
           <marker id="arrow-doc-blue" markerWidth="8" markerHeight="8" refX="7" refY="3.5" orient="auto"><polygon points="0 0, 8 3.5, 0 7" fill="#2563eb" /></marker>
           <marker id="arrow-doc-green" markerWidth="8" markerHeight="8" refX="7" refY="3.5" orient="auto"><polygon points="0 0, 8 3.5, 0 7" fill="#059669" /></marker>

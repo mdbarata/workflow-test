@@ -298,6 +298,7 @@ const VIEWER_JS = `
     svg += '<defs>';
     svg += '<marker id="arrow" markerWidth="10" markerHeight="10" refX="8" refY="3.5" orient="auto"><polygon points="0 0, 10 3.5, 0 7" fill="#64748b"/></marker>';
     svg += '<marker id="arrow-gold" markerWidth="10" markerHeight="10" refX="8" refY="3.5" orient="auto"><polygon points="0 0, 10 3.5, 0 7" fill="#FFD700"/></marker>';
+    svg += '<marker id="arrow-orange" markerWidth="10" markerHeight="10" refX="8" refY="3.5" orient="auto"><polygon points="0 0, 10 3.5, 0 7" fill="#d97706"/></marker>';
     svg += '<marker id="arrow-doc" markerWidth="8" markerHeight="8" refX="7" refY="3.5" orient="auto"><polygon points="0 0, 8 3.5, 0 7" fill="#94a3b8"/></marker>';
     svg += '<marker id="arrow-doc-blue" markerWidth="8" markerHeight="8" refX="7" refY="3.5" orient="auto"><polygon points="0 0, 8 3.5, 0 7" fill="#2563eb"/></marker>';
     svg += '<marker id="arrow-doc-green" markerWidth="8" markerHeight="8" refX="7" refY="3.5" orient="auto"><polygon points="0 0, 8 3.5, 0 7" fill="#059669"/></marker>';
@@ -666,9 +667,13 @@ const VIEWER_JS = `
         var fromTool = fromTask ? fromTask.tool : null;
         if (fromTool && fromTool !== task.tool) {
           var key = fromTool + '→' + task.tool;
-          if (!map[key]) map[key] = new Set();
+          if (!map[key]) map[key] = { formats: new Set(), types: new Set(), statuses: new Set() };
           var fmt = typeof dep === 'object' ? dep.format : '';
-          if (fmt) map[key].add(fmt);
+          var type = typeof dep === 'object' ? dep.type || 'file' : 'file';
+          var status = typeof dep === 'object' ? dep.status || 'impl' : 'impl';
+          if (fmt) map[key].formats.add(fmt);
+          map[key].types.add(type);
+          map[key].statuses.add(status);
         }
       });
     });
@@ -701,6 +706,7 @@ const VIEWER_JS = `
     svg += '<defs>';
     svg += '<marker id="arch-arr-gray" markerWidth="6" markerHeight="6" refX="3" refY="3" orient="auto"><polygon points="0 0, 6 3, 0 6" fill="#64748b"/></marker>';
     svg += '<marker id="arch-arr-blue" markerWidth="6" markerHeight="6" refX="3" refY="3" orient="auto"><polygon points="0 0, 6 3, 0 6" fill="#2563eb"/></marker>';
+    svg += '<marker id="arch-arr-orange" markerWidth="6" markerHeight="6" refX="3" refY="3" orient="auto"><polygon points="0 0, 6 3, 0 6" fill="#d97706"/></marker>';
     svg += '</defs>';
 
     // Edges
@@ -709,7 +715,26 @@ const VIEWER_JS = `
         var f = pos[from], t = pos[to];
         if (!f || !t) return;
         var key = from + '→' + to;
-        var fmts = edgeFormats[key] ? Array.from(edgeFormats[key]).join(', ') : '';
+        var edgeData = edgeFormats[key];
+        var fmts = edgeData && edgeData.formats ? Array.from(edgeData.formats).join(', ') : '';
+        var isPlanned = edgeData && edgeData.statuses ? edgeData.statuses.has('plan') : false;
+        var isPlugin = edgeData && edgeData.types ? edgeData.types.has('plugin') : false;
+        var strokeColor = isPlanned ? '#d97706' : '#64748b';
+        var markerId = isPlanned ? 'arch-arr-orange' : 'arch-arr-gray';
+        var dashAttr = isPlanned ? ' stroke-dasharray="6,4"' : '';
+
+        var labelTxt = fmts;
+        if (!labelTxt && isPlugin) labelTxt = 'Plug-in';
+        var isFile = edgeData && edgeData.types ? edgeData.types.has('file') : false;
+        if (labelTxt) {
+          if (isPlugin) labelTxt = '🔌 ' + labelTxt;
+          else if (isFile) labelTxt = '📄 ' + labelTxt;
+        }
+        var badgeW = labelTxt ? labelTxt.length * 6.5 + 12 : 0;
+        var badgeFill = isPlugin ? '#faf5ff' : isPlanned ? '#fffbeb' : '#f1f5f9';
+        var badgeStroke = isPlugin ? '#9333ea' : isPlanned ? '#d97706' : '#64748b';
+        var badgeTextFill = isPlugin ? '#6b21a8' : isPlanned ? '#b45309' : '#475569';
+
         var fromRight = f.x + ARCH_BOX_W / 2 < t.x + ARCH_BOX_W / 2;
         var lx1 = fromRight ? f.x + ARCH_BOX_W : f.x;
         var ly1 = f.y + ARCH_BOX_H / 2;
@@ -721,11 +746,11 @@ const VIEWER_JS = `
         var midX = mx, midY = (ly1 + ly2) / 2;
 
         svg += '<g class="arch-edge" data-from="' + escapeHtml(from) + '" data-to="' + escapeHtml(to) + '">';
-        svg += '<line x1="' + lx1 + '" y1="' + ly1 + '" x2="' + ax2 + '" y2="' + ly1 + '" stroke="#64748b" stroke-width="1.5" stroke-opacity="0.8" marker-end="url(#arch-arr-gray)"/>';
-        svg += '<path d="M ' + ax2 + ' ' + ly1 + ' C ' + mx + ' ' + ly1 + ', ' + mx + ' ' + ly2 + ', ' + lx2 + ' ' + ly2 + '" fill="none" stroke="#64748b" stroke-width="1.5" stroke-opacity="0.8"/>';
-        if (fmts) {
-          svg += '<rect x="' + (midX - fmts.length * 3 - 4) + '" y="' + (midY - 20) + '" width="' + (fmts.length * 6 + 8) + '" height="16" rx="4" fill="#f1f5f9" stroke="#64748b" stroke-width="1"/>';
-          svg += '<text x="' + midX + '" y="' + (midY - 8) + '" text-anchor="middle" font-size="9px" font-weight="600" fill="#475569">' + escapeHtml(fmts) + '</text>';
+        svg += '<line x1="' + lx1 + '" y1="' + ly1 + '" x2="' + ax2 + '" y2="' + ly1 + '" stroke="' + strokeColor + '" stroke-width="1.5"' + dashAttr + ' stroke-opacity="0.8" marker-end="url(#' + markerId + ')"/>';
+        svg += '<path d="M ' + ax2 + ' ' + ly1 + ' C ' + mx + ' ' + ly1 + ', ' + mx + ' ' + ly2 + ', ' + lx2 + ' ' + ly2 + '" fill="none" stroke="' + strokeColor + '" stroke-width="1.5"' + dashAttr + ' stroke-opacity="0.8"/>';
+        if (labelTxt) {
+          svg += '<rect x="' + (midX - badgeW / 2) + '" y="' + (midY - 20) + '" width="' + badgeW + '" height="16" rx="4" fill="' + badgeFill + '" stroke="' + badgeStroke + '" stroke-width="1"/>';
+          svg += '<text x="' + midX + '" y="' + (midY - 8) + '" text-anchor="middle" font-size="9px" font-weight="600" fill="' + badgeTextFill + '">' + escapeHtml(labelTxt) + '</text>';
         }
         svg += '</g>';
       });
