@@ -118,7 +118,7 @@ let _uid = 1;
 const emptyRow = (activityName = '') => ({
   _key: _uid++, taskId: '', activity: activityName, label: '', responsible: '', tool: '',
   startTime: '', duration: String(DEFAULT_DURATION), inputs: '', outputs: '',
-  pre: '', preFormats: '', post: '', notes: '', altTools: '',
+  pre: '', preFormats: '', notes: '', altTools: '',
 });
 
 // ── Seed rows from existing workflowData ──────────────────────────────────────
@@ -143,7 +143,6 @@ const workflowToRows = (data) => {
         outputs: joinList((t.outputs || []).map((id) => act.documents.find((d) => d.id === id)?.name || id)),
         pre: joinList(preIds),
         preFormats: joinList(preFmts),
-        post: '',
         notes: t.details || '',
         altTools: joinList(t.alternativeTools || []),
       });
@@ -250,9 +249,9 @@ const TaskEditor = ({ workflowData, onSave, onClose }) => {
   const [dragOverKey, setDragOverKey] = useState(null);
 
   const activities = useMemo(() => [...new Set(rows.map((r) => r.activity).filter(Boolean))], [rows]);
-  const tools      = useMemo(() => [...new Set(rows.map((r) => r.tool).filter(Boolean))], [rows]);
+  const tools = useMemo(() => [...new Set(rows.map((r) => r.tool).filter(Boolean))], [rows]);
   const responsibles = useMemo(() => [...new Set(rows.map((r) => r.responsible).filter(Boolean))], [rows]);
-  const taskIds    = useMemo(() => rows.map((r) => r.taskId).filter(Boolean), [rows]);
+  const taskIds = useMemo(() => rows.map((r) => r.taskId).filter(Boolean), [rows]);
 
   // Pin the set of row keys visible on the current tab. This set is only
   // recomputed when the tab changes or rows are added/removed — NOT when a
@@ -264,7 +263,7 @@ const TaskEditor = ({ workflowData, onSave, onClose }) => {
   useEffect(() => {
     if (activeAct === '__all__') { setPinnedKeys(null); return; }
     setPinnedKeys(new Set(rows.filter((r) => r.activity === activeAct).map((r) => r._key)));
-    
+
   }, [activeAct, rowKeySignature]);
 
   const visibleRows = useMemo(() => {
@@ -417,7 +416,6 @@ const TaskEditor = ({ workflowData, onSave, onClose }) => {
                 <th style={{ ...thStyle, minWidth: 140 }}>Outputs</th>
                 <th style={{ ...thStyle, minWidth: 120 }}>Pre-tasks</th>
                 <th style={{ ...thStyle, minWidth: 130 }}>Interface format</th>
-                <th style={{ ...thStyle, minWidth: 120 }}>Post-tasks</th>
                 <th style={{ ...thStyle, minWidth: 160 }}>Notes</th>
                 <th style={{ ...thStyle, minWidth: 140 }}>Alt. tools</th>
                 <th style={{ ...thStyle, width: 60 }}></th>
@@ -440,20 +438,19 @@ const TaskEditor = ({ workflowData, onSave, onClose }) => {
                     onDragEnd={() => { setDragKey(null); setDragOverKey(null); }}
                     style={{ padding: '3px 2px', textAlign: 'center', cursor: 'grab', color: '#cbd5e1', fontSize: 13 }} title="Drag to reorder">⠿</td>
                   <td style={{ padding: '3px 6px', fontSize: 11, color: '#64748b', textAlign: 'center' }}>{i + 1}</td>
-                  <Cell value={row.taskId}      onChange={(v) => updateRow(row._key, 'taskId', v)}      placeholder="task1" />
-                  <Cell value={row.activity}    onChange={(v) => updateRow(row._key, 'activity', v)}    placeholder="Stage 1" list="act-list" wide />
-                  <Cell value={row.label}       onChange={(v) => updateRow(row._key, 'label', v)}       placeholder="Task name" wide />
+                  <Cell value={row.taskId} onChange={(v) => updateRow(row._key, 'taskId', v)} placeholder="task1" />
+                  <Cell value={row.activity} onChange={(v) => updateRow(row._key, 'activity', v)} placeholder="Stage 1" list="act-list" wide />
+                  <Cell value={row.label} onChange={(v) => updateRow(row._key, 'label', v)} placeholder="Task name" wide />
                   <Cell value={row.responsible} onChange={(v) => updateRow(row._key, 'responsible', v)} placeholder="Responsible A" list="resp-list" wide />
-                  <Cell value={row.tool}        onChange={(v) => updateRow(row._key, 'tool', v)}        placeholder="Tool 1" list="tool-list" />
-                  <Cell value={row.startTime}   onChange={(v) => updateRow(row._key, 'startTime', v)}   placeholder="auto" numeric />
-                  <Cell value={row.duration}    onChange={(v) => updateRow(row._key, 'duration', v)}    placeholder="150" numeric />
-                  <Cell value={row.inputs}      onChange={(v) => updateRow(row._key, 'inputs', v)}      placeholder="Doc A, Doc B" wide />
-                  <Cell value={row.outputs}     onChange={(v) => updateRow(row._key, 'outputs', v)}     placeholder="Doc C" wide />
-                  <Cell value={row.pre}         onChange={(v) => updateRow(row._key, 'pre', v)}         placeholder="task1, task2" list="id-list" wide />
-                  <Cell value={row.preFormats}  onChange={(v) => updateRow(row._key, 'preFormats', v)}  placeholder="REST/JSON, CSV" wide />
-                  <Cell value={row.post}        onChange={(v) => updateRow(row._key, 'post', v)}        placeholder="task3" list="id-list" wide />
-                  <Cell value={row.notes}       onChange={(v) => updateRow(row._key, 'notes', v)}       placeholder="Details…" wide />
-                  <Cell value={row.altTools}    onChange={(v) => updateRow(row._key, 'altTools', v)}    placeholder="e.g. Figma, Sketch" wide />
+                  <Cell value={row.tool} onChange={(v) => updateRow(row._key, 'tool', v)} placeholder="Tool 1" list="tool-list" />
+                  <Cell value={row.startTime} onChange={(v) => updateRow(row._key, 'startTime', v)} placeholder="auto" numeric />
+                  <Cell value={row.duration} onChange={(v) => updateRow(row._key, 'duration', v)} placeholder="150" numeric />
+                  <Cell value={row.inputs} onChange={(v) => updateRow(row._key, 'inputs', v)} placeholder="Doc A, Doc B" wide />
+                  <Cell value={row.outputs} onChange={(v) => updateRow(row._key, 'outputs', v)} placeholder="Doc C" wide />
+                  <Cell value={row.pre} onChange={(v) => updateRow(row._key, 'pre', v)} placeholder="task1, task2" list="id-list" wide />
+                  <Cell value={row.preFormats} onChange={(v) => updateRow(row._key, 'preFormats', v)} placeholder="REST/JSON, CSV" wide />
+                  <Cell value={row.notes} onChange={(v) => updateRow(row._key, 'notes', v)} placeholder="Details…" wide />
+                  <Cell value={row.altTools} onChange={(v) => updateRow(row._key, 'altTools', v)} placeholder="e.g. Figma, Sketch" wide />
                   <td style={{ padding: '3px 4px', whiteSpace: 'nowrap' }}>
                     <button title="Duplicate row" onClick={() => duplicateRow(row._key)}
                       style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#64748b', padding: '2px 4px', borderRadius: 3, fontSize: 13 }}>⧉</button>

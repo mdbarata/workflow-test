@@ -180,11 +180,16 @@ const VIEWER_JS = `
   function getTaskY(task, tasks, tools, collapsedSet) {
     var toolIndex = tools.indexOf(task.tool);
     if (toolIndex === -1 || collapsedSet.has(task.tool)) return -9999;
-    var tasksInToolBefore = tasks.filter(function(t) { return t.tool === task.tool && t.startTime < task.startTime; }).length;
+    var toolTasks = tasks.filter(function(t) { return t.tool === task.tool; });
+    toolTasks.sort(function(a, b) {
+      if (a.startTime !== b.startTime) return a.startTime - b.startTime;
+      return a.id.localeCompare(b.id);
+    });
+    var slotIndex = toolTasks.indexOf(task);
     var baseY = 50;
     for (var i = 0; i < toolIndex; i++) baseY += getToolHeight(tools[i], tasks, collapsedSet) + LANE_GAP;
-    var maxTaskH = Math.max.apply(null, tasks.filter(function(t) { return t.tool === task.tool; }).map(function(t) { return getTaskHeight(t.name, t.duration); }).concat([getTaskHeight(task.name, task.duration)]));
-    var offset = tasksInToolBefore * (maxTaskH + TASK_GAP);
+    var maxTaskH = Math.max.apply(null, toolTasks.map(function(t) { return getTaskHeight(t.name, t.duration); }).concat([getTaskHeight(task.name, task.duration)]));
+    var offset = slotIndex * (maxTaskH + TASK_GAP);
     return baseY + offset;
   }
 
@@ -198,7 +203,7 @@ const VIEWER_JS = `
   }
 
   // ── Doc default positions ──
-  function buildDocPositions(documents, tasks, tools, collapsedSet, canvasWidth, canvasHeight) {
+  function buildDocPositions(documents, tasks, tools, collapsedSet, canvasWidth, canvasHeight, docHeights) {
     var positions = {};
     documents.forEach(function(doc) {
       var isInput = doc.type === 'input';
@@ -213,6 +218,24 @@ const VIEWER_JS = `
       }
       positions[doc.id] = { x: x, y: y };
     });
+
+    // Enforce non-overlapping document positions
+    ['input', 'output'].forEach(function(type) {
+      var typeDocs = documents.filter(function(d) { return d.type === type && positions[d.id]; });
+      typeDocs.sort(function(a, b) {
+        var diff = positions[a.id].y - positions[b.id].y;
+        return diff !== 0 ? diff : a.id.localeCompare(b.id);
+      });
+      for (var i = 1; i < typeDocs.length; i++) {
+        var prevDoc = typeDocs[i - 1];
+        var currDoc = typeDocs[i];
+        var minSpacing = ((docHeights && docHeights[prevDoc.id]) || DOC_MIN_HEIGHT) + 16;
+        if (positions[currDoc.id].y < positions[prevDoc.id].y + minSpacing) {
+          positions[currDoc.id].y = positions[prevDoc.id].y + minSpacing;
+        }
+      }
+    });
+
     return positions;
   }
 
@@ -262,12 +285,12 @@ const VIEWER_JS = `
     var svgWidth = canvasWidth + MARGIN.left + MARGIN.right;
     var svgHeight = canvasHeight + MARGIN.top + MARGIN.bottom;
 
-    var docPositions = buildDocPositions(visibleDocuments, visibleTasks, visibleTools, collapsedSet, canvasWidth, canvasHeight);
     var docHeights = {};
     visibleDocuments.forEach(function(doc) {
       var lines = wrapDocName(doc.name);
       docHeights[doc.id] = Math.max(DOC_MIN_HEIGHT, lines.length * 12 + 24);
     });
+    var docPositions = buildDocPositions(visibleDocuments, visibleTasks, visibleTools, collapsedSet, canvasWidth, canvasHeight, docHeights);
 
     // Build SVG string
     var svg = '';
@@ -314,12 +337,12 @@ const VIEWER_JS = `
       }
       svg += '</g>';
       // Note icon
-      if (hasNote) {
-        svg += '<g class="note-icon" data-tool="' + escapeHtml(tool) + '" style="cursor:pointer">';
-        svg += '<circle cx="' + (canvasWidth - 18) + '" cy="' + (toolY + 17) + '" r="10" fill="#2563eb" stroke="#2563eb" stroke-width="1.5"/>';
-        svg += '<text x="' + (canvasWidth - 18) + '" y="' + (toolY + 22) + '" text-anchor="middle" font-size="13px" font-weight="700" fill="#ffffff" style="pointer-events:none;user-select:none">✎</text>';
-        svg += '</g>';
-      }
+      var fillCol = hasNote ? '#2563eb' : '#eff6ff';
+      var textCol = hasNote ? '#ffffff' : '#2563eb';
+      svg += '<g class="note-icon" data-tool="' + escapeHtml(tool) + '" style="cursor:pointer" title="Click to view tool notes">';
+      svg += '<circle cx="' + (canvasWidth - 18) + '" cy="' + (toolY + 17) + '" r="10" fill="' + fillCol + '" stroke="#2563eb" stroke-width="1.5"/>';
+      svg += '<text x="' + (canvasWidth - 18) + '" y="' + (toolY + 22) + '" text-anchor="middle" font-size="13px" font-weight="700" fill="' + textCol + '" style="pointer-events:none;user-select:none">✎</text>';
+      svg += '</g>';
       if (!isCollapsed) {
         svg += '<line x1="0" y1="' + (toolY + 34) + '" x2="' + canvasWidth + '" y2="' + (toolY + 34) + '" stroke="#2563eb" stroke-width="1" stroke-opacity="0.15"/>';
       }
@@ -482,17 +505,23 @@ const VIEWER_JS = `
       });
     });
 
-    // Note icon hover
+    // Note icon hover & click
     svgEl.querySelectorAll('.note-icon').forEach(function(el) {
       el.addEventListener('mouseenter', function(e) {
         var tool = el.getAttribute('data-tool');
         var note = toolNotes[tool];
-        if (!note) return;
+        if (!note || !note.trim()) return;
         var html = '<div class="tooltip-header">' + escapeHtml(tool) + '</div>';
         html += '<div class="tooltip-content"><p>' + escapeHtml(note).replace(/\\n/g, '<br>') + '</p></div>';
         showTooltip(html, e.clientX, e.clientY);
       });
       el.addEventListener('mouseleave', function() { hideTooltip(); });
+      el.addEventListener('click', function(e) {
+        e.stopPropagation();
+        hideTooltip();
+        var tool = el.getAttribute('data-tool');
+        if (typeof showToolNoteModal === 'function') showToolNoteModal(tool);
+      });
     });
 
     // Highlight helpers
@@ -722,12 +751,12 @@ const VIEWER_JS = `
       resps.slice(0, 4).forEach(function(r, ri) {
         svg += '<circle cx="' + (p.x + 14 + ri * 16) + '" cy="' + (p.y + 68) + '" r="6" fill="' + r.taskColor + '" stroke="#ffffff" stroke-width="1.5"/>';
       });
-      if (hasNote) {
-        svg += '<g class="arch-note-icon" data-tool="' + escapeHtml(tool) + '" style="cursor:pointer">';
-        svg += '<circle cx="' + (p.x + ARCH_BOX_W - 14) + '" cy="' + (p.y + 68) + '" r="9" fill="#2563eb" stroke="#2563eb" stroke-width="1.5"/>';
-        svg += '<text x="' + (p.x + ARCH_BOX_W - 14) + '" y="' + (p.y + 72) + '" text-anchor="middle" font-size="11px" font-weight="700" fill="#fff" style="pointer-events:none;user-select:none">✎</text>';
-        svg += '</g>';
-      }
+      var fillCol = hasNote ? '#2563eb' : '#eff6ff';
+      var textCol = hasNote ? '#ffffff' : '#2563eb';
+      svg += '<g class="arch-note-icon" data-tool="' + escapeHtml(tool) + '" style="cursor:pointer" title="Click to view tool notes">';
+      svg += '<circle cx="' + (p.x + ARCH_BOX_W - 14) + '" cy="' + (p.y + 68) + '" r="9" fill="' + fillCol + '" stroke="#2563eb" stroke-width="1.5"/>';
+      svg += '<text x="' + (p.x + ARCH_BOX_W - 14) + '" y="' + (p.y + 72) + '" text-anchor="middle" font-size="11px" font-weight="700" fill="' + textCol + '" style="pointer-events:none;user-select:none">✎</text>';
+      svg += '</g>';
       svg += '</g>';
     });
 
@@ -798,15 +827,21 @@ const VIEWER_JS = `
       });
     });
 
-    // Note icon hover
+    // Note icon hover & click
     svgEl.querySelectorAll('.arch-note-icon').forEach(function(el) {
       el.addEventListener('mouseenter', function(e) {
         var tool = el.getAttribute('data-tool');
         var note = toolNotes[tool];
-        if (!note) return;
+        if (!note || !note.trim()) return;
         showTooltip('<div class="tooltip-header">' + escapeHtml(tool) + '</div><div class="tooltip-content"><p>' + escapeHtml(note).replace(/\\n/g, '<br>') + '</p></div>', e.clientX, e.clientY);
       });
       el.addEventListener('mouseleave', function() { hideTooltip(); });
+      el.addEventListener('click', function(e) {
+        e.stopPropagation();
+        hideTooltip();
+        var tool = el.getAttribute('data-tool');
+        if (typeof showToolNoteModal === 'function') showToolNoteModal(tool);
+      });
     });
 
     setTimeout(function() { panelEl.querySelector('.zoom-fit').click(); }, 50);
@@ -1275,7 +1310,7 @@ const VIEWER_JS = `
     var targetEl = e.target.closest('[data-key], [data-tool], .link-group, .chip-tool');
     if (!targetEl) return;
     // Don't trigger if clicking inside feedback drawer or buttons
-    if (e.target.closest('#feedback-drawer, .view-toggle, .filter-bar, .topbar, .tab-bar, .zoom-controls')) return;
+    if (e.target.closest('#feedback-drawer, #tool-note-modal, .view-toggle, .filter-bar, .topbar, .tab-bar, .zoom-controls, .note-icon, .arch-note-icon')) return;
 
     var type = 'general', key = 'General Workflow', actId = null, actName = null;
     // Check which activity panel we are in
@@ -1300,6 +1335,27 @@ const VIEWER_JS = `
       if (drawerEl && !drawerEl.classList.contains('open')) drawerEl.classList.add('open');
     }
   });
+
+  // Tool note modal logic
+  var tnmEl = document.getElementById('tool-note-modal');
+  var tnmTitle = document.getElementById('tnm-title');
+  var tnmBody = document.getElementById('tnm-body');
+  if (tnmEl) {
+    var closeTnm = function() { tnmEl.style.display = 'none'; };
+    var closeBtn1 = document.getElementById('tnm-close');
+    var closeBtn2 = document.getElementById('tnm-btn-close');
+    if (closeBtn1) closeBtn1.addEventListener('click', closeTnm);
+    if (closeBtn2) closeBtn2.addEventListener('click', closeTnm);
+    tnmEl.addEventListener('click', function(e) { if (e.target === tnmEl) closeTnm(); });
+  }
+
+  window.showToolNoteModal = function(tool) {
+    if (!tnmEl) return;
+    var note = toolNotes[tool];
+    tnmTitle.textContent = 'Notes for ' + tool;
+    tnmBody.textContent = (note && note.trim()) ? note : '(No notes have been added for this tool in the model.)';
+    tnmEl.style.display = 'flex';
+  };
 
   updateFbCount();
   renderFbList();
@@ -1448,6 +1504,18 @@ function buildHtml(workflowData, options) {
     <div class="feedback-footer">
       <button id="fb-copy-md" type="button" class="feedback-btn-sec" title="Copy formatted markdown report to clipboard">📋 Copy Markdown</button>
       <button id="fb-download-json" type="button" class="feedback-btn-sec" style="background:#1e40af;color:#fff;border-color:#1e40af;" title="Download JSON file to import into live React editor">📥 Export JSON</button>
+    </div>
+  </div>
+  <div id="tool-note-modal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,0.45);z-index:3000;align-items:center;justify-content:center;backdrop-filter:blur(2px);">
+    <div style="background:#fff;border-radius:12px;width:520px;max-width:90vw;box-shadow:0 20px 60px rgba(0,0,0,0.3);overflow:hidden;display:flex;flex-direction:column;border:1px solid #e2e8f0;">
+      <div style="display:flex;align-items:center;justify-content:space-between;padding:14px 20px;border-bottom:1px solid #e2e8f0;background:#f8fafc;">
+        <span id="tnm-title" style="font-size:16px;font-weight:700;color:#1e293b;"></span>
+        <button id="tnm-close" type="button" style="background:none;border:none;font-size:18px;color:#64748b;cursor:pointer;">✕</button>
+      </div>
+      <div id="tnm-body" style="padding:20px;font-size:13px;color:#334155;line-height:1.6;max-height:60vh;overflow-y:auto;white-space:pre-wrap;font-family:system-ui,sans-serif;"></div>
+      <div style="padding:12px 20px;border-top:1px solid #e2e8f0;display:flex;justify-content:flex-end;background:#f8fafc;">
+        <button id="tnm-btn-close" type="button" style="padding:6px 16px;font-size:12px;background:#2563eb;color:#fff;border:none;border-radius:6px;font-weight:600;cursor:pointer;">Close</button>
+      </div>
     </div>
   </div>
 </div>

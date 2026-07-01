@@ -16,7 +16,7 @@ const ExportModal = ({ onExport, onClose }) => {
         <div style={{ padding: '20px 20px 8px' }}>
           <p style={{ fontSize: 12, color: '#64748b', margin: '0 0 16px' }}>Choose what to include in the exported HTML file. The viewer will be fully interactive (zoom, pan, filter, collapse) but read-only.</p>
           {[{ value: 'current', label: 'Current activity', desc: 'Timeline diagram for the selected activity' },
-            { value: 'all', label: 'All activities', desc: 'All timelines + architecture views + activity links' }].map((opt) => (
+          { value: 'all', label: 'All activities', desc: 'All timelines + architecture views + activity links' }].map((opt) => (
             <label key={opt.value} style={{ display: 'flex', alignItems: 'flex-start', gap: 10, padding: '10px 12px', marginBottom: 8, borderRadius: 8, border: `1.5px solid ${scope === opt.value ? '#2563eb' : '#e2e8f0'}`, background: scope === opt.value ? '#eff6ff' : '#fff', cursor: 'pointer', transition: 'all .15s' }}>
               <input type="radio" name="scope" checked={scope === opt.value} onChange={() => setScope(opt.value)} style={{ marginTop: 2 }} />
               <div>
@@ -63,10 +63,15 @@ const getToolHeight = (tool, collapsedTools, tasks) => {
 const getTaskY = (task, tasks, tools, collapsedTools) => {
   const toolIndex = tools.indexOf(task.tool);
   if (toolIndex === -1 || collapsedTools.has(task.tool)) return -9999;
-  const tasksInToolBefore = tasks.filter((t) => t.tool === task.tool && t.startTime < task.startTime).length;
+  const toolTasks = tasks.filter((t) => t.tool === task.tool);
+  toolTasks.sort((a, b) => {
+    if (a.startTime !== b.startTime) return a.startTime - b.startTime;
+    return a.id.localeCompare(b.id);
+  });
+  const slotIndex = toolTasks.indexOf(task);
   let baseY = 50;
   for (let i = 0; i < toolIndex; i++) baseY += getToolHeight(tools[i], collapsedTools, tasks) + LANE_GAP;
-  const offset = tasksInToolBefore * (TASK_HEIGHT + TASK_GAP);
+  const offset = slotIndex * (TASK_HEIGHT + TASK_GAP);
   return baseY + offset;
 };
 
@@ -77,27 +82,45 @@ const elbowPath = (x1, y1, x2, y2, isInput) => isInput
   ? `M ${x1} ${y1} H ${x1 + ELBOW_STUB} V ${y2} H ${x2}`
   : `M ${x1} ${y1} H ${x2 - ELBOW_STUB} V ${y2} H ${x2}`;
 
-  const buildDefaultPositions = (documents, tasks, tools, collapsedTools, canvasWidth) => {
-    const positions = {};
-    documents.forEach((doc) => {
-      const isInput = doc.type === 'input';
-      const connected = tasks.filter((t) =>
-        isInput ? t.inputs?.includes(doc.id) : t.outputs?.includes(doc.id)
-      );
-      const x = isInput ? -MARGIN.left + DOC_LEFT_X : canvasWidth + DOC_RIGHT_OFFSET;
-      let y;
-      if (connected.length > 0) {
-        const ys = connected.map((t) => getTaskY(t, tasks, tools, collapsedTools) + TASK_HEIGHT / 2);
-        y = ys.reduce((a, b) => a + b, 0) / ys.length;
-      } else {
-        // fallback: centre in canvas
-        const canvasHeight = tools.reduce((sum, tool) => sum + getToolHeight(tool, collapsedTools, tasks) + LANE_GAP, 0);
-        y = canvasHeight / 2;
-      }
-      positions[doc.id] = { x, y };
+const buildDefaultPositions = (documents, tasks, tools, collapsedTools, canvasWidth) => {
+  const positions = {};
+  documents.forEach((doc) => {
+    const isInput = doc.type === 'input';
+    const connected = tasks.filter((t) =>
+      isInput ? t.inputs?.includes(doc.id) : t.outputs?.includes(doc.id)
+    );
+    const x = isInput ? -MARGIN.left + DOC_LEFT_X : canvasWidth + DOC_RIGHT_OFFSET;
+    let y;
+    if (connected.length > 0) {
+      const ys = connected.map((t) => getTaskY(t, tasks, tools, collapsedTools) + TASK_HEIGHT / 2);
+      y = ys.reduce((a, b) => a + b, 0) / ys.length;
+    } else {
+      // fallback: centre in canvas
+      const canvasHeight = tools.reduce((sum, tool) => sum + getToolHeight(tool, collapsedTools, tasks) + LANE_GAP, 0);
+      y = canvasHeight / 2;
+    }
+    positions[doc.id] = { x, y };
+  });
+
+  // Enforce non-overlapping document positions
+  ['input', 'output'].forEach((type) => {
+    const typeDocs = documents.filter((d) => d.type === type && positions[d.id]);
+    typeDocs.sort((a, b) => {
+      const diff = positions[a.id].y - positions[b.id].y;
+      return diff !== 0 ? diff : a.id.localeCompare(b.id);
     });
-    return positions;
-  };
+    for (let i = 1; i < typeDocs.length; i++) {
+      const prevDoc = typeDocs[i - 1];
+      const currDoc = typeDocs[i];
+      const minSpacing = DOC_HEIGHT + 16;
+      if (positions[currDoc.id].y < positions[prevDoc.id].y + minSpacing) {
+        positions[currDoc.id].y = positions[prevDoc.id].y + minSpacing;
+      }
+    }
+  });
+
+  return positions;
+};
 
 const Tooltip = ({ task, responsible, documents, pos }) => {
   if (!task) return null;
@@ -466,8 +489,8 @@ const WorkflowCanvas = ({ activity, filters, toolNotes, onToolNoteChange, onFilt
   const [hoveredDocId, setHoveredDocId] = useState(null);
   const [tooltipPos, setTooltipPos] = useState({ x: 0, y: 0 });
   const [docPositions, setDocPositions] = useState(() =>
-  persistedDocPositions || buildDefaultPositions(documents, tasks, tools, new Set(), canvasWidth)
-);
+    persistedDocPositions || buildDefaultPositions(documents, tasks, tools, new Set(), canvasWidth)
+  );
   const [docHeights, setDocHeights] = useState({});
   const [dragging, setDragging] = useState(null);
   const [openNoteTool, setOpenNoteTool] = useState(null);
