@@ -584,6 +584,11 @@ const WorkflowCanvas = ({ activity, filters, toolNotes, onToolNoteChange, onFilt
   const [isPanning, setIsPanning] = useState(false);
   const [panStart, setPanStart] = useState({ x: 0, y: 0 });
 
+  const panRef = useRef(pan);
+  const zoomRef = useRef(zoom);
+  useEffect(() => { panRef.current = pan; }, [pan]);
+  useEffect(() => { zoomRef.current = zoom; }, [zoom]);
+
   const wrapperRef = useRef(null);
   const svgRef = useRef(null);
 
@@ -609,11 +614,12 @@ const WorkflowCanvas = ({ activity, filters, toolNotes, onToolNoteChange, onFilt
     setDocPositions((prev) => ({ ...defaults, ...prev }));
   }, [documents]); // eslint-disable-line
 
-  // Report every doc-position change upward so the parent can persist it.
-  // (App.js debounces the actual localStorage write, so this can fire freely.)
+  // Report doc-position changes only when NOT dragging to avoid parent re-renders on every mousemove.
   useEffect(() => {
-    if (onDocPositionsChange) onDocPositionsChange(docPositions);
-  }, [docPositions]); // eslint-disable-line
+    if (!dragging && onDocPositionsChange) {
+      onDocPositionsChange(docPositions);
+    }
+  }, [docPositions, dragging]); // eslint-disable-line
 
   const toggleToolCollapse = useCallback((tool) => {
     setCollapsedTools((prev) => { const next = new Set(prev); next.has(tool) ? next.delete(tool) : next.add(tool); saveCollapsedTools(next); return next; });
@@ -624,11 +630,21 @@ const WorkflowCanvas = ({ activity, filters, toolNotes, onToolNoteChange, onFilt
     e.preventDefault();
     setZoom((prevZoom) => {
       const newZoom = Math.min(Math.max(prevZoom * (e.deltaY > 0 ? 0.9 : 1.1), MIN_ZOOM), MAX_ZOOM);
-      if (svgRef.current) {
+      if (svgRef.current && newZoom !== prevZoom) {
         const rect = svgRef.current.getBoundingClientRect();
         const mx = e.clientX - rect.left, my = e.clientY - rect.top;
         const r = newZoom / prevZoom;
-        setPan((prev) => ({ x: mx - (mx - prev.x) * r, y: my - (my - prev.y) * r }));
+        setPan((prev) => {
+          const nextPan = { x: mx - (mx - prev.x) * r, y: my - (my - prev.y) * r };
+          panRef.current = nextPan;
+          zoomRef.current = newZoom;
+          if (svgRef.current) {
+            const sw = parseFloat(svgRef.current.getAttribute('width') || '1000');
+            const sh = parseFloat(svgRef.current.getAttribute('height') || '800');
+            svgRef.current.setAttribute('viewBox', `${-nextPan.x / newZoom} ${-nextPan.y / newZoom} ${sw / newZoom} ${sh / newZoom}`);
+          }
+          return nextPan;
+        });
       }
       return newZoom;
     });
@@ -647,6 +663,8 @@ const WorkflowCanvas = ({ activity, filters, toolNotes, onToolNoteChange, onFilt
     const sw = parseInt(svgRef.current.getAttribute('width'));
     const sh = parseInt(svgRef.current.getAttribute('height'));
     const newZoom = Math.max(Math.min(wr.width / sw, wr.height / sh), MIN_ZOOM);
+    zoomRef.current = newZoom;
+    panRef.current = { x: 0, y: 0 };
     setZoom(newZoom);
     setPan({ x: 0, y: 0 });
   }, []);
@@ -660,19 +678,28 @@ const WorkflowCanvas = ({ activity, filters, toolNotes, onToolNoteChange, onFilt
         const rect = svgRef.current.getBoundingClientRect();
         const cx = rect.width / 2, cy = rect.height / 2;
         const r = nz / prev;
-        setPan((p) => ({ x: cx - (cx - p.x) * r, y: cy - (cy - p.y) * r }));
+        setPan((p) => {
+          const np = { x: cx - (cx - p.x) * r, y: cy - (cy - p.y) * r };
+          panRef.current = np;
+          zoomRef.current = nz;
+          return np;
+        });
       }
       return nz;
     });
   }, []);
 
-  const handleSvgMouseDown = useCallback((e) => { if (e.button !== 0) return; setIsPanning(true); setPanStart({ x: e.clientX, y: e.clientY }); }, []);
+  const handleSvgMouseDown = useCallback((e) => {
+    if (e.button !== 0) return;
+    setIsPanning(true);
+    setPanStart({ x: e.clientX, y: e.clientY });
+  }, []);
 
   const handleSvgMouseMove = useCallback((e) => {
     if (dragging) {
       const rect = e.currentTarget.getBoundingClientRect();
-      const mouseDocX = (e.clientX - rect.left) / zoom - pan.x / zoom - MARGIN.left;
-      const mouseDocY = (e.clientY - rect.top) / zoom - pan.y / zoom - MARGIN.top;
+      const mouseDocX = (e.clientX - rect.left) / zoomRef.current - panRef.current.x / zoomRef.current - MARGIN.left;
+      const mouseDocY = (e.clientY - rect.top) / zoomRef.current - panRef.current.y / zoomRef.current - MARGIN.top;
       setDocPositions((prev) => ({
         ...prev,
         [dragging.id]: {
@@ -683,22 +710,42 @@ const WorkflowCanvas = ({ activity, filters, toolNotes, onToolNoteChange, onFilt
       return;
     }
     if (isPanning) {
-      setPan((prev) => ({ x: prev.x + e.clientX - panStart.x, y: prev.y + e.clientY - panStart.y }));
+      const dx = e.clientX - panStart.x;
+      const dy = e.clientY - panStart.y;
+      const nextPan = { x: panRef.current.x + dx, y: panRef.current.y + dy };
+      panRef.current = nextPan;
       setPanStart({ x: e.clientX, y: e.clientY });
+      if (svgRef.current) {
+        const sw = parseFloat(svgRef.current.getAttribute('width') || '1000');
+        const sh = parseFloat(svgRef.current.getAttribute('height') || '800');
+        svgRef.current.setAttribute('viewBox', `${-nextPan.x / zoomRef.current} ${-nextPan.y / zoomRef.current} ${sw / zoomRef.current} ${sh / zoomRef.current}`);
+      }
     }
-  }, [dragging, isPanning, panStart, zoom, pan]);
+  }, [dragging, isPanning, panStart]);
 
-  const handleSvgMouseUp = useCallback(() => { setDragging(null); setIsPanning(false); }, []);
-  const handleSvgMouseLeave = useCallback(() => { setIsPanning(false); }, []);
+  const handleSvgMouseUp = useCallback(() => {
+    if (isPanning) {
+      setPan(panRef.current);
+    }
+    setDragging(null);
+    setIsPanning(false);
+  }, [isPanning]);
+
+  const handleSvgMouseLeave = useCallback(() => {
+    if (isPanning) {
+      setPan(panRef.current);
+    }
+    setIsPanning(false);
+  }, [isPanning]);
 
   const handleDocMouseDown = useCallback((e, docId) => {
     e.preventDefault(); e.stopPropagation(); setIsPanning(false);
     const rect = e.currentTarget.closest('svg').getBoundingClientRect();
     const pos = docPositions[docId];
-    const mouseDocX = (e.clientX - rect.left) / zoom - pan.x / zoom - MARGIN.left;
-    const mouseDocY = (e.clientY - rect.top) / zoom - pan.y / zoom - MARGIN.top;
+    const mouseDocX = (e.clientX - rect.left) / zoomRef.current - panRef.current.x / zoomRef.current - MARGIN.left;
+    const mouseDocY = (e.clientY - rect.top) / zoomRef.current - panRef.current.y / zoomRef.current - MARGIN.top;
     setDragging({ id: docId, offsetX: mouseDocX - pos.x, offsetY: mouseDocY - pos.y });
-  }, [docPositions, pan, zoom]);
+  }, [docPositions]);
 
   const visibleTasks = useMemo(() => tasks.filter((t) => {
     const byResp = filters.responsibles.length === 0 || filters.responsibles.includes(t.responsible);
@@ -845,7 +892,7 @@ const WorkflowCanvas = ({ activity, filters, toolNotes, onToolNoteChange, onFilt
                 <path key={`${doc.id}<->${ct.id}`}
                   d={elbowPath(isInput ? pos.x + DOC_WIDTH : pos.x, docCenterY, isInput ? getTaskX(ct) : getTaskX(ct) + ct.duration, ty + TASK_HEIGHT / 2, isInput)}
                   fill="none" stroke={color} strokeWidth={strokeWidth} strokeDasharray="5,4" strokeOpacity={opacity} strokeLinecap="round"
-                //markerEnd={`url(#${arrowId})`} style={{ transition: dragging ? 'none' : 'all 0.18s ease' }} 
+                  markerEnd={`url(#${arrowId})`} style={{ transition: 'stroke 0.18s ease, stroke-opacity 0.18s ease' }}
                 />
               );
             });
@@ -869,7 +916,7 @@ const WorkflowCanvas = ({ activity, filters, toolNotes, onToolNoteChange, onFilt
                     stroke={isGold ? '#FFD700' : '#64748b'} strokeWidth={isGold ? 2.5 : 1.8}
                     strokeOpacity={isGold ? 1 : hoveredTask ? 0.13 : 0.6}
                     markerEnd={`url(#${isGold ? 'arrow-gold' : 'arrow'})`}
-                    style={{ transition: 'all 0.2s ease' }} />
+                    style={{ transition: 'stroke 0.2s ease, stroke-opacity 0.2s ease, stroke-width 0.2s ease' }} />
                   {depTask.tool !== task.tool && fmt && (
                     <g transform={`translate(${(x1 + x2) / 2}, ${(y1 + y2) / 2})`}>
                       <rect x={-fmt.length * 3.2 - 4} y={-9} rx={4} width={fmt.length * 6.4 + 8} height={17}
