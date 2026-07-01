@@ -19,12 +19,6 @@ const MAX_ZOOM = 2.5;
 const loadPositions = () => { try { return JSON.parse(localStorage.getItem(STORAGE_KEY) || 'null'); } catch { return null; } };
 const savePositions = (pos) => localStorage.setItem(STORAGE_KEY, JSON.stringify(pos));
 
-const buildDefaultPositions = (activities) => {
-  const pos = {};
-  activities.forEach((act, i) => { pos[act.id] = { x: 140, y: 40 + i * CARD_GAP_Y }; });
-  return pos;
-};
-
 const computeLinks = (activities) => {
   const pairMap = new Map();
   for (let i = 0; i < activities.length; i++) {
@@ -32,7 +26,7 @@ const computeLinks = (activities) => {
       if (i === j) continue;
       const a = activities[i], b = activities[j];
       const aOutputs = (a.documents || []).filter((d) => d.type === 'output');
-      const bInputs  = (b.documents || []).filter((d) => d.type === 'input');
+      const bInputs = (b.documents || []).filter((d) => d.type === 'input');
       aOutputs.forEach((od) => {
         bInputs.forEach((id) => {
           if (od.id === id.id || od.name.trim().toLowerCase() === id.name.trim().toLowerCase()) {
@@ -49,8 +43,8 @@ const computeLinks = (activities) => {
 };
 
 // ── Chip sizing helpers ───────────────────────────────────────────────────────
-const respChipWidth  = (name) => Math.max(80, CHIP_DOT + name.length * CHAR_W_RESP + CHIP_PAD_X);
-const toolChipWidth  = (name) => Math.max(60, name.length * CHAR_W_TOOL + CHIP_PAD_X * 2);
+const respChipWidth = (name) => Math.max(80, CHIP_DOT + name.length * CHAR_W_RESP + CHIP_PAD_X);
+const toolChipWidth = (name) => Math.max(60, name.length * CHAR_W_TOOL + CHIP_PAD_X * 2);
 
 // Layout responsible chips: flow left-to-right, wrap when row exceeds CARD_W - 32
 const layoutRespChips = (responsibles, startY) => {
@@ -100,6 +94,16 @@ const cardHeight = (activity) => {
   const { endY: afterTools } = layoutToolChips(activity.tools || [], toolStartY);
   const contentEnd = (activity.tools?.length ? afterTools : toolStartY);
   return contentEnd + BOTTOM_PAD;
+};
+
+const buildDefaultPositions = (activities) => {
+  const pos = {};
+  let currentY = 40;
+  activities.forEach((act) => {
+    pos[act.id] = { x: 140, y: currentY };
+    currentY += cardHeight(act) + 150;
+  });
+  return pos;
 };
 
 // ── ActivityCard ──────────────────────────────────────────────────────────────
@@ -162,16 +166,16 @@ const zBtn = { background: 'none', border: 'none', cursor: 'pointer', fontSize: 
 // ── ActivityLinksView ─────────────────────────────────────────────────────────
 const ActivityLinksView = ({ activities, onEditTasks }) => {
   const [positions, setPositions] = useState(() => loadPositions() || buildDefaultPositions(activities));
-  const [hoveredId, setHoveredId]   = useState(null);
-  const [dragging, setDragging]     = useState(null);
-  const [zoom, setZoom]             = useState(1);
-  const [pan, setPan]               = useState({ x: 0, y: 0 });
-  const [isPanning, setIsPanning]   = useState(false);
-  const [panStart, setPanStart]     = useState({ x: 0, y: 0 });
-  const svgRef     = useRef(null);
+  const [hoveredId, setHoveredId] = useState(null);
+  const [dragging, setDragging] = useState(null);
+  const [zoom, setZoom] = useState(1);
+  const [pan, setPan] = useState({ x: 0, y: 0 });
+  const [isPanning, setIsPanning] = useState(false);
+  const [panStart, setPanStart] = useState({ x: 0, y: 0 });
+  const svgRef = useRef(null);
   const wrapperRef = useRef(null);
 
-  const links  = useMemo(() => computeLinks(activities), [activities]);
+  const links = useMemo(() => computeLinks(activities), [activities]);
   const heights = useMemo(() => {
     const m = {};
     activities.forEach((a) => { m[a.id] = cardHeight(a); });
@@ -182,8 +186,19 @@ const ActivityLinksView = ({ activities, onEditTasks }) => {
     setPositions((prev) => {
       const next = { ...prev };
       let changed = false;
-      activities.forEach((a, i) => {
-        if (!next[a.id]) { next[a.id] = { x: 140, y: 40 + i * CARD_GAP_Y }; changed = true; }
+      let maxBottom = 40;
+      activities.forEach((a) => {
+        if (next[a.id]) {
+          const bottom = next[a.id].y + cardHeight(a) + 150;
+          if (bottom > maxBottom) maxBottom = bottom;
+        }
+      });
+      activities.forEach((a) => {
+        if (!next[a.id]) {
+          next[a.id] = { x: 140, y: maxBottom };
+          maxBottom += cardHeight(a) + 150;
+          changed = true;
+        }
       });
       return changed ? next : prev;
     });
@@ -250,18 +265,18 @@ const ActivityLinksView = ({ activities, onEditTasks }) => {
   const drawLink = (link) => {
     const from = positions[link.from], to = positions[link.to];
     if (!from || !to) return null;
-    const fromH  = heights[link.from] || 100;
+    const fromH = heights[link.from] || 100;
     const fromBelow = from.y < to.y;
     const x1 = from.x + CARD_W / 2;
     const y1 = fromBelow ? from.y + fromH : from.y;
     const x2 = to.x + CARD_W / 2;
     const y2 = fromBelow ? to.y : to.y + (heights[link.to] || 100);
-    const isHov  = hoveredId === link.from || hoveredId === link.to;
-    const color  = isHov ? '#059669' : '#94a3b8';
+    const isHov = hoveredId === link.from || hoveredId === link.to;
+    const color = isHov ? '#059669' : '#94a3b8';
     const opacity = hoveredId && !isHov ? 0.15 : 0.75;
 
     const n = link.docNames.length;
-    const stackH  = n * LABEL_H + (n - 1) * LABEL_GAP;
+    const stackH = n * LABEL_H + (n - 1) * LABEL_GAP;
     const gapStart = (y1 + y2) / 2 - stackH / 2;
     const midX = (x1 + x2) / 2;
 

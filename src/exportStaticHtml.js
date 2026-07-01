@@ -854,9 +854,13 @@ const VIEWER_JS = `
     var heights = {};
     activities.forEach(function(a) { heights[a.id] = cardHeight(a); });
 
-    // Default positions
+    // Dynamic smart spacing: stack cards based on actual height + 150px gap
     var positions = {};
-    activities.forEach(function(act, i) { positions[act.id] = { x: 140, y: 40 + i * CARD_GAP_Y }; });
+    var currentY = 40;
+    activities.forEach(function(act) {
+      positions[act.id] = { x: 140, y: currentY };
+      currentY += (heights[act.id] || 100) + 150;
+    });
 
     var maxX = Math.max.apply(null, Object.values(positions).map(function(p) { return p.x; }).concat([0])) + CARD_W + 200;
     var maxYArr = Object.keys(positions).map(function(id) { return positions[id].y + (heights[id] || 100); });
