@@ -124,6 +124,7 @@ const VIEWER_JS = `
   var initialCollapsed = new Set(D.collapsedTools || []);
   var scope = D.scope;
   var activeIdx = D.activeActivityIndex || 0;
+  var options = { edgeSides: D.edgeSides || {}, toolPositions: D.toolPositions || {} };
 
   // ── Constants (mirror the app) ──
   var MARGIN = { top: 110, right: 180, bottom: 60, left: 200 };
@@ -367,7 +368,7 @@ const VIEWER_JS = `
         var x1 = isInput ? pos.x + DOC_WIDTH : pos.x;
         var x2 = isInput ? getTaskX(ct) : getTaskX(ct) + ct.duration;
         var d = elbowPath(x1, docCenterY, x2, ty + tH / 2, isInput);
-        svg += '<path class="doc-line" data-doc="' + escapeHtml(doc.id) + '" data-task="' + escapeHtml(ct.id) + '" d="' + d + '" fill="none" stroke="#94a3b8" stroke-width="1.5" stroke-dasharray="5,4" stroke-opacity="0.35" stroke-linecap="round"/>';
+        svg += '<path class="doc-line" data-doc="' + escapeHtml(doc.id) + '" data-task="' + escapeHtml(ct.id) + '" d="' + d + '" fill="none" stroke="#94a3b8" stroke-width="1.5" stroke-dasharray="5,4" stroke-opacity="0.35" stroke-linecap="round" marker-end="url(#arrow-doc)"/>';
       });
     });
 
@@ -686,7 +687,11 @@ const VIEWER_JS = `
     responsibles.forEach(function(r) { respMap[r.key] = r; });
 
     var layout = computeToolLayout(tools, tasks);
-    var pos = layout.pos, edges = layout.edges;
+    var pos = Object.assign({}, layout.pos);
+    if (options && options.toolPositions && options.toolPositions[activity.id]) {
+      Object.assign(pos, options.toolPositions[activity.id]);
+    }
+    var edges = layout.edges;
     var edgeFormats = computeToolEdgeFormats(tasks);
     var toolResps = {};
     tools.forEach(function(tool) {
@@ -710,6 +715,68 @@ const VIEWER_JS = `
     svg += '</defs>';
 
     // Edges
+    var allEdges = [];
+    tools.forEach(function(from) {
+      (edges[from] || new Set()).forEach(function(to) {
+        if (pos[from] && pos[to]) allEdges.push({ from: from, to: to });
+      });
+    });
+    var edgeSides = (options && options.edgeSides && options.edgeSides[activity.id]) ? options.edgeSides[activity.id] : {};
+    var getSide = function(e, end) {
+      var key = e.from + '→' + e.to;
+      if (edgeSides[key] && edgeSides[key][end]) return edgeSides[key][end];
+      var pf = pos[e.from], pt = pos[e.to];
+      if (!pf || !pt) return end === 'from' ? 'right' : 'left';
+      if (end === 'from') return pf.x > pt.x ? 'left' : 'right';
+      else return pf.x > pt.x ? 'right' : 'left';
+    };
+
+    var edgePorts = {};
+    tools.forEach(function(tool) {
+      var p = pos[tool];
+      if (!p) return;
+      var sides = { left: { in: [], out: [] }, right: { in: [], out: [] } };
+      allEdges.forEach(function(e) {
+        if (e.from === tool) sides[getSide(e, 'from')].out.push(e);
+        if (e.to === tool) sides[getSide(e, 'to')].in.push(e);
+      });
+      ['left', 'right'].forEach(function(sName) {
+        var xCoord = sName === 'left' ? p.x : p.x + ARCH_BOX_W;
+        var inList = sides[sName].in;
+        inList.sort(function(a, b) {
+          var ta = pos[a.from], tb = pos[b.from];
+          return (ta ? ta.y : 0) - (tb ? tb.y : 0) || (ta ? ta.x : 0) - (tb ? tb.x : 0);
+        });
+        inList.forEach(function(e, idx) {
+          var key = e.from + '→' + e.to;
+          if (!edgePorts[key]) edgePorts[key] = {};
+          edgePorts[key].lx2 = xCoord;
+          edgePorts[key].toSide = sName;
+          if (inList.length === 1) edgePorts[key].ly2 = p.y + 27;
+          else {
+            var top = p.y + 14, bottom = p.y + 40;
+            edgePorts[key].ly2 = top + idx * ((bottom - top) / (inList.length - 1));
+          }
+        });
+        var outList = sides[sName].out;
+        outList.sort(function(a, b) {
+          var tb = pos[b.to], ta = pos[a.to];
+          return (ta ? ta.y : 0) - (tb ? tb.y : 0) || (ta ? ta.x : 0) - (tb ? tb.x : 0);
+        });
+        outList.forEach(function(e, idx) {
+          var key = e.from + '→' + e.to;
+          if (!edgePorts[key]) edgePorts[key] = {};
+          edgePorts[key].lx1 = xCoord;
+          edgePorts[key].fromSide = sName;
+          if (outList.length === 1) edgePorts[key].ly1 = p.y + 63;
+          else {
+            var top = p.y + 50, bottom = p.y + 76;
+            edgePorts[key].ly1 = top + idx * ((bottom - top) / (outList.length - 1));
+          }
+        });
+      });
+    });
+
     tools.forEach(function(from) {
       (edges[from] || new Set()).forEach(function(to) {
         var f = pos[from], t = pos[to];
@@ -735,22 +802,24 @@ const VIEWER_JS = `
         var badgeStroke = isPlugin ? '#9333ea' : isPlanned ? '#d97706' : '#64748b';
         var badgeTextFill = isPlugin ? '#6b21a8' : isPlanned ? '#b45309' : '#475569';
 
-        var fromRight = f.x + ARCH_BOX_W / 2 < t.x + ARCH_BOX_W / 2;
-        var lx1 = fromRight ? f.x + ARCH_BOX_W : f.x;
-        var ly1 = f.y + ARCH_BOX_H / 2;
-        var lx2 = fromRight ? t.x : t.x + ARCH_BOX_W;
-        var ly2 = t.y + ARCH_BOX_H / 2;
-        var GAP = 20;
-        var ax2 = fromRight ? lx1 + GAP : lx1 - GAP;
-        var mx = (lx1 + lx2) / 2;
-        var midX = mx, midY = (ly1 + ly2) / 2;
+        var port = edgePorts[key] || { lx1: f.x + ARCH_BOX_W, ly1: f.y + 63, lx2: t.x, ly2: t.y + 27, fromSide: 'right', toSide: 'left' };
+        var lx1 = port.lx1, ly1 = port.ly1, lx2 = port.lx2, ly2 = port.ly2;
+        var fromSide = port.fromSide || 'right', toSide = port.toSide || 'left';
+        var dist = Math.max(40, Math.min(Math.abs(lx2 - lx1) * 0.45, 140));
+        var cx1 = lx1 + (fromSide === 'right' ? dist : -dist), cy1 = ly1;
+        var cx2 = lx2 + (toSide === 'right' ? dist : -dist), cy2 = ly2;
+        var midX = 0.125 * lx1 + 0.375 * cx1 + 0.375 * cx2 + 0.125 * lx2;
+        var midY = 0.125 * ly1 + 0.375 * cy1 + 0.375 * cy2 + 0.125 * ly2;
 
         svg += '<g class="arch-edge" data-from="' + escapeHtml(from) + '" data-to="' + escapeHtml(to) + '">';
-        svg += '<line x1="' + lx1 + '" y1="' + ly1 + '" x2="' + ax2 + '" y2="' + ly1 + '" stroke="' + strokeColor + '" stroke-width="1.5"' + dashAttr + ' stroke-opacity="0.8" marker-end="url(#' + markerId + ')"/>';
-        svg += '<path d="M ' + ax2 + ' ' + ly1 + ' C ' + mx + ' ' + ly1 + ', ' + mx + ' ' + ly2 + ', ' + lx2 + ' ' + ly2 + '" fill="none" stroke="' + strokeColor + '" stroke-width="1.5"' + dashAttr + ' stroke-opacity="0.8"/>';
+        svg += '<path d="M ' + lx1 + ' ' + ly1 + ' C ' + cx1 + ' ' + cy1 + ', ' + cx2 + ' ' + cy2 + ', ' + lx2 + ' ' + ly2 + '" fill="none" stroke="' + strokeColor + '" stroke-width="1.5"' + dashAttr + ' stroke-opacity="0.55" marker-end="url(#' + markerId + ')" style="transition:all 0.2s ease"/>';
+        svg += '<circle cx="' + lx1 + '" cy="' + ly1 + '" r="2.5" fill="' + strokeColor + '" stroke="#ffffff" stroke-width="0.5" stroke-opacity="0.55"/>';
+        svg += '<circle cx="' + lx2 + '" cy="' + ly2 + '" r="2.5" fill="' + strokeColor + '" stroke="#ffffff" stroke-width="0.5" stroke-opacity="0.55"/>';
         if (labelTxt) {
-          svg += '<rect x="' + (midX - badgeW / 2) + '" y="' + (midY - 20) + '" width="' + badgeW + '" height="16" rx="4" fill="' + badgeFill + '" stroke="' + badgeStroke + '" stroke-width="1"/>';
-          svg += '<text x="' + midX + '" y="' + (midY - 8) + '" text-anchor="middle" font-size="9px" font-weight="600" fill="' + badgeTextFill + '">' + escapeHtml(labelTxt) + '</text>';
+          svg += '<g transform="translate(' + midX + ', ' + (midY - 10) + ')" style="opacity:0.85;transition:opacity 0.2s ease">';
+          svg += '<rect x="' + (-badgeW / 2) + '" y="-8" width="' + badgeW + '" height="16" rx="4" fill="' + badgeFill + '" stroke="' + badgeStroke + '" stroke-width="1"/>';
+          svg += '<text x="0" y="4" text-anchor="middle" font-size="9px" font-weight="600" fill="' + badgeTextFill + '">' + escapeHtml(labelTxt) + '</text>';
+          svg += '</g>';
         }
         svg += '</g>';
       });
@@ -1525,6 +1594,8 @@ function buildHtml(workflowData, options) {
     workflowData: { activities: visibleActivities },
     toolNotes: tNotes,
     collapsedTools: collapsedTools,
+    edgeSides: options.edgeSides || {},
+    toolPositions: options.toolPositions || {},
     scope: scope,
     activeActivityIndex: 0,
   };

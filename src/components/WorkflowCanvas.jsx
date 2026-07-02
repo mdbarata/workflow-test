@@ -182,6 +182,9 @@ const ARCH_MAX_COLS = 4;
 const ARCH_POS_KEY = (actId) => `arch_positions_${actId}`;
 const loadPositions = (actId) => { try { return JSON.parse(localStorage.getItem(ARCH_POS_KEY(actId)) || 'null'); } catch { return null; } };
 const savePositions = (actId, pos) => localStorage.setItem(ARCH_POS_KEY(actId), JSON.stringify(pos));
+const ARCH_SIDES_KEY = (actId) => `arch_sides_${actId}`;
+const loadEdgeSides = (actId) => { try { return JSON.parse(localStorage.getItem(ARCH_SIDES_KEY(actId)) || 'null'); } catch { return null; } };
+const saveEdgeSides = (actId, sides) => localStorage.setItem(ARCH_SIDES_KEY(actId), JSON.stringify(sides));
 
 const computeToolLayout = (tools, tasks) => {
   const toolSet = new Set(tools);
@@ -227,7 +230,7 @@ const computeToolEdgeFormats = (tasks) => {
   return map;
 };
 
-const ArchitectureView = ({ activity, filters, toolNotes, onToolNoteChange, onToolClick, onFilterChange }) => {
+const ArchitectureView = ({ activity, filters, toolNotes, onToolNoteChange, onToolClick, onFilterChange, searchMatchTools }) => {
   const { tasks, tools, responsibles } = activity;
   const [openNoteTool, setOpenNoteTool] = useState(null);
   const [hoveredTool, setHoveredTool] = useState(null);
@@ -237,8 +240,18 @@ const ArchitectureView = ({ activity, filters, toolNotes, onToolNoteChange, onTo
   const [panStart, setPanStart] = useState({ x: 0, y: 0 });
   const [draggingTool, setDraggingTool] = useState(null);
   const [toolPositions, setToolPositions] = useState(null);
+  const [edgeSides, setEdgeSides] = useState(() => loadEdgeSides(activity.id) || {});
   const svgRef = useRef(null);
   const wrapperRef = useRef(null);
+
+  const togglePortSide = useCallback((key, end /* 'from' | 'to' */, currentSide) => {
+    const nextSide = currentSide === 'right' ? 'left' : 'right';
+    setEdgeSides((prev) => {
+      const s = { ...prev, [key]: { ...(prev[key] || {}), [end]: nextSide } };
+      saveEdgeSides(activity.id, s);
+      return s;
+    });
+  }, [activity.id]);
 
   const visibleTasks = useMemo(() => tasks.filter((t) => {
     const byResp = filters.responsibles.length === 0 || filters.responsibles.includes(t.responsible);
@@ -256,6 +269,86 @@ const ArchitectureView = ({ activity, filters, toolNotes, onToolNoteChange, onTo
     visibleTools.forEach((tool) => { if (savedPos[tool]) merged[tool] = savedPos[tool]; });
     return merged;
   }, [autoPos, toolPositions, visibleTools, activity.id]);
+
+  const edgePorts = useMemo(() => {
+    const allEdges = [];
+    visibleTools.forEach((from) => {
+      (edges[from] || new Set()).forEach((to) => {
+        if (pos[from] && pos[to]) allEdges.push({ from, to });
+      });
+    });
+
+    const getSide = (e, end) => {
+      const key = `${e.from}→${e.to}`;
+      if (edgeSides[key] && edgeSides[key][end]) return edgeSides[key][end];
+      const pf = pos[e.from], pt = pos[e.to];
+      if (!pf || !pt) return end === 'from' ? 'right' : 'left';
+      if (end === 'from') {
+        return pf.x > pt.x ? 'left' : 'right';
+      } else {
+        return pf.x > pt.x ? 'right' : 'left';
+      }
+    };
+
+    const ports = {};
+    visibleTools.forEach((tool) => {
+      const p = pos[tool];
+      if (!p) return;
+
+      const sides = { left: { in: [], out: [] }, right: { in: [], out: [] } };
+      allEdges.forEach((e) => {
+        if (e.from === tool) {
+          const s = getSide(e, 'from');
+          sides[s].out.push(e);
+        }
+        if (e.to === tool) {
+          const s = getSide(e, 'to');
+          sides[s].in.push(e);
+        }
+      });
+
+      ['left', 'right'].forEach((sName) => {
+        const xCoord = sName === 'left' ? p.x : p.x + ARCH_BOX_W;
+        
+        const inList = sides[sName].in;
+        inList.sort((a, b) => {
+          const ta = pos[a.from], tb = pos[b.from];
+          return (ta ? ta.y : 0) - (tb ? tb.y : 0) || (ta ? ta.x : 0) - (tb ? tb.x : 0);
+        });
+        inList.forEach((e, idx) => {
+          const key = `${e.from}→${e.to}`;
+          if (!ports[key]) ports[key] = {};
+          ports[key].lx2 = xCoord;
+          ports[key].toSide = sName;
+          if (inList.length === 1) {
+            ports[key].ly2 = p.y + 27;
+          } else {
+            const top = p.y + 14, bottom = p.y + 40;
+            ports[key].ly2 = top + idx * ((bottom - top) / (inList.length - 1));
+          }
+        });
+
+        const outList = sides[sName].out;
+        outList.sort((a, b) => {
+          const tb = pos[b.to], ta = pos[a.to];
+          return (ta ? ta.y : 0) - (tb ? tb.y : 0) || (ta ? ta.x : 0) - (tb ? tb.x : 0);
+        });
+        outList.forEach((e, idx) => {
+          const key = `${e.from}→${e.to}`;
+          if (!ports[key]) ports[key] = {};
+          ports[key].lx1 = xCoord;
+          ports[key].fromSide = sName;
+          if (outList.length === 1) {
+            ports[key].ly1 = p.y + 63;
+          } else {
+            const top = p.y + 50, bottom = p.y + 76;
+            ports[key].ly1 = top + idx * ((bottom - top) / (outList.length - 1));
+          }
+        });
+      });
+    });
+    return ports;
+  }, [visibleTools, edges, pos, edgeSides]);
 
   const respMap = useMemo(() => { const m = {}; responsibles.forEach((r) => { m[r.key] = r; }); return m; }, [responsibles]);
   const toolResps = useMemo(() => {
@@ -319,15 +412,19 @@ const ArchitectureView = ({ activity, filters, toolNotes, onToolNoteChange, onTo
     e.stopPropagation();
     if (e.button !== 0) return;
     const rect = svgRef.current.getBoundingClientRect();
-    const p = pos[tool];
-    setDraggingTool({ tool, offsetX: (e.clientX - rect.left - pan.x) / zoom - p.x, offsetY: (e.clientY - rect.top - pan.y) / zoom - p.y });
-  }, [pos, pan, zoom]);
+    const p = pos[tool] || { x: 0, y: 0 };
+    const mouseX = (e.clientX - rect.left) / zoom - pan.x / zoom;
+    const mouseY = (e.clientY - rect.top) / zoom - pan.y / zoom;
+    setDraggingTool({ tool, offsetX: mouseX - p.x, offsetY: mouseY - p.y });
+  }, [pos, zoom, pan]);
 
   const handleSvgMouseMove = useCallback((e) => {
     if (draggingTool) {
       const rect = svgRef.current.getBoundingClientRect();
-      const newX = (e.clientX - rect.left - pan.x) / zoom - draggingTool.offsetX;
-      const newY = (e.clientY - rect.top - pan.y) / zoom - draggingTool.offsetY;
+      const mouseX = (e.clientX - rect.left) / zoom - pan.x / zoom;
+      const mouseY = (e.clientY - rect.top) / zoom - pan.y / zoom;
+      const newX = Math.max(20, mouseX - draggingTool.offsetX);
+      const newY = Math.max(20, mouseY - draggingTool.offsetY);
       setToolPositions((prev) => ({ ...(prev || {}), ...pos, [draggingTool.tool]: { x: newX, y: newY } }));
       return;
     }
@@ -346,9 +443,13 @@ const ArchitectureView = ({ activity, filters, toolNotes, onToolNoteChange, onTo
   }, [draggingTool, pos, activity.id]);
 
   const handleSvgMouseDown = useCallback((e) => { if (e.button !== 0) return; setIsPanning(true); setPanStart({ x: e.clientX, y: e.clientY }); }, []);
-  const handleResetLayout = useCallback(() => { setToolPositions(null); localStorage.removeItem(ARCH_POS_KEY(activity.id)); }, [activity.id]);
+  const handleResetLayout = useCallback(() => {
+    setToolPositions(null);
+    localStorage.removeItem(ARCH_POS_KEY(activity.id));
+    setEdgeSides({});
+    localStorage.removeItem(ARCH_SIDES_KEY(activity.id));
+  }, [activity.id]);
 
-  const GAP = 20;
   const drawEdge = (from, to) => {
     const f = pos[from], t = pos[to];
     if (!f || !t) return null;
@@ -359,18 +460,22 @@ const ArchitectureView = ({ activity, filters, toolNotes, onToolNoteChange, onTo
     const isPlugin = edgeData && edgeData.types ? edgeData.types.has('plugin') : false;
     const isHov = hoveredTool === from || hoveredTool === to;
     const color = isHov ? '#2563eb' : isPlanned ? '#d97706' : '#64748b';
-    const fromRight = f.x + ARCH_BOX_W / 2 < t.x + ARCH_BOX_W / 2;
 
-    const lx1 = fromRight ? f.x + ARCH_BOX_W : f.x;
-    const ly1 = f.y + ARCH_BOX_H / 2;
-    const lx2 = fromRight ? t.x : t.x + ARCH_BOX_W;
-    const ly2 = t.y + ARCH_BOX_H / 2;
-    const mx = (lx1 + lx2) / 2;
+    const port = edgePorts[key] || {
+      lx1: f.x + ARCH_BOX_W, ly1: f.y + 63,
+      lx2: t.x, ly2: t.y + 27,
+      fromSide: 'right', toSide: 'left'
+    };
+    const { lx1, ly1, lx2, ly2, fromSide = 'right', toSide = 'left' } = port;
 
-    const ax1 = lx1, ay1 = ly1;
-    const ax2 = fromRight ? lx1 + GAP : lx1 - GAP, ay2 = ly1;
+    const dist = Math.max(40, Math.min(Math.abs(lx2 - lx1) * 0.45, 140));
+    const cx1 = lx1 + (fromSide === 'right' ? dist : -dist), cy1 = ly1;
+    const cx2 = lx2 + (toSide === 'right' ? dist : -dist);
+    const cy2 = ly2;
 
-    const midX = (lx1 + lx2) / 2, midY = (ly1 + ly2) / 2;
+    const midX = 0.125 * lx1 + 0.375 * cx1 + 0.375 * cx2 + 0.125 * lx2;
+    const midY = 0.125 * ly1 + 0.375 * cy1 + 0.375 * cy2 + 0.125 * ly2;
+
     const markerId = isHov ? 'arch-arr-blue' : isPlanned ? 'arch-arr-orange' : 'arch-arr-gray';
 
     let labelTxt = fmts;
@@ -384,20 +489,32 @@ const ArchitectureView = ({ activity, filters, toolNotes, onToolNoteChange, onTo
     const badgeFill = isPlugin ? '#faf5ff' : isPlanned ? '#fffbeb' : isHov ? '#eff6ff' : '#f1f5f9';
     const badgeStroke = isPlugin ? '#9333ea' : isPlanned ? '#d97706' : color;
     const badgeTextFill = isPlugin ? '#6b21a8' : isPlanned ? '#b45309' : isHov ? '#1d4ed8' : '#475569';
+    const lineOpacity = hoveredTool ? (isHov ? 1 : 0.12) : 0.55;
 
     return (
       <g key={key}>
-        <line x1={ax1} y1={ay1} x2={ax2} y2={ay2}
-          stroke={color} strokeWidth={isHov ? 2 : 1.5}
+        <path d={`M ${lx1} ${ly1} C ${cx1} ${cy1}, ${cx2} ${cy2}, ${lx2} ${ly2}`}
+          fill="none" stroke={color} strokeWidth={isHov ? 2.2 : 1.5}
           strokeDasharray={isPlanned ? '6,4' : undefined}
-          strokeOpacity={hoveredTool && !isHov ? 0.12 : 0.8}
-          markerEnd={`url(#${markerId})`} />
-        <path d={`M ${ax2} ${ly1} C ${mx} ${ly1}, ${mx} ${ly2}, ${lx2} ${ly2}`}
-          fill="none" stroke={color} strokeWidth={isHov ? 2 : 1.5}
-          strokeDasharray={isPlanned ? '6,4' : undefined}
-          strokeOpacity={hoveredTool && !isHov ? 0.12 : 0.8} />
+          strokeOpacity={lineOpacity}
+          markerEnd={`url(#${markerId})`}
+          style={{ transition: 'stroke 0.2s ease, stroke-opacity 0.2s ease, stroke-width 0.2s ease' }} />
+        <circle cx={lx1} cy={ly1} r={isHov ? 5 : 3.5} fill={color} stroke="#ffffff" strokeWidth={1}
+          style={{ cursor: 'pointer', opacity: lineOpacity, transition: 'all 0.15s ease' }}
+          onMouseDown={(e) => e.stopPropagation()}
+          onClick={(e) => { e.stopPropagation(); togglePortSide(key, 'from', fromSide); }}
+          title={`Click to switch source port to ${fromSide === 'left' ? 'Right' : 'Left'} side`} />
+        <circle cx={lx2} cy={ly2} r={isHov ? 5 : 3.5} fill={color} stroke="#ffffff" strokeWidth={1}
+          style={{ cursor: 'pointer', opacity: lineOpacity, transition: 'all 0.15s ease' }}
+          onMouseDown={(e) => e.stopPropagation()}
+          onClick={(e) => { e.stopPropagation(); togglePortSide(key, 'to', toSide); }}
+          title={`Click to switch target port to ${toSide === 'left' ? 'Right' : 'Left'} side`} />
         {labelTxt && (
-          <g transform={`translate(${midX}, ${midY - 12})`}>
+          <g transform={`translate(${midX}, ${midY - 10})`}
+            style={{ cursor: 'pointer', opacity: hoveredTool ? (isHov ? 1 : 0.2) : 0.85, transition: 'opacity 0.2s ease' }}
+            onMouseDown={(e) => e.stopPropagation()}
+            onClick={(e) => { e.stopPropagation(); togglePortSide(key, 'from', fromSide); togglePortSide(key, 'to', toSide); }}
+            title="Click label to swap connection sides">
             <rect x={-badgeW / 2} y={-8} width={badgeW} height={16} rx={4}
               fill={badgeFill} stroke={badgeStroke} strokeWidth={1} />
             <text textAnchor="middle" y={4} fontSize="9px" fontWeight="600" fill={badgeTextFill}
@@ -413,6 +530,9 @@ const ArchitectureView = ({ activity, filters, toolNotes, onToolNoteChange, onTo
       <button onClick={handleResetLayout} style={{ position: 'absolute', top: 12, right: 12, zIndex: 100, padding: '8px 12px', background: '#ffffff', border: '1px solid #e2e8f0', borderRadius: 6, cursor: 'pointer', fontSize: 12, fontWeight: 500, color: '#64748b', boxShadow: '0 2px 8px rgba(0,0,0,0.08)' }}>
         ↺ Reset layout
       </button>
+      <div style={{ position: 'absolute', top: 14, left: '50%', transform: 'translateX(-50%)', zIndex: 100, padding: '6px 14px', background: '#eff6ff', border: '1px solid #bfdbfe', borderRadius: 20, fontSize: 11, fontWeight: 600, color: '#1e40af', pointerEvents: 'none', boxShadow: '0 2px 6px rgba(0,0,0,0.05)' }}>
+        💡 Tip: Click line endpoints or labels to switch between Left & Right side
+      </div>
 
       <ZoomControls zoom={zoom} onZoom={handleStepZoom} onFit={handleFit} />
 
@@ -803,7 +923,7 @@ const WorkflowCanvas = ({ activity, filters, toolNotes, onToolNoteChange, onFilt
           style={{ position: 'absolute', top: 12, left: 12, zIndex: 101, padding: '8px 14px', background: '#1e40af', color: '#ffffff', border: 'none', borderRadius: 6, cursor: 'pointer', fontSize: 12, fontWeight: 600, boxShadow: '0 2px 8px rgba(0,0,0,0.15)' }}>
           ← Timeline view
         </button>
-        <ArchitectureView activity={activity} filters={filters} toolNotes={toolNotes} onToolNoteChange={onToolNoteChange} onToolClick={handleToolClick} onFilterChange={onFilterChange} />
+        <ArchitectureView activity={activity} filters={filters} toolNotes={toolNotes} onToolNoteChange={onToolNoteChange} onToolClick={handleToolClick} onFilterChange={onFilterChange} searchMatchTools={searchMatchTools} />
       </div>
     );
   }
@@ -978,6 +1098,22 @@ const WorkflowCanvas = ({ activity, filters, toolNotes, onToolNoteChange, onFilt
           onExport={(scope) => downloadStaticHtml(workflowData || { activities: [activity] }, {
             collapsedTools: [...collapsedTools],
             toolNotes: toolNotes || {},
+            edgeSides: (() => {
+              const m = {};
+              (workflowData?.activities || [activity]).forEach((act) => {
+                const s = loadEdgeSides(act.id);
+                if (s) m[act.id] = s;
+              });
+              return m;
+            })(),
+            toolPositions: (() => {
+              const m = {};
+              (workflowData?.activities || [activity]).forEach((act) => {
+                const p = loadPositions(act.id);
+                if (p) m[act.id] = p;
+              });
+              return m;
+            })(),
             scope,
             activeActivityIndex: activeActivityIndex || 0,
           })}
