@@ -117,7 +117,14 @@ const App = () => {
   const activity = activities[activeActivityIndex];
 
   const handleDocPositionsChange = (activityId, positions) => {
-    setDocPositions((prev) => ({ ...prev, [activityId]: positions }));
+    setDocPositions((prev) => {
+      if (!positions) {
+        const next = { ...prev };
+        delete next[activityId];
+        return next;
+      }
+      return { ...prev, [activityId]: positions };
+    });
   };
 
   const handleResetSession = () => {

@@ -745,6 +745,12 @@ const WorkflowCanvas = ({ activity, filters, toolNotes, onToolNoteChange, onFilt
     setCollapsedTools((prev) => { const next = new Set(prev); next.has(tool) ? next.delete(tool) : next.add(tool); saveCollapsedTools(next); return next; });
   }, []);
 
+  const handleResetDocPositions = useCallback(() => {
+    const defaults = buildDefaultPositions(documents, tasks, tools, collapsedTools, canvasWidth);
+    setDocPositions(defaults);
+    if (onDocPositionsChange) onDocPositionsChange(null);
+  }, [documents, tasks, tools, collapsedTools, canvasWidth, onDocPositionsChange]);
+
   const handleWheel = useCallback((e) => {
     if (!e.ctrlKey && !e.metaKey) return;
     e.preventDefault();
@@ -938,6 +944,11 @@ const WorkflowCanvas = ({ activity, filters, toolNotes, onToolNoteChange, onFilt
         title="Download a read-only, self-contained HTML file of this diagram — nothing is uploaded or stored remotely"
         style={{ position: 'absolute', top: 12, left: 168, zIndex: 100, padding: '8px 14px', background: '#ffffff', color: '#1e40af', border: '1.5px solid #1e40af', borderRadius: 6, cursor: 'pointer', fontSize: 12, fontWeight: 600, boxShadow: '0 2px 8px rgba(0,0,0,0.08)' }}>
         ⬇ Export viewer
+      </button>
+      <button onClick={handleResetDocPositions}
+        title="Reset document cards back to their default auto-arranged vertical positions"
+        style={{ position: 'absolute', top: 12, right: 12, zIndex: 100, padding: '8px 12px', background: '#ffffff', border: '1px solid #e2e8f0', borderRadius: 6, cursor: 'pointer', fontSize: 12, fontWeight: 500, color: '#64748b', boxShadow: '0 2px 8px rgba(0,0,0,0.08)' }}>
+        ↺ Auto-arrange docs
       </button>
 
       <ZoomControls zoom={zoom} onZoom={handleStepZoom} onFit={handleFit} />
