@@ -110,6 +110,19 @@ const STATIC_CSS = `
   .feedback-count-badge { background: #2563eb; color: #fff; padding: 1px 6px; border-radius: 10px; font-size: 10px; font-weight: 700; }
 
   .link-line { transition: stroke-opacity .15s; }
+
+  /* Font size & compact controls */
+  .font-controls { display: flex; align-items: center; gap: 6px; background: #f1f5f9; border: 1.5px solid #cbd5e1; border-radius: 8px; padding: 3px 10px; margin-left: 8px; }
+  .fc-label { font-size: 13px; font-weight: 700; color: #64748b; flex-shrink: 0; }
+  .fc-value { font-size: 10px; color: #64748b; min-width: 28px; text-align: center; font-variant-numeric: tabular-nums; }
+  .font-controls input[type=range] { -webkit-appearance: none; appearance: none; width: 80px; height: 4px; background: #cbd5e1; border-radius: 2px; outline: none; cursor: pointer; }
+  .font-controls input[type=range]::-webkit-slider-thumb { -webkit-appearance: none; appearance: none; width: 14px; height: 14px; border-radius: 50%; background: #2563eb; cursor: pointer; border: 2px solid #fff; box-shadow: 0 1px 3px rgba(0,0,0,.2); }
+  .fc-reset { background: none; border: none; cursor: pointer; font-size: 14px; color: #94a3b8; padding: 0 2px; transition: color .15s; }
+  .fc-reset:hover { color: #2563eb; }
+  .compact-toggle { display: flex; align-items: center; gap: 5px; font-size: 11px; font-weight: 600; color: #64748b; cursor: pointer; margin-left: 8px; background: #f1f5f9; border: 1.5px solid #cbd5e1; border-radius: 8px; padding: 4px 10px; user-select: none; transition: all .15s; }
+  .compact-toggle:hover { border-color: #94a3b8; }
+  .compact-toggle input { accent-color: #2563eb; cursor: pointer; margin: 0; }
+  .compact-toggle.active { background: #eff6ff; border-color: #2563eb; color: #1e40af; }
 `;
 
 // ── Embedded JS ──────────────────────────────────────────────────────────────
@@ -133,6 +146,34 @@ const VIEWER_JS = `
   var FONT_SIZE = 11, LINE_HEIGHT = 14, PAD_X = 8, PAD_Y = 8, TASK_RADIUS = 6;
   var DOC_WIDTH = 130, DOC_MIN_HEIGHT = 48, DOC_RADIUS = 6;
   var ARCH_BOX_W = 180, ARCH_BOX_H = 90, ARCH_COL_GAP = 100, ARCH_ROW_GAP = 80, ARCH_MAX_COLS = 4;
+
+  // ── Display preference defaults ──
+  var DEFAULT_FONT_SIZE = 11, DEFAULT_LINE_HEIGHT = 14;
+  var DEFAULT_PAD_X = 8, DEFAULT_PAD_Y = 8, DEFAULT_TASK_GAP = 18, DEFAULT_LANE_GAP = 12;
+  var COMPACT_PAD_X = 4, COMPACT_PAD_Y = 4, COMPACT_TASK_GAP = 8, COMPACT_LANE_GAP = 6;
+  var isCompact = false;
+
+  // Load saved display preferences
+  try {
+    var savedPrefs = JSON.parse(localStorage.getItem('viewer_display_prefs') || 'null');
+    if (savedPrefs) {
+      if (savedPrefs.fontSize >= 8 && savedPrefs.fontSize <= 24) {
+        FONT_SIZE = savedPrefs.fontSize;
+        LINE_HEIGHT = Math.ceil(FONT_SIZE * 1.27);
+      }
+      if (savedPrefs.compact) {
+        isCompact = true;
+        PAD_X = COMPACT_PAD_X; PAD_Y = COMPACT_PAD_Y;
+        TASK_GAP = COMPACT_TASK_GAP; LANE_GAP = COMPACT_LANE_GAP;
+      }
+    }
+  } catch(e) {}
+
+  function saveDisplayPrefs() {
+    try {
+      localStorage.setItem('viewer_display_prefs', JSON.stringify({ fontSize: FONT_SIZE, compact: isCompact }));
+    } catch(e) {}
+  }
 
   // Activity links constants
   var CARD_W = 420, CARD_GAP_Y = 140;
@@ -322,13 +363,14 @@ const VIEWER_JS = `
 
     // Tool lanes
     var toolY = 0;
+    var toolNameFontSize = FONT_SIZE + 1;
     visibleTools.forEach(function(tool) {
       var isCollapsed = collapsedSet.has(tool);
       var h = getToolHeight(tool, visibleTasks, collapsedSet);
       var hasNote = !!(toolNotes[tool] && toolNotes[tool].trim());
       svg += '<g class="tool-lane" data-tool="' + escapeHtml(tool) + '">';
       svg += '<rect x="0" y="' + toolY + '" width="' + canvasWidth + '" height="' + h + '" rx="6" fill="#ffffff" stroke="#2563eb" stroke-width="2"/>';
-      svg += '<text x="12" y="' + (toolY + 24) + '" font-size="12px" font-weight="700" fill="#1d4ed8" style="pointer-events:none">' + escapeHtml(tool) + '</text>';
+      svg += '<text x="12" y="' + (toolY + 24) + '" font-size="' + toolNameFontSize + 'px" font-weight="700" fill="#1d4ed8" style="pointer-events:none">' + escapeHtml(tool) + '</text>';
       // Collapse toggle
       svg += '<g class="collapse-toggle" data-tool="' + escapeHtml(tool) + '" style="cursor:pointer">';
       svg += '<circle cx="150" cy="' + (toolY + 17) + '" r="12" fill="#ffffff" fill-opacity="0.01" stroke="#94a3b8" stroke-width="1.5"/>';
@@ -347,6 +389,9 @@ const VIEWER_JS = `
       svg += '</g>';
       if (!isCollapsed) {
         svg += '<line x1="0" y1="' + (toolY + 34) + '" x2="' + canvasWidth + '" y2="' + (toolY + 34) + '" stroke="#2563eb" stroke-width="1" stroke-opacity="0.15"/>';
+        // Background watermark label at bottom-right
+        var bgFontSize = Math.max(18, FONT_SIZE * 2.2);
+        svg += '<text x="' + (canvasWidth - 14) + '" y="' + (toolY + h - 10) + '" text-anchor="end" font-size="' + bgFontSize + 'px" font-weight="800" fill="#2563eb" fill-opacity="0.15" style="pointer-events:none;user-select:none">' + escapeHtml(tool) + '</text>';
       }
       svg += '</g>';
       toolY += h + LANE_GAP;
@@ -1197,6 +1242,28 @@ const VIEWER_JS = `
     });
   }
 
+  // ── Re-render active panel after display settings change ──
+  function reRenderActive() {
+    var activePanel = document.querySelector('.tab-panel.active');
+    if (!activePanel) return;
+    var tabId = activePanel.id;
+    var type = activePanel.getAttribute('data-type');
+    var idx = parseInt(activePanel.getAttribute('data-index') || '0', 10);
+    if (type === 'timeline') {
+      var act = activities[idx];
+      var cs = activePanel.__collapsedSet || new Set(initialCollapsed);
+      var fs = activePanel.__filterState || { responsibles: [], tools: [] };
+      buildFilterBar(activePanel, act, fs, cs);
+      renderTimeline(activePanel, act, cs, fs);
+    } else if (type === 'arch') {
+      renderArchitecture(activePanel, activities[idx]);
+    } else if (type === 'links') {
+      renderLinks(activePanel);
+    }
+    // Invalidate other rendered panels so they re-render with new settings on next visit
+    Object.keys(rendered).forEach(function(k) { if (k !== tabId) rendered[k] = false; });
+  }
+
   // ══════════════════════════════════════════════════════════════════════════
   // BOOTSTRAP — wire up tabs and initial render
   // ══════════════════════════════════════════════════════════════════════════
@@ -1215,8 +1282,8 @@ const VIEWER_JS = `
       var idx = parseInt(panel.getAttribute('data-index') || '0', 10);
       if (type === 'timeline') {
         var act = activities[idx];
-        var cs = new Set(initialCollapsed);
-        var fs = { responsibles: [], tools: [] };
+        var cs = panel.__collapsedSet || new Set(initialCollapsed);
+        var fs = panel.__filterState || { responsibles: [], tools: [] };
         panel.__collapsedSet = cs;
         panel.__filterState = fs;
         buildFilterBar(panel, act, fs, cs);
@@ -1574,6 +1641,53 @@ const VIEWER_JS = `
   // Activate initial tab
   var initialTab = tabBtns[0] ? tabBtns[0].getAttribute('data-tab') : null;
   if (initialTab) activateTab(initialTab);
+
+  // ── Font size & compact mode controls ──
+  var fontSlider = document.getElementById('font-slider');
+  var fontSizeLabel = document.getElementById('font-size-label');
+  var fontResetBtn = document.getElementById('font-reset');
+  var compactCheckbox = document.getElementById('compact-mode');
+  var compactLabel = document.querySelector('.compact-toggle');
+
+  if (fontSlider) {
+    fontSlider.value = FONT_SIZE;
+    if (fontSizeLabel) fontSizeLabel.textContent = FONT_SIZE + 'px';
+    fontSlider.addEventListener('input', function() {
+      FONT_SIZE = parseInt(fontSlider.value, 10);
+      LINE_HEIGHT = Math.ceil(FONT_SIZE * 1.27);
+      if (fontSizeLabel) fontSizeLabel.textContent = FONT_SIZE + 'px';
+      saveDisplayPrefs();
+      reRenderActive();
+    });
+  }
+  if (fontResetBtn) {
+    fontResetBtn.addEventListener('click', function() {
+      FONT_SIZE = DEFAULT_FONT_SIZE;
+      LINE_HEIGHT = DEFAULT_LINE_HEIGHT;
+      if (fontSlider) fontSlider.value = FONT_SIZE;
+      if (fontSizeLabel) fontSizeLabel.textContent = FONT_SIZE + 'px';
+      saveDisplayPrefs();
+      reRenderActive();
+    });
+  }
+  if (compactCheckbox) {
+    compactCheckbox.checked = isCompact;
+    if (isCompact && compactLabel) compactLabel.classList.add('active');
+    compactCheckbox.addEventListener('change', function() {
+      isCompact = compactCheckbox.checked;
+      if (isCompact) {
+        PAD_X = COMPACT_PAD_X; PAD_Y = COMPACT_PAD_Y;
+        TASK_GAP = COMPACT_TASK_GAP; LANE_GAP = COMPACT_LANE_GAP;
+        if (compactLabel) compactLabel.classList.add('active');
+      } else {
+        PAD_X = DEFAULT_PAD_X; PAD_Y = DEFAULT_PAD_Y;
+        TASK_GAP = DEFAULT_TASK_GAP; LANE_GAP = DEFAULT_LANE_GAP;
+        if (compactLabel) compactLabel.classList.remove('active');
+      }
+      saveDisplayPrefs();
+      reRenderActive();
+    });
+  }
 })();
 `;
 
@@ -1687,6 +1801,16 @@ function buildHtml(workflowData, options) {
       <input id="global-search" type="text" placeholder="Search tasks, tools…" style="border:none;background:none;outline:none;font-size:11px;color:#1e293b;width:100%;font-family:inherit;" />
       <button id="global-search-clear" style="display:none;background:none;border:none;cursor:pointer;color:#94a3b8;font-size:12px;padding:0;line-height:1;">✕</button>
     </div>
+    <div class="font-controls">
+      <span class="fc-label" title="Text size">Aa</span>
+      <input id="font-slider" type="range" min="8" max="24" value="11" title="Adjust task text size" />
+      <span id="font-size-label" class="fc-value">11px</span>
+      <button id="font-reset" type="button" class="fc-reset" title="Reset font size">↺</button>
+    </div>
+    <label class="compact-toggle" title="Reduce padding and gaps for a denser layout">
+      <input id="compact-mode" type="checkbox" />
+      <span>Compact</span>
+    </label>
     <button id="feedback-toggle-btn" class="feedback-topbtn" style="margin-left:auto;">
       💬 Leave Feedback <span id="feedback-count" class="feedback-count-badge" style="display:none;">0</span>
     </button>

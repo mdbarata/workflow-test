@@ -309,7 +309,7 @@ const ArchitectureView = ({ activity, filters, toolNotes, onToolNoteChange, onTo
 
       ['left', 'right'].forEach((sName) => {
         const xCoord = sName === 'left' ? p.x : p.x + ARCH_BOX_W;
-        
+
         const inList = sides[sName].in;
         inList.sort((a, b) => {
           const ta = pos[a.from], tb = pos[b.from];
@@ -999,6 +999,9 @@ const WorkflowCanvas = ({ activity, filters, toolNotes, onToolNoteChange, onFilt
                     style={{ pointerEvents: 'none', userSelect: 'none' }}>▼</text>
                 </g>
                 {!isCollapsed && <line x1={0} y1={toolY + 34} x2={canvasWidth} y2={toolY + 34} stroke="#2563eb" strokeWidth={1} strokeOpacity={0.15} />}
+                {!isCollapsed && (
+                  <text x={canvasWidth - 14} y={toolY + toolDisplayHeight - 10} textAnchor="end" fontSize="24px" fontWeight="800" fill="#2563eb" fillOpacity="0.15" style={{ pointerEvents: 'none', userSelect: 'none' }}>{tool}</text>
+                )}
                 <g style={{ cursor: 'pointer' }} onClick={() => setOpenNoteTool(openNoteTool === tool ? null : tool)}>
                   <circle cx={canvasWidth - 18} cy={toolY + 17} r={10} fill={hasNote ? '#2563eb' : '#eff6ff'} stroke="#2563eb" strokeWidth={1.5} />
                   <text x={canvasWidth - 18} y={toolY + 22} textAnchor="middle" fontSize="13px" fontWeight="700" fill={hasNote ? '#ffffff' : '#2563eb'} style={{ pointerEvents: 'none', userSelect: 'none' }}>{hasNote ? '✎' : '+'}</text>
