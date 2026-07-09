@@ -203,6 +203,9 @@ const VIEWER_JS = `
     return lines;
   }
 
+  var currTimeScale = 1;
+  function getTaskW(task) { return Math.max(40, (task.duration || 0) * currTimeScale); }
+
   function getTaskHeight(taskName, taskWidth) {
     var textAreaWidth = Math.max(20, taskWidth - PAD_X * 2);
     var lines = wrapText(taskName, textAreaWidth, FONT_SIZE);
@@ -213,7 +216,7 @@ const VIEWER_JS = `
     if (collapsedSet.has(tool)) return COLLAPSED_HEIGHT;
     var toolTasks = tasks.filter(function(t) { return t.tool === tool; });
     if (toolTasks.length === 0) return TOOL_HEIGHT;
-    var maxTaskH = Math.max.apply(null, toolTasks.map(function(t) { return getTaskHeight(t.name, t.duration); }));
+    var maxTaskH = Math.max.apply(null, toolTasks.map(function(t) { return getTaskHeight(t.name, getTaskW(t)); }));
     var count = toolTasks.length;
     var needed = 50 + count * (maxTaskH + TASK_GAP) + 10;
     return Math.max(TOOL_HEIGHT, needed);
@@ -230,12 +233,12 @@ const VIEWER_JS = `
     var slotIndex = toolTasks.indexOf(task);
     var baseY = 50;
     for (var i = 0; i < toolIndex; i++) baseY += getToolHeight(tools[i], tasks, collapsedSet) + LANE_GAP;
-    var maxTaskH = Math.max.apply(null, toolTasks.map(function(t) { return getTaskHeight(t.name, t.duration); }).concat([getTaskHeight(task.name, task.duration)]));
+    var maxTaskH = Math.max.apply(null, toolTasks.map(function(t) { return getTaskHeight(t.name, getTaskW(t)); }).concat([getTaskHeight(task.name, getTaskW(task))]));
     var offset = slotIndex * (maxTaskH + TASK_GAP);
     return baseY + offset;
   }
 
-  function getTaskX(task) { return task.startTime; }
+  function getTaskX(task) { return (task.startTime || 0) * currTimeScale; }
 
   function curvedPath(x1, y1, x2, y2) { var m = (x1 + x2) / 2; return 'M ' + x1 + ' ' + y1 + ' C ' + m + ' ' + y1 + ', ' + m + ' ' + y2 + ', ' + x2 + ' ' + y2; }
   function elbowPath(x1, y1, x2, y2, isInput) {
@@ -253,7 +256,7 @@ const VIEWER_JS = `
       var x = isInput ? -MARGIN.left + DOC_LEFT_X : canvasWidth + DOC_RIGHT_OFFSET;
       var y;
       if (connected.length > 0) {
-        var ys = connected.map(function(t) { return getTaskY(t, tasks, tools, collapsedSet) + getTaskHeight(t.name, t.duration) / 2; });
+        var ys = connected.map(function(t) { return getTaskY(t, tasks, tools, collapsedSet) + getTaskHeight(t.name, getTaskW(t)) / 2; });
         y = ys.reduce(function(a, b) { return a + b; }, 0) / ys.length;
       } else {
         y = canvasHeight / 2;
@@ -322,7 +325,13 @@ const VIEWER_JS = `
     visibleTasks.forEach(function(t) { (t.inputs || []).forEach(function(id) { visibleDocIds.add(id); }); (t.outputs || []).forEach(function(id) { visibleDocIds.add(id); }); });
     var visibleDocuments = documents.filter(function(d) { return visibleDocIds.has(d.id); });
 
-    var canvasWidth = Math.max.apply(null, tasks.map(function(t) { return t.startTime + t.duration; }).concat([600])) + 20;
+    var hostEl = panelEl ? panelEl.querySelector('.canvas-host') : null;
+    var hostW = (hostEl && hostEl.clientWidth > 100) ? hostEl.clientWidth : (window.innerWidth || 1400);
+    var availW = Math.max(800, hostW - MARGIN.left - MARGIN.right);
+    var maxEnd = Math.max.apply(null, tasks.map(function(t) { return (t.startTime || 0) + (t.duration || 0); }).concat([100]));
+    currTimeScale = Math.max(1.15, availW / maxEnd);
+
+    var canvasWidth = Math.max(maxEnd * currTimeScale, availW);
     var canvasHeight = visibleTools.reduce(function(sum, tool) { return sum + getToolHeight(tool, visibleTasks, collapsedSet) + LANE_GAP; }, 0);
     var svgWidth = canvasWidth + MARGIN.left + MARGIN.right;
     var svgHeight = canvasHeight + MARGIN.top + MARGIN.bottom;
@@ -409,9 +418,9 @@ const VIEWER_JS = `
       connected.forEach(function(ct) {
         var ty = getTaskY(ct, visibleTasks, visibleTools, collapsedSet);
         if (ty < -1000) return;
-        var tH = getTaskHeight(ct.name, ct.duration);
+        var tH = getTaskHeight(ct.name, getTaskW(ct));
         var x1 = isInput ? pos.x + DOC_WIDTH : pos.x;
-        var x2 = isInput ? getTaskX(ct) : getTaskX(ct) + ct.duration;
+        var x2 = isInput ? getTaskX(ct) : getTaskX(ct) + getTaskW(ct);
         var d = elbowPath(x1, docCenterY, x2, ty + tH / 2, isInput);
         svg += '<path class="doc-line" data-doc="' + escapeHtml(doc.id) + '" data-task="' + escapeHtml(ct.id) + '" d="' + d + '" fill="none" stroke="#94a3b8" stroke-width="1.5" stroke-dasharray="5,4" stroke-opacity="0.35" stroke-linecap="round" marker-end="url(#arrow-doc)"/>';
       });
@@ -424,10 +433,10 @@ const VIEWER_JS = `
         var fmt = typeof dep === 'object' ? dep.format || '' : '';
         var depTask = visibleTasks.find(function(t) { return t.id === dId; });
         if (!depTask) return;
-        var y1 = getTaskY(depTask, visibleTasks, visibleTools, collapsedSet) + getTaskHeight(depTask.name, depTask.duration) / 2;
-        var y2 = getTaskY(task, visibleTasks, visibleTools, collapsedSet) + getTaskHeight(task.name, task.duration) / 2;
+        var y1 = getTaskY(depTask, visibleTasks, visibleTools, collapsedSet) + getTaskHeight(depTask.name, getTaskW(depTask)) / 2;
+        var y2 = getTaskY(task, visibleTasks, visibleTools, collapsedSet) + getTaskHeight(task.name, getTaskW(task)) / 2;
         if (y1 < -1000 || y2 < -1000) return;
-        var x1 = getTaskX(depTask) + depTask.duration;
+        var x1 = getTaskX(depTask) + getTaskW(depTask);
         var x2 = getTaskX(task);
         svg += '<g class="dep-arrow" data-from="' + escapeHtml(dId) + '" data-to="' + escapeHtml(task.id) + '">';
         svg += '<path d="' + curvedPath(x1, y1, x2, y2) + '" fill="none" stroke="#64748b" stroke-width="1.8" stroke-opacity="0.6" marker-end="url(#arrow)"/>';
@@ -447,7 +456,7 @@ const VIEWER_JS = `
       if (taskYVal < -1000) return;
       var resp = respMap[task.responsible];
       var fill = resp ? resp.taskColor : '#888';
-      var w = task.duration;
+      var w = getTaskW(task);
       var h = getTaskHeight(task.name, w);
       var lines = wrapText(task.name, Math.max(20, w - PAD_X * 2), FONT_SIZE);
       var cx = getTaskX(task) + w / 2;
@@ -733,9 +742,20 @@ const VIEWER_JS = `
 
     var layout = computeToolLayout(tools, tasks);
     var pos = Object.assign({}, layout.pos);
-    if (options && options.toolPositions && options.toolPositions[activity.id]) {
-      Object.assign(pos, options.toolPositions[activity.id]);
+    if (options && options.toolPositions) {
+      if (options.toolPositions[activity.id]) {
+        Object.assign(pos, options.toolPositions[activity.id]);
+      } else if (Object.keys(options.toolPositions).length > 0 && !options.toolPositions[activities[0]?.id]) {
+        var firstVal = Object.values(options.toolPositions)[0];
+        if (firstVal && typeof firstVal.x === 'number' && typeof firstVal.y === 'number') {
+          Object.assign(pos, options.toolPositions);
+        }
+      }
     }
+    try {
+      var localSaved = JSON.parse(localStorage.getItem('viewer_arch_pos_' + activity.id) || 'null');
+      if (localSaved) Object.assign(pos, localSaved);
+    } catch(e) {}
     var edges = layout.edges;
     var edgeFormats = computeToolEdgeFormats(tasks);
     var toolResps = {};
@@ -903,10 +923,10 @@ const VIEWER_JS = `
 
     var hostEl = panelEl.querySelector('.canvas-host');
     hostEl.innerHTML = svg;
-    attachArchInteraction(hostEl, panelEl, tools, edges);
+    attachArchInteraction(hostEl, panelEl, tools, edges, activity, pos);
   }
 
-  function attachArchInteraction(hostEl, panelEl, tools, edges) {
+  function attachArchInteraction(hostEl, panelEl, tools, edges, activity, pos) {
     var svgEl = hostEl.querySelector('svg');
     if (!svgEl) return;
 
@@ -981,6 +1001,40 @@ const VIEWER_JS = `
         var tool = el.getAttribute('data-tool');
         if (typeof showToolNoteModal === 'function') showToolNoteModal(tool);
       });
+    });
+
+    // Drag tool boxes in viewer
+    var dragTool = null, dragStartMouse = {x:0, y:0}, dragStartPos = {x:0, y:0};
+    svgEl.querySelectorAll('.arch-box').forEach(function(box) {
+      box.style.cursor = 'grab';
+      box.addEventListener('mousedown', function(e) {
+        if (e.button !== 0 || e.target.closest('.arch-note-icon')) return;
+        e.stopPropagation();
+        var tool = box.getAttribute('data-tool');
+        if (!pos[tool]) return;
+        dragTool = tool;
+        box.style.cursor = 'grabbing';
+        dragStartMouse = { x: e.clientX, y: e.clientY };
+        dragStartPos = { x: pos[tool].x, y: pos[tool].y };
+      });
+    });
+    window.addEventListener('mousemove', function(e) {
+      if (!dragTool || !pos[dragTool]) return;
+      var dx = (e.clientX - dragStartMouse.x) / (zoom || 1);
+      var dy = (e.clientY - dragStartMouse.y) / (zoom || 1);
+      pos[dragTool].x = Math.max(0, dragStartPos.x + dx);
+      pos[dragTool].y = Math.max(0, dragStartPos.y + dy);
+      renderArchitecture(panelEl, activity);
+    });
+    window.addEventListener('mouseup', function() {
+      if (dragTool) {
+        try {
+          localStorage.setItem('viewer_arch_pos_' + activity.id, JSON.stringify(pos));
+          if (!options.toolPositions) options.toolPositions = {};
+          options.toolPositions[activity.id] = pos;
+        } catch(e) {}
+        dragTool = null;
+      }
     });
 
     setTimeout(function() { panelEl.querySelector('.zoom-fit').click(); }, 50);

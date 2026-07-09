@@ -107,11 +107,15 @@ const App = () => {
   const [toolNotes, setToolNotes] = useState(saved?.toolNotes || {});
   // docPositions: { [activityId]: { [docId]: { x, y } } } — per-activity drag layout
   const [docPositions, setDocPositions] = useState(saved?.docPositions || {});
+  // archPositions: { [activityId]: { [toolName]: { x, y } } } — per-activity architecture layout
+  const [archPositions, setArchPositions] = useState(saved?.archPositions || {});
+  // edgeSides: { [activityId]: { [edgeKey]: { from, to } } } — per-activity edge port sides
+  const [edgeSides, setEdgeSides] = useState(saved?.edgeSides || {});
   // feedbackItems: array of imported reviewer comments
   const [feedbackItems, setFeedbackItems] = useState(saved?.feedbackItems || []);
   const [showFeedbackModal, setShowFeedbackModal] = useState(false);
 
-  useAutoSave({ workflowData, activeActivityIndex, filters, showLinks, toolNotes, docPositions, feedbackItems });
+  useAutoSave({ workflowData, activeActivityIndex, filters, showLinks, toolNotes, docPositions, archPositions, edgeSides, feedbackItems });
 
   const activities = workflowData.activities || [];
   const activity = activities[activeActivityIndex];
@@ -127,6 +131,28 @@ const App = () => {
     });
   };
 
+  const handleArchPositionsChange = (activityId, positions) => {
+    setArchPositions((prev) => {
+      if (!positions) {
+        const next = { ...prev };
+        delete next[activityId];
+        return next;
+      }
+      return { ...prev, [activityId]: positions };
+    });
+  };
+
+  const handleEdgeSidesChange = (activityId, sides) => {
+    setEdgeSides((prev) => {
+      if (!sides) {
+        const next = { ...prev };
+        delete next[activityId];
+        return next;
+      }
+      return { ...prev, [activityId]: sides };
+    });
+  };
+
   const handleResetSession = () => {
     if (!window.confirm('Clear saved layout, notes, and loaded data? This cannot be undone.')) return;
     clearAppState();
@@ -136,6 +162,8 @@ const App = () => {
     setShowLinks(false);
     setToolNotes({});
     setDocPositions({});
+    setArchPositions({});
+    setEdgeSides({});
     setFeedbackItems([]);
   };
 
@@ -144,6 +172,26 @@ const App = () => {
       // A stage was renamed, which changes its derived id. Migrate any
       // layout/notes data that was keyed by the old id so it isn't orphaned.
       setDocPositions((prev) => {
+        const next = { ...prev };
+        Object.entries(activityIdMap).forEach(([oldId, newId]) => {
+          if (next[oldId] && !next[newId]) {
+            next[newId] = next[oldId];
+            delete next[oldId];
+          }
+        });
+        return next;
+      });
+      setArchPositions((prev) => {
+        const next = { ...prev };
+        Object.entries(activityIdMap).forEach(([oldId, newId]) => {
+          if (next[oldId] && !next[newId]) {
+            next[newId] = next[oldId];
+            delete next[oldId];
+          }
+        });
+        return next;
+      });
+      setEdgeSides((prev) => {
         const next = { ...prev };
         Object.entries(activityIdMap).forEach(([oldId, newId]) => {
           if (next[oldId] && !next[newId]) {
@@ -243,6 +291,12 @@ const App = () => {
             onFilterChange={setFilters}
             docPositions={docPositions[activity.id]}
             onDocPositionsChange={(positions) => handleDocPositionsChange(activity.id, positions)}
+            archPositions={archPositions[activity.id]}
+            onArchPositionsChange={(positions) => handleArchPositionsChange(activity.id, positions)}
+            allArchPositions={archPositions}
+            edgeSides={edgeSides[activity.id]}
+            onEdgeSidesChange={(sides) => handleEdgeSidesChange(activity.id, sides)}
+            allEdgeSides={edgeSides}
             workflowData={workflowData}
             activeActivityIndex={activeActivityIndex}
             searchQuery={searchQuery}

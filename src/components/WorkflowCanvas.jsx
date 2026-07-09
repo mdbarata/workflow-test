@@ -230,7 +230,7 @@ const computeToolEdgeFormats = (tasks) => {
   return map;
 };
 
-const ArchitectureView = ({ activity, filters, toolNotes, onToolNoteChange, onToolClick, onFilterChange, searchMatchTools }) => {
+const ArchitectureView = ({ activity, filters, toolNotes, onToolNoteChange, onToolClick, onFilterChange, searchMatchTools, archPositions, onArchPositionsChange, edgeSides: propEdgeSides, onEdgeSidesChange }) => {
   const { tasks, tools, responsibles } = activity;
   const [openNoteTool, setOpenNoteTool] = useState(null);
   const [hoveredTool, setHoveredTool] = useState(null);
@@ -239,8 +239,13 @@ const ArchitectureView = ({ activity, filters, toolNotes, onToolNoteChange, onTo
   const [isPanning, setIsPanning] = useState(false);
   const [panStart, setPanStart] = useState({ x: 0, y: 0 });
   const [draggingTool, setDraggingTool] = useState(null);
-  const [toolPositions, setToolPositions] = useState(null);
-  const [edgeSides, setEdgeSides] = useState(() => loadEdgeSides(activity.id) || {});
+  const [toolPositions, setToolPositions] = useState(() => archPositions || loadPositions(activity.id) || null);
+  const [edgeSides, setEdgeSides] = useState(() => propEdgeSides || loadEdgeSides(activity.id) || {});
+
+  useEffect(() => {
+    setToolPositions(archPositions || loadPositions(activity.id) || null);
+    setEdgeSides(propEdgeSides || loadEdgeSides(activity.id) || {});
+  }, [activity.id, archPositions, propEdgeSides]);
   const svgRef = useRef(null);
   const wrapperRef = useRef(null);
 
@@ -249,9 +254,10 @@ const ArchitectureView = ({ activity, filters, toolNotes, onToolNoteChange, onTo
     setEdgeSides((prev) => {
       const s = { ...prev, [key]: { ...(prev[key] || {}), [end]: nextSide } };
       saveEdgeSides(activity.id, s);
+      if (onEdgeSidesChange) onEdgeSidesChange(s);
       return s;
     });
-  }, [activity.id]);
+  }, [activity.id, onEdgeSidesChange]);
 
   const visibleTasks = useMemo(() => tasks.filter((t) => {
     const byResp = filters.responsibles.length === 0 || filters.responsibles.includes(t.responsible);
@@ -436,19 +442,26 @@ const ArchitectureView = ({ activity, filters, toolNotes, onToolNoteChange, onTo
 
   const handleSvgMouseUp = useCallback(() => {
     if (draggingTool) {
-      setToolPositions((prev) => { const s = prev || pos; savePositions(activity.id, s); return s; });
+      setToolPositions((prev) => {
+        const s = prev || pos;
+        savePositions(activity.id, s);
+        if (onArchPositionsChange) onArchPositionsChange(s);
+        return s;
+      });
       setDraggingTool(null);
     }
     setIsPanning(false);
-  }, [draggingTool, pos, activity.id]);
+  }, [draggingTool, pos, activity.id, onArchPositionsChange]);
 
   const handleSvgMouseDown = useCallback((e) => { if (e.button !== 0) return; setIsPanning(true); setPanStart({ x: e.clientX, y: e.clientY }); }, []);
   const handleResetLayout = useCallback(() => {
     setToolPositions(null);
     localStorage.removeItem(ARCH_POS_KEY(activity.id));
+    if (onArchPositionsChange) onArchPositionsChange(null);
     setEdgeSides({});
     localStorage.removeItem(ARCH_SIDES_KEY(activity.id));
-  }, [activity.id]);
+    if (onEdgeSidesChange) onEdgeSidesChange(null);
+  }, [activity.id, onArchPositionsChange, onEdgeSidesChange]);
 
   const drawEdge = (from, to) => {
     const f = pos[from], t = pos[to];
@@ -624,7 +637,7 @@ const ArchNoteEditor = ({ tool, note, onSave, onClose }) => {
 // canvas reads its initial document layout from docPositions instead of
 // always recomputing defaults, and reports every change upward so the
 // parent (App.js) can persist it (e.g. to localStorage) across sessions.
-const WorkflowCanvas = ({ activity, filters, toolNotes, onToolNoteChange, onFilterChange, docPositions: persistedDocPositions, onDocPositionsChange, workflowData, activeActivityIndex, searchQuery }) => {
+const WorkflowCanvas = ({ activity, filters, toolNotes, onToolNoteChange, onFilterChange, docPositions: persistedDocPositions, onDocPositionsChange, archPositions: persistedArchPositions, onArchPositionsChange, allArchPositions, edgeSides: persistedEdgeSides, onEdgeSidesChange, allEdgeSides, workflowData, activeActivityIndex, searchQuery }) => {
   const { tasks, tools, responsibles, documents, name } = activity;
   const [view, setView] = useState('timeline');
   const [showExportModal, setShowExportModal] = useState(false);
@@ -929,7 +942,19 @@ const WorkflowCanvas = ({ activity, filters, toolNotes, onToolNoteChange, onFilt
           style={{ position: 'absolute', top: 12, left: 12, zIndex: 101, padding: '8px 14px', background: '#1e40af', color: '#ffffff', border: 'none', borderRadius: 6, cursor: 'pointer', fontSize: 12, fontWeight: 600, boxShadow: '0 2px 8px rgba(0,0,0,0.15)' }}>
           ← Timeline view
         </button>
-        <ArchitectureView activity={activity} filters={filters} toolNotes={toolNotes} onToolNoteChange={onToolNoteChange} onToolClick={handleToolClick} onFilterChange={onFilterChange} searchMatchTools={searchMatchTools} />
+        <ArchitectureView
+          activity={activity}
+          filters={filters}
+          toolNotes={toolNotes}
+          onToolNoteChange={onToolNoteChange}
+          onToolClick={handleToolClick}
+          onFilterChange={onFilterChange}
+          searchMatchTools={searchMatchTools}
+          archPositions={persistedArchPositions}
+          onArchPositionsChange={onArchPositionsChange}
+          edgeSides={persistedEdgeSides}
+          onEdgeSidesChange={onEdgeSidesChange}
+        />
       </div>
     );
   }
@@ -1115,7 +1140,7 @@ const WorkflowCanvas = ({ activity, filters, toolNotes, onToolNoteChange, onFilt
             edgeSides: (() => {
               const m = {};
               (workflowData?.activities || [activity]).forEach((act) => {
-                const s = loadEdgeSides(act.id);
+                const s = allEdgeSides?.[act.id] || loadEdgeSides(act.id);
                 if (s) m[act.id] = s;
               });
               return m;
@@ -1123,7 +1148,7 @@ const WorkflowCanvas = ({ activity, filters, toolNotes, onToolNoteChange, onFilt
             toolPositions: (() => {
               const m = {};
               (workflowData?.activities || [activity]).forEach((act) => {
-                const p = loadPositions(act.id);
+                const p = allArchPositions?.[act.id] || loadPositions(act.id);
                 if (p) m[act.id] = p;
               });
               return m;
