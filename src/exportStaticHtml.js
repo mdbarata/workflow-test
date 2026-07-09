@@ -1724,24 +1724,6 @@ const VIEWER_JS = `
       reRenderActive();
     });
   }
-  if (compactCheckbox) {
-    compactCheckbox.checked = isCompact;
-    if (isCompact && compactLabel) compactLabel.classList.add('active');
-    compactCheckbox.addEventListener('change', function() {
-      isCompact = compactCheckbox.checked;
-      if (isCompact) {
-        PAD_X = COMPACT_PAD_X; PAD_Y = COMPACT_PAD_Y;
-        TASK_GAP = COMPACT_TASK_GAP; LANE_GAP = COMPACT_LANE_GAP;
-        if (compactLabel) compactLabel.classList.add('active');
-      } else {
-        PAD_X = DEFAULT_PAD_X; PAD_Y = DEFAULT_PAD_Y;
-        TASK_GAP = DEFAULT_TASK_GAP; LANE_GAP = DEFAULT_LANE_GAP;
-        if (compactLabel) compactLabel.classList.remove('active');
-      }
-      saveDisplayPrefs();
-      reRenderActive();
-    });
-  }
 })();
 `;
 
@@ -1861,10 +1843,6 @@ function buildHtml(workflowData, options) {
       <span id="font-size-label" class="fc-value">11px</span>
       <button id="font-reset" type="button" class="fc-reset" title="Reset font size">↺</button>
     </div>
-    <label class="compact-toggle" title="Reduce padding and gaps for a denser layout">
-      <input id="compact-mode" type="checkbox" />
-      <span>Compact</span>
-    </label>
     <button id="feedback-toggle-btn" class="feedback-topbtn" style="margin-left:auto;">
       💬 Leave Feedback <span id="feedback-count" class="feedback-count-badge" style="display:none;">0</span>
     </button>
