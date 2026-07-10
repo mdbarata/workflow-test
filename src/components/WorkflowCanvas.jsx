@@ -241,23 +241,34 @@ const ArchitectureView = ({ activity, filters, toolNotes, onToolNoteChange, onTo
   const [draggingTool, setDraggingTool] = useState(null);
   const [toolPositions, setToolPositions] = useState(() => archPositions || loadPositions(activity.id) || null);
   const [edgeSides, setEdgeSides] = useState(() => propEdgeSides || loadEdgeSides(activity.id) || {});
+  const [selectedEdge, setSelectedEdge] = useState(null);
+  const [draggingHandle, setDraggingHandle] = useState(null);
 
+  const archPosKey = JSON.stringify(archPositions || null);
+  const edgeSidesKey = JSON.stringify(propEdgeSides || null);
   useEffect(() => {
     setToolPositions(archPositions || loadPositions(activity.id) || null);
+  }, [activity.id, archPosKey]);
+
+  useEffect(() => {
     setEdgeSides(propEdgeSides || loadEdgeSides(activity.id) || {});
-  }, [activity.id, archPositions, propEdgeSides]);
+  }, [activity.id, edgeSidesKey]);
   const svgRef = useRef(null);
   const wrapperRef = useRef(null);
 
+  const updateEdgeConfig = useCallback((key, updates) => {
+    const s = { ...edgeSides, [key]: { ...(edgeSides[key] || {}), ...updates } };
+    setEdgeSides(s);
+    saveEdgeSides(activity.id, s);
+    if (onEdgeSidesChange) onEdgeSidesChange(s);
+  }, [edgeSides, activity.id, onEdgeSidesChange]);
+
   const togglePortSide = useCallback((key, end /* 'from' | 'to' */, currentSide) => {
-    const nextSide = currentSide === 'right' ? 'left' : 'right';
-    setEdgeSides((prev) => {
-      const s = { ...prev, [key]: { ...(prev[key] || {}), [end]: nextSide } };
-      saveEdgeSides(activity.id, s);
-      if (onEdgeSidesChange) onEdgeSidesChange(s);
-      return s;
-    });
-  }, [activity.id, onEdgeSidesChange]);
+    const order = ['right', 'bottom', 'left', 'top'];
+    const idx = order.indexOf(currentSide || 'right');
+    const nextSide = order[(idx + 1) % order.length];
+    updateEdgeConfig(key, { [end]: nextSide });
+  }, [updateEdgeConfig]);
 
   const visibleTasks = useMemo(() => tasks.filter((t) => {
     const byResp = filters.responsibles.length === 0 || filters.responsibles.includes(t.responsible);
@@ -301,21 +312,19 @@ const ArchitectureView = ({ activity, filters, toolNotes, onToolNoteChange, onTo
       const p = pos[tool];
       if (!p) return;
 
-      const sides = { left: { in: [], out: [] }, right: { in: [], out: [] } };
+      const sides = { left: { in: [], out: [] }, right: { in: [], out: [] }, top: { in: [], out: [] }, bottom: { in: [], out: [] } };
       allEdges.forEach((e) => {
         if (e.from === tool) {
           const s = getSide(e, 'from');
-          sides[s].out.push(e);
+          if (sides[s]) sides[s].out.push(e);
         }
         if (e.to === tool) {
           const s = getSide(e, 'to');
-          sides[s].in.push(e);
+          if (sides[s]) sides[s].in.push(e);
         }
       });
 
-      ['left', 'right'].forEach((sName) => {
-        const xCoord = sName === 'left' ? p.x : p.x + ARCH_BOX_W;
-
+      ['left', 'right', 'top', 'bottom'].forEach((sName) => {
         const inList = sides[sName].in;
         inList.sort((a, b) => {
           const ta = pos[a.from], tb = pos[b.from];
@@ -324,13 +333,13 @@ const ArchitectureView = ({ activity, filters, toolNotes, onToolNoteChange, onTo
         inList.forEach((e, idx) => {
           const key = `${e.from}→${e.to}`;
           if (!ports[key]) ports[key] = {};
-          ports[key].lx2 = xCoord;
           ports[key].toSide = sName;
-          if (inList.length === 1) {
-            ports[key].ly2 = p.y + 27;
+          if (sName === 'left' || sName === 'right') {
+            ports[key].lx2 = sName === 'left' ? p.x : p.x + ARCH_BOX_W;
+            ports[key].ly2 = inList.length === 1 ? p.y + 27 : p.y + 14 + idx * (26 / (inList.length - 1));
           } else {
-            const top = p.y + 14, bottom = p.y + 40;
-            ports[key].ly2 = top + idx * ((bottom - top) / (inList.length - 1));
+            ports[key].ly2 = sName === 'top' ? p.y : p.y + ARCH_BOX_H;
+            ports[key].lx2 = inList.length === 1 ? p.x + ARCH_BOX_W / 2 : p.x + 24 + idx * ((ARCH_BOX_W - 48) / (inList.length - 1));
           }
         });
 
@@ -342,13 +351,13 @@ const ArchitectureView = ({ activity, filters, toolNotes, onToolNoteChange, onTo
         outList.forEach((e, idx) => {
           const key = `${e.from}→${e.to}`;
           if (!ports[key]) ports[key] = {};
-          ports[key].lx1 = xCoord;
           ports[key].fromSide = sName;
-          if (outList.length === 1) {
-            ports[key].ly1 = p.y + 63;
+          if (sName === 'left' || sName === 'right') {
+            ports[key].lx1 = sName === 'left' ? p.x : p.x + ARCH_BOX_W;
+            ports[key].ly1 = outList.length === 1 ? p.y + 63 : p.y + 50 + idx * (26 / (outList.length - 1));
           } else {
-            const top = p.y + 50, bottom = p.y + 76;
-            ports[key].ly1 = top + idx * ((bottom - top) / (outList.length - 1));
+            ports[key].ly1 = sName === 'top' ? p.y : p.y + ARCH_BOX_H;
+            ports[key].lx1 = outList.length === 1 ? p.x + ARCH_BOX_W / 2 : p.x + 24 + idx * ((ARCH_BOX_W - 48) / (outList.length - 1));
           }
         });
       });
@@ -393,9 +402,11 @@ const ArchitectureView = ({ activity, filters, toolNotes, onToolNoteChange, onTo
   }, [handleWheel]);
 
   const handleFit = useCallback(() => {
-    if (!wrapperRef.current) return;
+    if (!wrapperRef.current || !maxX || !maxY) return;
     const wr = wrapperRef.current.getBoundingClientRect();
-    setZoom(Math.min(wr.width / maxX, wr.height / maxY, 1));
+    const fitZoom = Math.min(wr.width / maxX, wr.height / maxY, 1);
+    const validZoom = (!fitZoom || isNaN(fitZoom) || fitZoom < MIN_ZOOM) ? 1 : fitZoom;
+    setZoom(validZoom);
     setPan({ x: 0, y: 0 });
   }, [maxX, maxY]);
 
@@ -434,24 +445,33 @@ const ArchitectureView = ({ activity, filters, toolNotes, onToolNoteChange, onTo
       setToolPositions((prev) => ({ ...(prev || {}), ...pos, [draggingTool.tool]: { x: newX, y: newY } }));
       return;
     }
+    if (draggingHandle) {
+      const dx = (e.clientX - draggingHandle.startX) / zoom;
+      const dy = (e.clientY - draggingHandle.startY) / zoom;
+      updateEdgeConfig(draggingHandle.key, {
+        dx: draggingHandle.startDx + dx,
+        dy: draggingHandle.startDy + dy
+      });
+      return;
+    }
     if (isPanning) {
       setPan((prev) => ({ x: prev.x + e.clientX - panStart.x, y: prev.y + e.clientY - panStart.y }));
       setPanStart({ x: e.clientX, y: e.clientY });
     }
-  }, [draggingTool, isPanning, panStart, pan, zoom, pos]);
+  }, [draggingTool, draggingHandle, updateEdgeConfig, isPanning, panStart, pan, zoom, pos]);
 
   const handleSvgMouseUp = useCallback(() => {
     if (draggingTool) {
-      setToolPositions((prev) => {
-        const s = prev || pos;
-        savePositions(activity.id, s);
-        if (onArchPositionsChange) onArchPositionsChange(s);
-        return s;
-      });
+      const s = toolPositions || pos;
+      savePositions(activity.id, s);
+      if (onArchPositionsChange) onArchPositionsChange(s);
       setDraggingTool(null);
     }
+    if (draggingHandle) {
+      setDraggingHandle(null);
+    }
     setIsPanning(false);
-  }, [draggingTool, pos, activity.id, onArchPositionsChange]);
+  }, [draggingTool, draggingHandle, toolPositions, pos, activity.id, onArchPositionsChange]);
 
   const handleSvgMouseDown = useCallback((e) => { if (e.button !== 0) return; setIsPanning(true); setPanStart({ x: e.clientX, y: e.clientY }); }, []);
   const handleResetLayout = useCallback(() => {
@@ -466,72 +486,150 @@ const ArchitectureView = ({ activity, filters, toolNotes, onToolNoteChange, onTo
   const drawEdge = (from, to) => {
     const f = pos[from], t = pos[to];
     if (!f || !t) return null;
+    const isBidi = edges[to]?.has(from);
+    if (isBidi && from > to) return null;
+
     const key = `${from}→${to}`;
+    const revKey = `${to}→${from}`;
+    const edgeConfig = edgeSides[key] || {};
+
     const edgeData = edgeFormats[key];
     const fmts = edgeData && edgeData.formats ? [...edgeData.formats].join(', ') : '';
+    const revEdgeData = isBidi ? edgeFormats[revKey] : null;
+    const revFmts = revEdgeData && revEdgeData.formats ? [...revEdgeData.formats].join(', ') : '';
+
     const isPlanned = edgeData && edgeData.statuses ? edgeData.statuses.has('plan') : false;
     const isPlugin = edgeData && edgeData.types ? edgeData.types.has('plugin') : false;
-    const isHov = hoveredTool === from || hoveredTool === to;
+    const isHov = hoveredTool === from || hoveredTool === to || selectedEdge === key;
     const color = isHov ? '#2563eb' : isPlanned ? '#d97706' : '#64748b';
 
-    const port = edgePorts[key] || {
-      lx1: f.x + ARCH_BOX_W, ly1: f.y + 63,
-      lx2: t.x, ly2: t.y + 27,
-      fromSide: 'right', toSide: 'left'
-    };
-    const { lx1, ly1, lx2, ly2, fromSide = 'right', toSide = 'left' } = port;
+    const port = edgePorts[key] || {};
+    const lx1 = port.lx1 !== undefined ? port.lx1 : f.x + ARCH_BOX_W;
+    const ly1 = port.ly1 !== undefined ? port.ly1 : f.y + 63;
+    const lx2 = port.lx2 !== undefined ? port.lx2 : t.x;
+    const ly2 = port.ly2 !== undefined ? port.ly2 : t.y + 27;
+    const fromSide = port.fromSide || 'right';
+    const toSide = port.toSide || 'left';
 
     const dist = Math.max(40, Math.min(Math.abs(lx2 - lx1) * 0.45, 140));
-    const cx1 = lx1 + (fromSide === 'right' ? dist : -dist), cy1 = ly1;
-    const cx2 = lx2 + (toSide === 'right' ? dist : -dist);
-    const cy2 = ly2;
+    const cx1 = lx1 + (fromSide === 'right' ? dist : fromSide === 'left' ? -dist : 0);
+    const cy1 = ly1 + (fromSide === 'bottom' ? dist : fromSide === 'top' ? -dist : 0);
+    const cx2 = lx2 + (toSide === 'right' ? dist : toSide === 'left' ? -dist : 0);
+    const cy2 = ly2 + (toSide === 'bottom' ? dist : toSide === 'top' ? -dist : 0);
 
-    const midX = 0.125 * lx1 + 0.375 * cx1 + 0.375 * cx2 + 0.125 * lx2;
-    const midY = 0.125 * ly1 + 0.375 * cy1 + 0.375 * cy2 + 0.125 * ly2;
+    const style = edgeConfig.style || 'curve';
+    const dx = edgeConfig.dx || 0;
+    const dy = edgeConfig.dy || 0;
+
+    let pathD = '';
+    if (style === 'straight') {
+      pathD = `M ${lx1} ${ly1} Q ${(lx1 + lx2)/2 + dx} ${(ly1 + ly2)/2 + dy} ${lx2} ${ly2}`;
+    } else if (style === 'elbow') {
+      const midElbowX = (lx1 + lx2) / 2 + dx;
+      pathD = `M ${lx1} ${ly1} H ${midElbowX} V ${ly2 + dy} H ${lx2}`;
+    } else {
+      pathD = `M ${lx1} ${ly1} C ${cx1 + dx} ${cy1 + dy}, ${cx2 + dx} ${cy2 + dy}, ${lx2} ${ly2}`;
+    }
+
+    const midX = 0.125 * lx1 + 0.375 * cx1 + 0.375 * cx2 + 0.125 * lx2 + dx;
+    const midY = 0.125 * ly1 + 0.375 * cy1 + 0.375 * cy2 + 0.125 * ly2 + dy;
+
+    // Receive-side label placement (t = 0.78 for from->to, t = 0.22 for to->from)
+    const tFwd = 0.78;
+    const fwdX = Math.pow(1-tFwd, 3)*lx1 + 3*Math.pow(1-tFwd, 2)*tFwd*(cx1+dx) + 3*(1-tFwd)*tFwd*tFwd*(cx2+dx) + tFwd*tFwd*tFwd*lx2;
+    const fwdY = Math.pow(1-tFwd, 3)*ly1 + 3*Math.pow(1-tFwd, 2)*tFwd*(cy1+dy) + 3*(1-tFwd)*tFwd*tFwd*(cy2+dy) + tFwd*tFwd*tFwd*ly2;
+
+    const tRev = 0.22;
+    const revX = Math.pow(1-tRev, 3)*lx1 + 3*Math.pow(1-tRev, 2)*tRev*(cx1+dx) + 3*(1-tRev)*tRev*tRev*(cx2+dx) + tRev*tRev*tRev*lx2;
+    const revY = Math.pow(1-tRev, 3)*ly1 + 3*Math.pow(1-tRev, 2)*tRev*(cy1+dy) + 3*(1-tRev)*tRev*tRev*(cy2+dy) + tRev*tRev*tRev*ly2;
 
     const markerId = isHov ? 'arch-arr-blue' : isPlanned ? 'arch-arr-orange' : 'arch-arr-gray';
 
     let labelTxt = fmts;
     if (!labelTxt && isPlugin) labelTxt = 'Plug-in';
-    const isFile = edgeData && edgeData.types ? edgeData.types.has('file') : false;
-    if (labelTxt) {
-      if (isPlugin) labelTxt = '🔌 ' + labelTxt;
-      else if (isFile) labelTxt = '📄 ' + labelTxt;
-    }
     const badgeW = labelTxt ? labelTxt.length * 6.5 + 12 : 0;
+    const revBadgeW = revFmts ? revFmts.length * 6.5 + 12 : 0;
+
     const badgeFill = isPlugin ? '#faf5ff' : isPlanned ? '#fffbeb' : isHov ? '#eff6ff' : '#f1f5f9';
     const badgeStroke = isPlugin ? '#9333ea' : isPlanned ? '#d97706' : color;
     const badgeTextFill = isPlugin ? '#6b21a8' : isPlanned ? '#b45309' : isHov ? '#1d4ed8' : '#475569';
     const lineOpacity = hoveredTool ? (isHov ? 1 : 0.12) : 0.55;
 
     return (
-      <g key={key}>
-        <path d={`M ${lx1} ${ly1} C ${cx1} ${cy1}, ${cx2} ${cy2}, ${lx2} ${ly2}`}
-          fill="none" stroke={color} strokeWidth={isHov ? 2.2 : 1.5}
+      <g key={key} onClick={(e) => { e.stopPropagation(); setSelectedEdge(selectedEdge === key ? null : key); }}>
+        <path d={pathD}
+          fill="none" stroke={color} strokeWidth={isHov ? 2.5 : 1.5}
           strokeDasharray={isPlanned ? '6,4' : undefined}
           strokeOpacity={lineOpacity}
           markerEnd={`url(#${markerId})`}
-          style={{ transition: 'stroke 0.2s ease, stroke-opacity 0.2s ease, stroke-width 0.2s ease' }} />
+          markerStart={isBidi ? `url(#${markerId})` : undefined}
+          style={{ transition: 'stroke 0.2s ease, stroke-opacity 0.2s ease, stroke-width 0.2s ease', cursor: 'pointer' }} />
+
         <circle cx={lx1} cy={ly1} r={isHov ? 5 : 3.5} fill={color} stroke="#ffffff" strokeWidth={1}
-          style={{ cursor: 'pointer', opacity: lineOpacity, transition: 'all 0.15s ease' }}
+          style={{ cursor: 'pointer', opacity: lineOpacity }}
           onMouseDown={(e) => e.stopPropagation()}
           onClick={(e) => { e.stopPropagation(); togglePortSide(key, 'from', fromSide); }}
-          title={`Click to switch source port to ${fromSide === 'left' ? 'Right' : 'Left'} side`} />
+          title={`Click to switch source port (${fromSide})`} />
+
         <circle cx={lx2} cy={ly2} r={isHov ? 5 : 3.5} fill={color} stroke="#ffffff" strokeWidth={1}
-          style={{ cursor: 'pointer', opacity: lineOpacity, transition: 'all 0.15s ease' }}
+          style={{ cursor: 'pointer', opacity: lineOpacity }}
           onMouseDown={(e) => e.stopPropagation()}
           onClick={(e) => { e.stopPropagation(); togglePortSide(key, 'to', toSide); }}
-          title={`Click to switch target port to ${toSide === 'left' ? 'Right' : 'Left'} side`} />
+          title={`Click to switch target port (${toSide})`} />
+
         {labelTxt && (
-          <g transform={`translate(${midX}, ${midY - 10})`}
-            style={{ cursor: 'pointer', opacity: hoveredTool ? (isHov ? 1 : 0.2) : 0.85, transition: 'opacity 0.2s ease' }}
+          <g transform={`translate(${fwdX}, ${fwdY})`}
+            style={{ cursor: 'pointer', opacity: lineOpacity }}
             onMouseDown={(e) => e.stopPropagation()}
-            onClick={(e) => { e.stopPropagation(); togglePortSide(key, 'from', fromSide); togglePortSide(key, 'to', toSide); }}
-            title="Click label to swap connection sides">
-            <rect x={-badgeW / 2} y={-8} width={badgeW} height={16} rx={4}
+            onClick={(e) => { e.stopPropagation(); setSelectedEdge(key); }}>
+            <rect x={-badgeW / 2} y={-9} width={badgeW} height={18} rx={5}
               fill={badgeFill} stroke={badgeStroke} strokeWidth={1} />
-            <text textAnchor="middle" y={4} fontSize="9px" fontWeight="600" fill={badgeTextFill}
+            <text textAnchor="middle" y={4} fontSize="9.5px" fontWeight="700" fill={badgeTextFill}
               style={{ pointerEvents: 'none', userSelect: 'none' }}>{labelTxt}</text>
+          </g>
+        )}
+
+        {isBidi && revFmts && (
+          <g transform={`translate(${revX}, ${revY})`}
+            style={{ cursor: 'pointer', opacity: lineOpacity }}
+            onMouseDown={(e) => e.stopPropagation()}
+            onClick={(e) => { e.stopPropagation(); setSelectedEdge(key); }}>
+            <rect x={-revBadgeW / 2} y={-9} width={revBadgeW} height={18} rx={5}
+              fill={badgeFill} stroke={badgeStroke} strokeWidth={1} />
+            <text textAnchor="middle" y={4} fontSize="9.5px" fontWeight="700" fill={badgeTextFill}
+              style={{ pointerEvents: 'none', userSelect: 'none' }}>{revFmts}</text>
+          </g>
+        )}
+
+        {selectedEdge === key && (
+          <g>
+            <circle cx={midX} cy={midY} r={6} fill="#2563eb" stroke="#ffffff" strokeWidth={2}
+              style={{ cursor: 'move' }}
+              onMouseDown={(e) => {
+                e.stopPropagation();
+                setDraggingHandle({ key, startX: e.clientX, startY: e.clientY, startDx: dx, startDy: dy });
+              }}
+              title="Drag to adjust arrow curve" />
+
+            <foreignObject x={midX - 110} y={midY - 45} width={220} height={32} style={{ overflow: 'visible' }}>
+              <div style={{ display: 'flex', gap: '4px', background: '#1e293b', padding: '4px 6px', borderRadius: '8px', boxShadow: '0 4px 12px rgba(0,0,0,0.25)', alignItems: 'center', justifyContent: 'center' }}
+                onMouseDown={(e) => e.stopPropagation()}>
+                {['curve', 'straight', 'elbow'].map((st) => (
+                  <button key={st} type="button"
+                    style={{ background: style === st ? '#2563eb' : 'transparent', color: '#fff', border: 'none', borderRadius: '4px', padding: '2px 6px', fontSize: '10px', fontWeight: '600', cursor: 'pointer', textTransform: 'capitalize' }}
+                    onClick={() => updateEdgeConfig(key, { style: st })}>
+                    {st}
+                  </button>
+                ))}
+                <div style={{ width: '1px', height: '14px', background: '#475569', margin: '0 2px' }} />
+                <button type="button"
+                  style={{ background: '#334155', color: '#cbd5e1', border: 'none', borderRadius: '4px', padding: '2px 5px', fontSize: '10px', cursor: 'pointer' }}
+                  onClick={() => updateEdgeConfig(key, { dx: 0, dy: 0 })}
+                  title="Reset curve offset">
+                  Reset
+                </button>
+              </div>
+            </foreignObject>
           </g>
         )}
       </g>
@@ -551,7 +649,7 @@ const ArchitectureView = ({ activity, filters, toolNotes, onToolNoteChange, onTo
 
       <svg ref={svgRef} width={maxX} height={maxY}
         style={{ display: 'block', userSelect: 'none', cursor: draggingTool ? 'grabbing' : isPanning ? 'grabbing' : 'grab', width: '100%', height: '100%' }}
-        viewBox={`${-pan.x / zoom} ${-pan.y / zoom} ${maxX / zoom} ${maxY / zoom}`}
+        viewBox={`${-pan.x / (zoom && !isNaN(zoom) && zoom > 0 ? zoom : 1)} ${-pan.y / (zoom && !isNaN(zoom) && zoom > 0 ? zoom : 1)} ${maxX / (zoom && !isNaN(zoom) && zoom > 0 ? zoom : 1)} ${maxY / (zoom && !isNaN(zoom) && zoom > 0 ? zoom : 1)}`}
         onMouseDown={handleSvgMouseDown} onMouseMove={handleSvgMouseMove}
         onMouseUp={handleSvgMouseUp} onMouseLeave={handleSvgMouseUp}>
 
@@ -980,7 +1078,7 @@ const WorkflowCanvas = ({ activity, filters, toolNotes, onToolNoteChange, onFilt
 
       <svg ref={svgRef} width={svgWidth} height={svgHeight}
         style={{ background: '#f8f9fb', display: 'block', userSelect: 'none', cursor: isPanning ? 'grabbing' : 'grab', width: '100%', height: '100%' }}
-        viewBox={`${-pan.x / zoom} ${-pan.y / zoom} ${svgWidth / zoom} ${svgHeight / zoom}`}
+        viewBox={`${-pan.x / (zoom && !isNaN(zoom) && zoom > 0 ? zoom : 1)} ${-pan.y / (zoom && !isNaN(zoom) && zoom > 0 ? zoom : 1)} ${svgWidth / (zoom && !isNaN(zoom) && zoom > 0 ? zoom : 1)} ${svgHeight / (zoom && !isNaN(zoom) && zoom > 0 ? zoom : 1)}`}
         onMouseMove={handleSvgMouseMove} onMouseUp={handleSvgMouseUp}
         onMouseLeave={handleSvgMouseLeave} onMouseDown={handleSvgMouseDown}>
 

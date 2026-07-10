@@ -756,6 +756,10 @@ const VIEWER_JS = `
       var localSaved = JSON.parse(localStorage.getItem('viewer_arch_pos_' + activity.id) || 'null');
       if (localSaved) Object.assign(pos, localSaved);
     } catch(e) {}
+    var savedEdgeSides = {};
+    if (options && options.edgeSides && options.edgeSides[activity.id]) {
+      Object.assign(savedEdgeSides, options.edgeSides[activity.id]);
+    }
     var edges = layout.edges;
     var edgeFormats = computeToolEdgeFormats(tasks);
     var toolResps = {};
@@ -797,16 +801,29 @@ const VIEWER_JS = `
     };
 
     var edgePorts = {};
+    function getSide(e, end) {
+      var k = e.from + '→' + e.to;
+      if (savedEdgeSides[k] && savedEdgeSides[k][end]) return savedEdgeSides[k][end];
+      var pf = pos[e.from], pt = pos[e.to];
+      if (!pf || !pt) return end === 'from' ? 'right' : 'left';
+      return end === 'from' ? (pf.x > pt.x ? 'left' : 'right') : (pf.x > pt.x ? 'right' : 'left');
+    }
+
     tools.forEach(function(tool) {
       var p = pos[tool];
       if (!p) return;
-      var sides = { left: { in: [], out: [] }, right: { in: [], out: [] } };
+      var sides = { left: { in: [], out: [] }, right: { in: [], out: [] }, top: { in: [], out: [] }, bottom: { in: [], out: [] } };
       allEdges.forEach(function(e) {
-        if (e.from === tool) sides[getSide(e, 'from')].out.push(e);
-        if (e.to === tool) sides[getSide(e, 'to')].in.push(e);
+        if (e.from === tool) {
+          var s = getSide(e, 'from');
+          if (sides[s]) sides[s].out.push(e);
+        }
+        if (e.to === tool) {
+          var s = getSide(e, 'to');
+          if (sides[s]) sides[s].in.push(e);
+        }
       });
-      ['left', 'right'].forEach(function(sName) {
-        var xCoord = sName === 'left' ? p.x : p.x + ARCH_BOX_W;
+      ['left', 'right', 'top', 'bottom'].forEach(function(sName) {
         var inList = sides[sName].in;
         inList.sort(function(a, b) {
           var ta = pos[a.from], tb = pos[b.from];
@@ -815,12 +832,13 @@ const VIEWER_JS = `
         inList.forEach(function(e, idx) {
           var key = e.from + '→' + e.to;
           if (!edgePorts[key]) edgePorts[key] = {};
-          edgePorts[key].lx2 = xCoord;
           edgePorts[key].toSide = sName;
-          if (inList.length === 1) edgePorts[key].ly2 = p.y + 27;
-          else {
-            var top = p.y + 14, bottom = p.y + 40;
-            edgePorts[key].ly2 = top + idx * ((bottom - top) / (inList.length - 1));
+          if (sName === 'left' || sName === 'right') {
+            edgePorts[key].lx2 = sName === 'left' ? p.x : p.x + ARCH_BOX_W;
+            edgePorts[key].ly2 = inList.length === 1 ? p.y + 27 : p.y + 14 + idx * (26 / (inList.length - 1));
+          } else {
+            edgePorts[key].ly2 = sName === 'top' ? p.y : p.y + ARCH_BOX_H;
+            edgePorts[key].lx2 = inList.length === 1 ? p.x + ARCH_BOX_W / 2 : p.x + 24 + idx * ((ARCH_BOX_W - 48) / (inList.length - 1));
           }
         });
         var outList = sides[sName].out;
@@ -831,12 +849,13 @@ const VIEWER_JS = `
         outList.forEach(function(e, idx) {
           var key = e.from + '→' + e.to;
           if (!edgePorts[key]) edgePorts[key] = {};
-          edgePorts[key].lx1 = xCoord;
           edgePorts[key].fromSide = sName;
-          if (outList.length === 1) edgePorts[key].ly1 = p.y + 63;
-          else {
-            var top = p.y + 50, bottom = p.y + 76;
-            edgePorts[key].ly1 = top + idx * ((bottom - top) / (outList.length - 1));
+          if (sName === 'left' || sName === 'right') {
+            edgePorts[key].lx1 = sName === 'left' ? p.x : p.x + ARCH_BOX_W;
+            edgePorts[key].ly1 = outList.length === 1 ? p.y + 63 : p.y + 50 + idx * (26 / (outList.length - 1));
+          } else {
+            edgePorts[key].ly1 = sName === 'top' ? p.y : p.y + ARCH_BOX_H;
+            edgePorts[key].lx1 = outList.length === 1 ? p.x + ARCH_BOX_W / 2 : p.x + 24 + idx * ((ARCH_BOX_W - 48) / (outList.length - 1));
           }
         });
       });
@@ -846,9 +865,18 @@ const VIEWER_JS = `
       (edges[from] || new Set()).forEach(function(to) {
         var f = pos[from], t = pos[to];
         if (!f || !t) return;
+        var isBidi = edges[to] && edges[to].has(from);
+        if (isBidi && from > to) return;
+
         var key = from + '→' + to;
+        var revKey = to + '→' + from;
+        var edgeConfig = savedEdgeSides[key] || {};
+
         var edgeData = edgeFormats[key];
         var fmts = edgeData && edgeData.formats ? Array.from(edgeData.formats).join(', ') : '';
+        var revEdgeData = isBidi ? edgeFormats[revKey] : null;
+        var revFmts = revEdgeData && revEdgeData.formats ? Array.from(revEdgeData.formats).join(', ') : '';
+
         var isPlanned = edgeData && edgeData.statuses ? edgeData.statuses.has('plan') : false;
         var isPlugin = edgeData && edgeData.types ? edgeData.types.has('plugin') : false;
         var strokeColor = isPlanned ? '#d97706' : '#64748b';
@@ -857,33 +885,62 @@ const VIEWER_JS = `
 
         var labelTxt = fmts;
         if (!labelTxt && isPlugin) labelTxt = 'Plug-in';
-        var isFile = edgeData && edgeData.types ? edgeData.types.has('file') : false;
-        if (labelTxt) {
-          if (isPlugin) labelTxt = '🔌 ' + labelTxt;
-          else if (isFile) labelTxt = '📄 ' + labelTxt;
-        }
         var badgeW = labelTxt ? labelTxt.length * 6.5 + 12 : 0;
+        var revBadgeW = revFmts ? revFmts.length * 6.5 + 12 : 0;
+
         var badgeFill = isPlugin ? '#faf5ff' : isPlanned ? '#fffbeb' : '#f1f5f9';
         var badgeStroke = isPlugin ? '#9333ea' : isPlanned ? '#d97706' : '#64748b';
         var badgeTextFill = isPlugin ? '#6b21a8' : isPlanned ? '#b45309' : '#475569';
 
-        var port = edgePorts[key] || { lx1: f.x + ARCH_BOX_W, ly1: f.y + 63, lx2: t.x, ly2: t.y + 27, fromSide: 'right', toSide: 'left' };
-        var lx1 = port.lx1, ly1 = port.ly1, lx2 = port.lx2, ly2 = port.ly2;
+        var port = edgePorts[key] || {};
+        var lx1 = port.lx1 !== undefined ? port.lx1 : f.x + ARCH_BOX_W;
+        var ly1 = port.ly1 !== undefined ? port.ly1 : f.y + 63;
+        var lx2 = port.lx2 !== undefined ? port.lx2 : t.x;
+        var ly2 = port.ly2 !== undefined ? port.ly2 : t.y + 27;
         var fromSide = port.fromSide || 'right', toSide = port.toSide || 'left';
+
         var dist = Math.max(40, Math.min(Math.abs(lx2 - lx1) * 0.45, 140));
-        var cx1 = lx1 + (fromSide === 'right' ? dist : -dist), cy1 = ly1;
-        var cx2 = lx2 + (toSide === 'right' ? dist : -dist), cy2 = ly2;
-        var midX = 0.125 * lx1 + 0.375 * cx1 + 0.375 * cx2 + 0.125 * lx2;
-        var midY = 0.125 * ly1 + 0.375 * cy1 + 0.375 * cy2 + 0.125 * ly2;
+        var cx1 = lx1 + (fromSide === 'right' ? dist : fromSide === 'left' ? -dist : 0);
+        var cy1 = ly1 + (fromSide === 'bottom' ? dist : fromSide === 'top' ? -dist : 0);
+        var cx2 = lx2 + (toSide === 'right' ? dist : toSide === 'left' ? -dist : 0);
+        var cy2 = ly2 + (toSide === 'bottom' ? dist : toSide === 'top' ? -dist : 0);
+
+        var style = edgeConfig.style || 'curve';
+        var dx = edgeConfig.dx || 0;
+        var dy = edgeConfig.dy || 0;
+
+        var pathD = '';
+        if (style === 'straight') {
+          pathD = 'M ' + lx1 + ' ' + ly1 + ' Q ' + ((lx1 + lx2)/2 + dx) + ' ' + ((ly1 + ly2)/2 + dy) + ' ' + lx2 + ' ' + ly2;
+        } else if (style === 'elbow') {
+          var midElbowX = (lx1 + lx2) / 2 + dx;
+          pathD = 'M ' + lx1 + ' ' + ly1 + ' H ' + midElbowX + ' V ' + (ly2 + dy) + ' H ' + lx2;
+        } else {
+          pathD = 'M ' + lx1 + ' ' + ly1 + ' C ' + (cx1 + dx) + ' ' + (cy1 + dy) + ', ' + (cx2 + dx) + ' ' + (cy2 + dy) + ', ' + lx2 + ' ' + ly2;
+        }
+
+        var tFwd = 0.78;
+        var fwdX = Math.pow(1-tFwd, 3)*lx1 + 3*Math.pow(1-tFwd, 2)*tFwd*(cx1+dx) + 3*(1-tFwd)*tFwd*tFwd*(cx2+dx) + tFwd*tFwd*tFwd*lx2;
+        var fwdY = Math.pow(1-tFwd, 3)*ly1 + 3*Math.pow(1-tFwd, 2)*tFwd*(cy1+dy) + 3*(1-tFwd)*tFwd*tFwd*(cy2+dy) + tFwd*tFwd*tFwd*ly2;
+
+        var tRev = 0.22;
+        var revX = Math.pow(1-tRev, 3)*lx1 + 3*Math.pow(1-tRev, 2)*tRev*(cx1+dx) + 3*(1-tRev)*tRev*tRev*(cx2+dx) + tRev*tRev*tRev*lx2;
+        var revY = Math.pow(1-tRev, 3)*ly1 + 3*Math.pow(1-tRev, 2)*tRev*(cy1+dy) + 3*(1-tRev)*tRev*tRev*(cy2+dy) + tRev*tRev*tRev*ly2;
 
         svg += '<g class="arch-edge" data-from="' + escapeHtml(from) + '" data-to="' + escapeHtml(to) + '">';
-        svg += '<path d="M ' + lx1 + ' ' + ly1 + ' C ' + cx1 + ' ' + cy1 + ', ' + cx2 + ' ' + cy2 + ', ' + lx2 + ' ' + ly2 + '" fill="none" stroke="' + strokeColor + '" stroke-width="1.5"' + dashAttr + ' stroke-opacity="0.55" marker-end="url(#' + markerId + ')" style="transition:all 0.2s ease"/>';
+        svg += '<path d="' + pathD + '" fill="none" stroke="' + strokeColor + '" stroke-width="1.5"' + dashAttr + ' stroke-opacity="0.55" marker-end="url(#' + markerId + ')"' + (isBidi ? ' marker-start="url(#' + markerId + ')"' : '') + ' style="transition:all 0.2s ease"/>';
         svg += '<circle cx="' + lx1 + '" cy="' + ly1 + '" r="2.5" fill="' + strokeColor + '" stroke="#ffffff" stroke-width="0.5" stroke-opacity="0.55"/>';
         svg += '<circle cx="' + lx2 + '" cy="' + ly2 + '" r="2.5" fill="' + strokeColor + '" stroke="#ffffff" stroke-width="0.5" stroke-opacity="0.55"/>';
         if (labelTxt) {
-          svg += '<g transform="translate(' + midX + ', ' + (midY - 10) + ')" style="opacity:0.85;transition:opacity 0.2s ease">';
+          svg += '<g transform="translate(' + fwdX + ', ' + fwdY + ')" style="opacity:0.85;transition:opacity 0.2s ease">';
           svg += '<rect x="' + (-badgeW / 2) + '" y="-8" width="' + badgeW + '" height="16" rx="4" fill="' + badgeFill + '" stroke="' + badgeStroke + '" stroke-width="1"/>';
           svg += '<text x="0" y="4" text-anchor="middle" font-size="9px" font-weight="600" fill="' + badgeTextFill + '">' + escapeHtml(labelTxt) + '</text>';
+          svg += '</g>';
+        }
+        if (isBidi && revFmts) {
+          svg += '<g transform="translate(' + revX + ', ' + revY + ')" style="opacity:0.85;transition:opacity 0.2s ease">';
+          svg += '<rect x="' + (-revBadgeW / 2) + '" y="-8" width="' + revBadgeW + '" height="16" rx="4" fill="' + badgeFill + '" stroke="' + badgeStroke + '" stroke-width="1"/>';
+          svg += '<text x="0" y="4" text-anchor="middle" font-size="9px" font-weight="600" fill="' + badgeTextFill + '">' + escapeHtml(revFmts) + '</text>';
           svg += '</g>';
         }
         svg += '</g>';

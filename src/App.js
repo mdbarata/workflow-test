@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useCallback } from 'react';
 import './App.css';
 import defaultData from './data/workflow.json';
 import WorkflowCanvas from './components/WorkflowCanvas';
@@ -120,7 +120,7 @@ const App = () => {
   const activities = workflowData.activities || [];
   const activity = activities[activeActivityIndex];
 
-  const handleDocPositionsChange = (activityId, positions) => {
+  const handleDocPositionsChange = useCallback((activityId, positions) => {
     setDocPositions((prev) => {
       if (!positions) {
         const next = { ...prev };
@@ -129,9 +129,9 @@ const App = () => {
       }
       return { ...prev, [activityId]: positions };
     });
-  };
+  }, []);
 
-  const handleArchPositionsChange = (activityId, positions) => {
+  const handleArchPositionsChange = useCallback((activityId, positions) => {
     setArchPositions((prev) => {
       if (!positions) {
         const next = { ...prev };
@@ -140,9 +140,9 @@ const App = () => {
       }
       return { ...prev, [activityId]: positions };
     });
-  };
+  }, []);
 
-  const handleEdgeSidesChange = (activityId, sides) => {
+  const handleEdgeSidesChange = useCallback((activityId, sides) => {
     setEdgeSides((prev) => {
       if (!sides) {
         const next = { ...prev };
@@ -151,7 +151,7 @@ const App = () => {
       }
       return { ...prev, [activityId]: sides };
     });
-  };
+  }, []);
 
   const handleResetSession = () => {
     if (!window.confirm('Clear saved layout, notes, and loaded data? This cannot be undone.')) return;
