@@ -270,11 +270,25 @@ const ArchitectureView = ({ activity, filters, toolNotes, onToolNoteChange, onTo
     updateEdgeConfig(key, { [end]: nextSide });
   }, [updateEdgeConfig]);
 
-  const visibleTasks = useMemo(() => tasks.filter((t) => {
-    const byResp = filters.responsibles.length === 0 || filters.responsibles.includes(t.responsible);
-    const byTool = filters.tools.length === 0 || filters.tools.includes(t.tool);
+  // Two-stage filter so chapter filtering is always recomputed when either
+  // filters.chapters or activity.chapters changes (avoids stale-closure issues
+  // with a single merged useMemo).
+  const visibleTasksByFilter = useMemo(() => tasks.filter((t) => {
+    const byResp = (filters.responsibles || []).length === 0 || (filters.responsibles || []).includes(t.responsible);
+    const byTool = (filters.tools || []).length === 0 || (filters.tools || []).includes(t.tool);
     return byResp && byTool;
-  }), [tasks, filters]);
+  }), [tasks, filters.responsibles, filters.tools]);
+
+  const visibleTasks = useMemo(() => {
+    const activeChapters = filters.chapters || [];
+    if (activeChapters.length === 0) return visibleTasksByFilter;
+    const chapters = activity.chapters || [];
+    const selectedChapters = chapters.filter((c) => activeChapters.includes(c.id));
+    if (selectedChapters.length === 0) return [];
+    return visibleTasksByFilter.filter((t) =>
+      selectedChapters.some((c) => (c.tasks || []).includes(t.id))
+    );
+  }, [visibleTasksByFilter, filters.chapters, activity.chapters]);
 
   const visibleTools = useMemo(() => { const s = new Set(visibleTasks.map((t) => t.tool)); return tools.filter((t) => s.has(t)); }, [tools, visibleTasks]);
   const { pos: autoPos, edges } = useMemo(() => computeToolLayout(visibleTools, visibleTasks), [visibleTools, visibleTasks]);
@@ -984,11 +998,25 @@ const WorkflowCanvas = ({ activity, filters, toolNotes, onToolNoteChange, onFilt
     setDragging({ id: docId, offsetX: mouseDocX - pos.x, offsetY: mouseDocY - pos.y });
   }, [docPositions]);
 
-  const visibleTasks = useMemo(() => tasks.filter((t) => {
-    const byResp = filters.responsibles.length === 0 || filters.responsibles.includes(t.responsible);
-    const byTool = filters.tools.length === 0 || filters.tools.includes(t.tool);
+  // Two-stage filter so chapter filtering is always recomputed when either
+  // filters.chapters or activity.chapters changes (avoids stale-closure issues
+  // with a single merged useMemo).
+  const visibleTasksByFilter = useMemo(() => tasks.filter((t) => {
+    const byResp = (filters.responsibles || []).length === 0 || (filters.responsibles || []).includes(t.responsible);
+    const byTool = (filters.tools || []).length === 0 || (filters.tools || []).includes(t.tool);
     return byResp && byTool;
-  }), [tasks, filters]);
+  }), [tasks, filters.responsibles, filters.tools]);
+
+  const visibleTasks = useMemo(() => {
+    const activeChapters = filters.chapters || [];
+    if (activeChapters.length === 0) return visibleTasksByFilter;
+    const chapters = activity.chapters || [];
+    const selectedChapters = chapters.filter((c) => activeChapters.includes(c.id));
+    if (selectedChapters.length === 0) return [];
+    return visibleTasksByFilter.filter((t) =>
+      selectedChapters.some((c) => (c.tasks || []).includes(t.id))
+    );
+  }, [visibleTasksByFilter, filters.chapters, activity.chapters]);
 
   const visibleTools = useMemo(() => { const s = new Set(visibleTasks.map((t) => t.tool)); return tools.filter((tool) => s.has(tool)); }, [tools, visibleTasks]);
   const visibleDocIds = useMemo(() => { const s = new Set(); visibleTasks.forEach((t) => { (t.inputs || []).forEach((id) => s.add(id)); (t.outputs || []).forEach((id) => s.add(id)); }); return s; }, [visibleTasks]);
@@ -1031,7 +1059,7 @@ const WorkflowCanvas = ({ activity, filters, toolNotes, onToolNoteChange, onFilt
   let openNoteToolY = 0;
   for (let i = 0; i < openNoteToolIndex; i++) openNoteToolY += getToolHeight(visibleTools[i], collapsedTools, visibleTasks) + LANE_GAP;
 
-  const handleToolClick = useCallback((tool) => { onFilterChange({ responsibles: [], tools: [tool] }); setView('timeline'); }, [onFilterChange]);
+  const handleToolClick = useCallback((tool) => { onFilterChange((prev) => ({ ...(typeof prev === 'object' ? prev : {}), responsibles: [], tools: [tool] })); setView('timeline'); }, [onFilterChange]);
 
   if (view === 'arch') {
     return (
@@ -1059,7 +1087,7 @@ const WorkflowCanvas = ({ activity, filters, toolNotes, onToolNoteChange, onFilt
 
   return (
     <div className="canvas-wrapper" ref={wrapperRef} style={{ position: 'relative', overflow: 'hidden', width: '100%', height: '100%' }}>
-      <button onClick={() => { onFilterChange({ responsibles: [], tools: [] }); setView('arch'); }}
+      <button onClick={() => { onFilterChange((prev) => ({ ...(typeof prev === 'object' ? prev : {}), responsibles: [], tools: [] })); setView('arch'); }}
         style={{ position: 'absolute', top: 12, left: 12, zIndex: 100, padding: '8px 14px', background: '#1e40af', color: '#ffffff', border: 'none', borderRadius: 6, cursor: 'pointer', fontSize: 12, fontWeight: 600, boxShadow: '0 2px 8px rgba(0,0,0,0.15)' }}>
         ⬡ Architecture view
       </button>

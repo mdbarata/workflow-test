@@ -4,6 +4,7 @@ import defaultData from './data/workflow.json';
 import WorkflowCanvas from './components/WorkflowCanvas';
 import FilterBar from './components/FilterBar';
 import TaskEditor from './components/TaskEditor';
+import ChapterEditor from './components/ChapterEditor';
 import ActivityLinksView from './components/ActivityLinksView';
 import { loadAppState, clearAppState, useAutoSave } from './useWorkflowPersistence';
 import FeedbackViewerModal from './components/FeedbackViewerModal';
@@ -98,9 +99,10 @@ const App = () => {
 
   const [workflowData, setWorkflowData] = useState(saved?.workflowData || defaultData);
   const [activeActivityIndex, setActiveActivityIndex] = useState(saved?.activeActivityIndex || 0);
-  const [filters, setFilters] = useState(saved?.filters || { responsibles: [], tools: [] });
+  const [filters, setFilters] = useState(saved?.filters || { responsibles: [], tools: [], chapters: [] });
   const [searchQuery, setSearchQuery] = useState('');
   const [showEditor, setShowEditor] = useState(false);
+  const [showChapterEditor, setShowChapterEditor] = useState(false);
   const [showToolNotes, setShowToolNotes] = useState(false);
   const [showLinks, setShowLinks] = useState(saved?.showLinks || false);
   // toolNotes: { [toolName]: string } — shared across all activities
@@ -158,13 +160,25 @@ const App = () => {
     clearAppState();
     setWorkflowData(defaultData);
     setActiveActivityIndex(0);
-    setFilters({ responsibles: [], tools: [] });
+    setFilters({ responsibles: [], tools: [], chapters: [] });
     setShowLinks(false);
     setToolNotes({});
     setDocPositions({});
     setArchPositions({});
     setEdgeSides({});
     setFeedbackItems([]);
+  };
+
+  // Save chapters for the current activity into workflowData
+  const handleSaveChapters = (chapters) => {
+    setWorkflowData((prev) => ({
+      ...prev,
+      activities: prev.activities.map((act, i) =>
+        i === activeActivityIndex ? { ...act, chapters } : act
+      ),
+    }));
+    // Reset chapter filter so user sees full diagram first
+    setFilters((f) => ({ ...f, chapters: [] }));
   };
 
   const handleSave = (newData, activityIdMap) => {
@@ -215,7 +229,7 @@ const App = () => {
     }
     setWorkflowData(newData);
     setActiveActivityIndex(0);
-    setFilters({ responsibles: [], tools: [] });
+    setFilters({ responsibles: [], tools: [], chapters: [] });
   };
 
   const handleToolNoteChange = (tool, text) => {
@@ -274,6 +288,7 @@ const App = () => {
           onChange={setFilters}
           onImport={() => setShowEditor(true)}
           onToolNotes={() => setShowToolNotes(true)}
+          onChapters={() => setShowChapterEditor(true)}
           searchQuery={searchQuery}
           onSearchChange={setSearchQuery}
         />
@@ -309,6 +324,14 @@ const App = () => {
           workflowData={workflowData}
           onSave={handleSave}
           onClose={() => setShowEditor(false)}
+        />
+      )}
+
+      {showChapterEditor && (
+        <ChapterEditor
+          activity={activity}
+          onSave={handleSaveChapters}
+          onClose={() => setShowChapterEditor(false)}
         />
       )}
 

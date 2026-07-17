@@ -63,7 +63,9 @@ const computeStartTimes = (rows) => {
 };
 
 // ── Convert flat rows → workflow.json ────────────────────────────────────────
-const rowsToWorkflow = (rows) => {
+// Pass originalData to preserve per-activity metadata (chapters, etc.) that
+// TaskEditor does not edit — so they aren't dropped when the user saves.
+const rowsToWorkflow = (rows, originalData) => {
   const activitiesMap = {};
   const respColorMap = {};
   let presetIdx = 0;
@@ -88,6 +90,12 @@ const rowsToWorkflow = (rows) => {
     splitList(r.outputs).forEach((name) => { const id = slugify(name); if (!act.docsSet[id]) act.docsSet[id] = { id, name, type: 'output' }; });
   });
 
+  // Build a lookup of original activities by id so we can preserve metadata
+  const originalActivitiesById = {};
+  if (originalData && originalData.activities) {
+    originalData.activities.forEach((a) => { originalActivitiesById[a.id] = a; });
+  }
+
   const activities = Object.values(activitiesMap).map((act) => {
     const startTimes = computeStartTimes(act.rows);
     const tasks = act.rows.map((r) => ({
@@ -109,7 +117,11 @@ const rowsToWorkflow = (rows) => {
       inputs: splitList(r.inputs).map(slugify),
       outputs: splitList(r.outputs).map(slugify),
     }));
-    return { id: act.id, name: act.name, tools: [...act.toolsSet], responsibles: Object.values(act.responsiblesMap), documents: Object.values(act.docsSet), tasks };
+    const origAct = originalActivitiesById[act.id] || {};
+    const result = { id: act.id, name: act.name, tools: [...act.toolsSet], responsibles: Object.values(act.responsiblesMap), documents: Object.values(act.docsSet), tasks };
+    // Preserve chapters if they exist on the original activity
+    if (origAct.chapters && origAct.chapters.length > 0) result.chapters = origAct.chapters;
+    return result;
   });
 
   return { activities };
@@ -345,7 +357,7 @@ const TaskEditor = ({ workflowData, onSave, onClose }) => {
 
   const handleExport = () => {
     const withIds = rows.map((r, i) => ({ ...r, taskId: r.taskId.trim() || `task${i + 1}` }));
-    const data = JSON.stringify(rowsToWorkflow(withIds), null, 2);
+    const data = JSON.stringify(rowsToWorkflow(withIds, workflowData), null, 2);
     const a = document.createElement('a');
     a.href = 'data:application/json;charset=utf-8,' + encodeURIComponent(data);
     a.download = 'workflow.json';
@@ -357,7 +369,7 @@ const TaskEditor = ({ workflowData, onSave, onClose }) => {
     if (!filled.length) { setError('Add at least one task with a label.'); return; }
     if (filled.some((r) => !r.activity.trim())) { setError('Some tasks are missing a stage name.'); return; }
     const withIds = rows.map((r, i) => ({ ...r, taskId: r.taskId.trim() || `task${i + 1}` }));
-    onSave(rowsToWorkflow(withIds));
+    onSave(rowsToWorkflow(withIds, workflowData));
     onClose();
   };
 

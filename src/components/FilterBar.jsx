@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 
-const FilterBar = ({ activity, filters, onChange, onImport, onToolNotes, searchQuery, onSearchChange }) => {
+const FilterBar = ({ activity, filters, onChange, onImport, onToolNotes, onChapters, searchQuery, onSearchChange }) => {
   const { responsibles, tools } = activity;
 
   // Local state so typing is always instant (no React state round-trip stutter)
@@ -17,7 +17,7 @@ const FilterBar = ({ activity, filters, onChange, onImport, onToolNotes, searchQ
   };
 
   const toggle = (type, key) => {
-    const current = filters[type];
+    const current = filters[type] || [];
     const next = current.includes(key)
       ? current.filter((k) => k !== key)
       : [...current, key];
@@ -25,9 +25,9 @@ const FilterBar = ({ activity, filters, onChange, onImport, onToolNotes, searchQ
   };
 
   const clearAll = () =>
-    onChange({ responsibles: [], tools: [] });
+    onChange({ responsibles: [], tools: [], chapters: [] });
 
-  const hasFilters = filters.responsibles.length > 0 || filters.tools.length > 0;
+  const hasFilters = filters.responsibles.length > 0 || filters.tools.length > 0 || (filters.chapters || []).length > 0;
 
   return (
     <div className="filter-bar">
@@ -48,6 +48,32 @@ const FilterBar = ({ activity, filters, onChange, onImport, onToolNotes, searchQ
       </div>
 
       <div className="filter-divider" />
+
+      {/* CHAPTER filter section — only visible when chapters exist */}
+      {(activity.chapters || []).length > 0 && (
+        <>
+          <div className="filter-section">
+            <span className="filter-label">CHAPTER</span>
+            <div className="filter-chips">
+              {(activity.chapters || []).map((ch) => {
+                const active = (filters.chapters || []).includes(ch.id);
+                return (
+                  <button
+                    key={ch.id}
+                    className={`chip ${active ? 'chip-active chip-chapter-active' : 'chip-chapter'}`}
+                    onClick={() => toggle('chapters', ch.id)}
+                    title={ch.notes || ch.name}
+                  >
+                    <span className="chip-dot" style={{ backgroundColor: active ? '#7c3aed' : '#a78bfa' }} />
+                    {ch.name}
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+          <div className="filter-divider" />
+        </>
+      )}
 
       <div className="filter-section">
         <span className="filter-label">RESPONSIBLE</span>
@@ -109,6 +135,9 @@ const FilterBar = ({ activity, filters, onChange, onImport, onToolNotes, searchQ
 
       <button className="import-btn" style={{ marginRight: 6 }} onClick={onToolNotes}>
         ☰ Tool notes
+      </button>
+      <button className="import-btn" style={{ marginRight: 6, background: '#6d28d9' }} onClick={onChapters}>
+        📖 Chapters
       </button>
       <button className="import-btn" onClick={onImport}>
         ✎ Edit tasks
