@@ -18,13 +18,15 @@ const ToolNotesEditor = ({ tools, toolNotes, onChange, onClose }) => {
     if (!file) return;
     const reader = new FileReader();
     reader.onload = (ev) => {
-      const sections = ev.target.result.split(/\n---\n/);
+      // Normalize line endings to avoid issues with CRLF vs LF
+      const textContent = ev.target.result.replace(/\r\n/g, '\n');
+      const sections = textContent.split(/\n---\n/);
       const parsed = {};
       sections.forEach((section) => {
-        const match = section.match(/^##\s+(.+)\n([\s\S]*)/);
+        const match = section.trim().match(/^##\s+(.+)\n([\s\S]*)/);
         if (match) {
           const tool = match[1].trim();
-          const text = match[2].replace(/^\n/, '').replace(/\n$/, '').trim();
+          const text = match[2].trim();
           if (text && text !== '(no notes)') parsed[tool] = text;
         }
       });
@@ -246,24 +248,28 @@ const App = () => {
     );
   }
 
+  const isLinksViewActive = showLinks && activities.length > 1;
+
   return (
     <div className="workflow-d3-container">
       <div className="activity-tabs">
         {activities.length > 1 && activities.map((act, i) => (
           <button
             key={act.id}
-            className={`activity-tab ${!showLinks && i === activeActivityIndex ? 'active' : ''}`}
+            className={`activity-tab ${!isLinksViewActive && i === activeActivityIndex ? 'active' : ''}`}
             onClick={() => { setActiveActivityIndex(i); setFilters({ responsibles: [], tools: [] }); setShowLinks(false); setSearchQuery(''); }}
           >
             {act.name}
           </button>
         ))}
-        <button
-          className={`activity-tab ${showLinks ? 'active' : ''}`}
-          onClick={() => setShowLinks(true)}
-        >
-          Activity links
-        </button>
+        {activities.length > 1 && (
+          <button
+            className={`activity-tab ${isLinksViewActive ? 'active' : ''}`}
+            onClick={() => setShowLinks(true)}
+          >
+            Activity links
+          </button>
+        )}
         <button
           className="activity-tab"
           onClick={() => setShowFeedbackModal(true)}
@@ -281,7 +287,7 @@ const App = () => {
         </button>
       </div>
 
-      {!showLinks && (
+      {!isLinksViewActive && (
         <FilterBar
           activity={activity}
           filters={filters}
@@ -295,7 +301,7 @@ const App = () => {
       )}
 
       <div className="svg-container">
-        {showLinks ? (
+        {isLinksViewActive ? (
           <ActivityLinksView activities={activities} onEditTasks={() => setShowEditor(true)} />
         ) : (
           <WorkflowCanvas
