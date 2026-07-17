@@ -58,6 +58,8 @@ const STATIC_CSS = `
   .zoom-controls button { background: none; border: none; cursor: pointer; font-size: 16px; font-weight: 600; color: #64748b; width: 24px; height: 24px; }
   .zoom-controls span { font-size: 11px; color: #64748b; min-width: 38px; text-align: center; }
 
+
+
   /* Tooltip */
   .d3-tooltip { position: fixed; background: #1e293b; color: #fff; padding: 14px 16px; border-radius: 10px; font-size: 12px; box-shadow: 0 8px 24px rgba(0,0,0,.35); min-width: 260px; max-width: 380px; pointer-events: none; z-index: 1000; border: 1px solid rgba(255,255,255,.08); display: none; }
   .tooltip-header { display: flex; align-items: center; gap: 10px; margin-bottom: 10px; padding-bottom: 9px; border-bottom: 1px solid rgba(255,255,255,.12); font-size: 14px; font-weight: 700; }
@@ -152,6 +154,13 @@ const VIEWER_JS = `
   var DEFAULT_PAD_X = 8, DEFAULT_PAD_Y = 8, DEFAULT_TASK_GAP = 18, DEFAULT_LANE_GAP = 12;
   var COMPACT_PAD_X = 4, COMPACT_PAD_Y = 4, COMPACT_TASK_GAP = 8, COMPACT_LANE_GAP = 6;
   var isCompact = false;
+  var stretchFactor = 1.0;
+
+  // Load saved stretch factor
+  try {
+    var savedStretch = parseFloat(localStorage.getItem('viewer_stretch_factor'));
+    if (savedStretch && savedStretch >= 0.5 && savedStretch <= 4.0) stretchFactor = savedStretch;
+  } catch(e) {}
 
   // Load saved display preferences
   try {
@@ -172,6 +181,7 @@ const VIEWER_JS = `
   function saveDisplayPrefs() {
     try {
       localStorage.setItem('viewer_display_prefs', JSON.stringify({ fontSize: FONT_SIZE, compact: isCompact }));
+      localStorage.setItem('viewer_stretch_factor', String(stretchFactor));
     } catch(e) {}
   }
 
@@ -329,7 +339,7 @@ const VIEWER_JS = `
     var hostW = (hostEl && hostEl.clientWidth > 100) ? hostEl.clientWidth : (window.innerWidth || 1400);
     var availW = Math.max(800, hostW - MARGIN.left - MARGIN.right);
     var maxEnd = Math.max.apply(null, tasks.map(function(t) { return (t.startTime || 0) + (t.duration || 0); }).concat([100]));
-    currTimeScale = Math.max(1.15, availW / maxEnd);
+    currTimeScale = Math.max(1.15, (availW * stretchFactor) / maxEnd);
 
     var canvasWidth = Math.max(maxEnd * currTimeScale, availW);
     var canvasHeight = visibleTools.reduce(function(sum, tool) { return sum + getToolHeight(tool, visibleTasks, collapsedSet) + LANE_GAP; }, 0);
@@ -535,6 +545,8 @@ const VIEWER_JS = `
       zoom = Math.min(MAX_Z, Math.max(MIN_Z, zoom * (e.deltaY > 0 ? 0.9 : 1.1)));
       applyZoom();
     }, { passive: false });
+
+
 
     // Pan via drag
     var isPanning = false, panStartX = 0, panStartY = 0, scrollStartX = 0, scrollStartY = 0;
@@ -1781,6 +1793,29 @@ const VIEWER_JS = `
       reRenderActive();
     });
   }
+  var stretchSlider = document.getElementById('stretch-slider');
+  var stretchLabel = document.getElementById('stretch-label');
+  var stretchResetBtn = document.getElementById('stretch-reset');
+
+  if (stretchSlider) {
+    stretchSlider.value = Math.round(stretchFactor * 100);
+    if (stretchLabel) stretchLabel.textContent = Math.round(stretchFactor * 100) + '%';
+    stretchSlider.addEventListener('input', function() {
+      stretchFactor = parseInt(stretchSlider.value, 10) / 100;
+      if (stretchLabel) stretchLabel.textContent = Math.round(stretchFactor * 100) + '%';
+      saveDisplayPrefs();
+      reRenderActive();
+    });
+  }
+  if (stretchResetBtn) {
+    stretchResetBtn.addEventListener('click', function() {
+      stretchFactor = 1.0;
+      if (stretchSlider) stretchSlider.value = 100;
+      if (stretchLabel) stretchLabel.textContent = '100%';
+      saveDisplayPrefs();
+      reRenderActive();
+    });
+  }
 })();
 `;
 
@@ -1899,6 +1934,12 @@ function buildHtml(workflowData, options) {
       <input id="font-slider" type="range" min="8" max="24" value="11" title="Adjust task text size" />
       <span id="font-size-label" class="fc-value">11px</span>
       <button id="font-reset" type="button" class="fc-reset" title="Reset font size">↺</button>
+    </div>
+    <div class="font-controls" title="Adjust timeline width stretch">
+      <span class="fc-label" title="Timeline Width">Width</span>
+      <input id="stretch-slider" type="range" min="50" max="350" step="10" value="100" title="Adjust timeline width stretch" />
+      <span id="stretch-label" class="fc-value">100%</span>
+      <button id="stretch-reset" type="button" class="fc-reset" title="Reset timeline stretch">↺</button>
     </div>
     <button id="feedback-toggle-btn" class="feedback-topbtn" style="margin-left:auto;">
       💬 Leave Feedback <span id="feedback-count" class="feedback-count-badge" style="display:none;">0</span>

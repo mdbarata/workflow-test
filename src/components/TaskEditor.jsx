@@ -368,7 +368,7 @@ const TaskEditor = ({ workflowData, onSave, onClose }) => {
   };
 
   return (
-    <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.45)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 2000, backdropFilter: 'blur(3px)' }} onClick={onClose}>
+    <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.45)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 2000, backdropFilter: 'blur(3px)' }}>
       <div style={{ background: '#ffffff', borderRadius: 12, width: '96vw', maxWidth: 1300, maxHeight: '90vh', display: 'flex', flexDirection: 'column', boxShadow: '0 20px 60px rgba(0,0,0,0.3)', overflow: 'hidden' }} onClick={(e) => e.stopPropagation()}>
 
         {/* Header */}
@@ -524,7 +524,6 @@ const TaskEditor = ({ workflowData, onSave, onClose }) => {
             <button className="btn-secondary" onClick={handleExport}>↓ Export JSON</button>
           </div>
           <div style={{ display: 'flex', gap: 8 }}>
-            <button className="btn-secondary" onClick={onClose}>Cancel</button>
             <button className="btn-primary" onClick={handleSave}>Apply & view diagram</button>
           </div>
         </div>
