@@ -870,11 +870,7 @@ const WorkflowCanvas = ({ activity, filters, toolNotes, onToolNoteChange, onFilt
     setCollapsedTools((prev) => { const next = new Set(prev); next.has(tool) ? next.delete(tool) : next.add(tool); saveCollapsedTools(next); return next; });
   }, []);
 
-  const handleResetDocPositions = useCallback(() => {
-    const defaults = buildDefaultPositions(documents, tasks, tools, collapsedTools, canvasWidth);
-    setDocPositions(defaults);
-    if (onDocPositionsChange) onDocPositionsChange(null);
-  }, [documents, tasks, tools, collapsedTools, canvasWidth, onDocPositionsChange]);
+  // handleResetDocPositions is defined later, after visibleTasks/visibleTools/visibleCanvasWidth are available
 
   const handleWheel = useCallback((e) => {
     if (!e.ctrlKey && !e.metaKey) return;
@@ -1021,8 +1017,26 @@ const WorkflowCanvas = ({ activity, filters, toolNotes, onToolNoteChange, onFilt
   const visibleTools = useMemo(() => { const s = new Set(visibleTasks.map((t) => t.tool)); return tools.filter((tool) => s.has(tool)); }, [tools, visibleTasks]);
   const visibleDocIds = useMemo(() => { const s = new Set(); visibleTasks.forEach((t) => { (t.inputs || []).forEach((id) => s.add(id)); (t.outputs || []).forEach((id) => s.add(id)); }); return s; }, [visibleTasks]);
   const visibleDocuments = useMemo(() => documents.filter((d) => visibleDocIds.has(d.id)), [documents, visibleDocIds]);
+
+  // visibleCanvasWidth: horizontal extent of only the visible (filtered) tasks.
+  // This makes lane length shrink proportionally when a chapter filter is active.
+  const visibleCanvasWidth = useMemo(
+    () => visibleTasks.length > 0
+      ? Math.max(...visibleTasks.map((t) => t.startTime + t.duration), 600) + 20
+      : 620,
+    [visibleTasks]
+  );
+
+  // Now that visible* vars are available, define handleResetDocPositions so it
+  // can use visibleDocuments / visibleTasks / visibleTools / visibleCanvasWidth.
+  const handleResetDocPositions = useCallback(() => {
+    const defaults = buildDefaultPositions(visibleDocuments, visibleTasks, visibleTools, collapsedTools, visibleCanvasWidth);
+    setDocPositions(defaults);
+    if (onDocPositionsChange) onDocPositionsChange(null);
+  }, [visibleDocuments, visibleTasks, visibleTools, collapsedTools, visibleCanvasWidth, onDocPositionsChange]);
+
   const canvasHeight = visibleTools.reduce((sum, tool) => sum + getToolHeight(tool, collapsedTools, visibleTasks) + LANE_GAP, 0);
-  const svgWidth = canvasWidth + MARGIN.left + MARGIN.right;
+  const svgWidth = visibleCanvasWidth + MARGIN.left + MARGIN.right;
   const svgHeight = canvasHeight + MARGIN.top + MARGIN.bottom;
 
   const hoveredTask = tasks.find((t) => t.id === hoveredTaskId) || null;
@@ -1131,7 +1145,7 @@ const WorkflowCanvas = ({ activity, filters, toolNotes, onToolNoteChange, onFilt
             <text x={responsibles.length * 280 + 20} y={18} fontSize="10px" fill="#94a3b8" fontStyle="italic">✥ drag documents to reposition</text>
           </g>
 
-          <text x={canvasWidth / 2} y={-30} textAnchor="middle" fontSize="18px" fontWeight="700" fill="#1e293b">{name}</text>
+          <text x={visibleCanvasWidth / 2} y={-30} textAnchor="middle" fontSize="18px" fontWeight="700" fill="#1e293b">{name}</text>
 
           {visibleTools.map((tool, i) => {
             let toolY = 0;
@@ -1141,7 +1155,7 @@ const WorkflowCanvas = ({ activity, filters, toolNotes, onToolNoteChange, onFilt
             const hasNote = !!(toolNotes && toolNotes[tool]?.trim());
             return (
               <g key={tool}>
-                <rect x={0} y={toolY} width={canvasWidth} height={toolDisplayHeight} rx={6} fill="#ffffff" stroke="#2563eb" strokeWidth={2} />
+                <rect x={0} y={toolY} width={visibleCanvasWidth} height={toolDisplayHeight} rx={6} fill="#ffffff" stroke="#2563eb" strokeWidth={2} />
                 <text x={12} y={toolY + 24} fontSize="12px" fontWeight="700" fill="#1d4ed8" style={{ pointerEvents: 'none' }}>{tool}</text>
                 <g style={{ cursor: 'pointer' }} onClick={() => toggleToolCollapse(tool)}>
                   <circle cx={150} cy={toolY + 17} r={12} fill="#ffffff" fillOpacity="0.01" stroke="#94a3b8" strokeWidth={1.5} />
@@ -1149,13 +1163,13 @@ const WorkflowCanvas = ({ activity, filters, toolNotes, onToolNoteChange, onFilt
                     transform={isCollapsed ? `rotate(-90, 150, ${toolY + 22})` : undefined}
                     style={{ pointerEvents: 'none', userSelect: 'none' }}>▼</text>
                 </g>
-                {!isCollapsed && <line x1={0} y1={toolY + 34} x2={canvasWidth} y2={toolY + 34} stroke="#2563eb" strokeWidth={1} strokeOpacity={0.15} />}
+                {!isCollapsed && <line x1={0} y1={toolY + 34} x2={visibleCanvasWidth} y2={toolY + 34} stroke="#2563eb" strokeWidth={1} strokeOpacity={0.15} />}
                 {!isCollapsed && (
-                  <text x={canvasWidth - 14} y={toolY + toolDisplayHeight - 10} textAnchor="end" fontSize="24px" fontWeight="800" fill="#2563eb" fillOpacity="0.15" style={{ pointerEvents: 'none', userSelect: 'none' }}>{tool}</text>
+                  <text x={visibleCanvasWidth - 14} y={toolY + toolDisplayHeight - 10} textAnchor="end" fontSize="24px" fontWeight="800" fill="#2563eb" fillOpacity="0.15" style={{ pointerEvents: 'none', userSelect: 'none' }}>{tool}</text>
                 )}
                 <g style={{ cursor: 'pointer' }} onClick={() => setOpenNoteTool(openNoteTool === tool ? null : tool)}>
-                  <circle cx={canvasWidth - 18} cy={toolY + 17} r={10} fill={hasNote ? '#2563eb' : '#eff6ff'} stroke="#2563eb" strokeWidth={1.5} />
-                  <text x={canvasWidth - 18} y={toolY + 22} textAnchor="middle" fontSize="13px" fontWeight="700" fill={hasNote ? '#ffffff' : '#2563eb'} style={{ pointerEvents: 'none', userSelect: 'none' }}>{hasNote ? '✎' : '+'}</text>
+                  <circle cx={visibleCanvasWidth - 18} cy={toolY + 17} r={10} fill={hasNote ? '#2563eb' : '#eff6ff'} stroke="#2563eb" strokeWidth={1.5} />
+                  <text x={visibleCanvasWidth - 18} y={toolY + 22} textAnchor="middle" fontSize="13px" fontWeight="700" fill={hasNote ? '#ffffff' : '#2563eb'} style={{ pointerEvents: 'none', userSelect: 'none' }}>{hasNote ? '✎' : '+'}</text>
                 </g>
               </g>
             );
