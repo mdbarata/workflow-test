@@ -138,7 +138,7 @@ const FilterBar = ({ activity, filters, onChange, onImport, onToolNotes, onChapt
       </button>
       <label className="import-btn" style={{ marginRight: 6, background: '#059669', cursor: 'pointer', display: 'inline-flex', alignItems: 'center' }} title="Load a workflow JSON file">
         ⬆ Load JSON
-        <input type="file" accept=".json" onChange={onLoadJson} style={{ display: 'none' }} />
+        <input type="file" accept=".json" multiple onChange={onLoadJson} style={{ display: 'none' }} />
       </label>
       <button className="import-btn" style={{ marginRight: 6 }} onClick={onToolNotes}>
         ☰ Tool notes

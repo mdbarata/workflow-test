@@ -95,6 +95,57 @@ const ToolNotesEditor = ({ tools, toolNotes, onChange, onClose }) => {
   );
 };
 
+// ── Import Choice Modal ────────────────────────────────────────────────────────
+const ImportChoiceModal = ({ pendingImport, onJoin, onReplace, onClose }) => {
+  const { totalFiles, totalStages } = pendingImport;
+  return (
+    <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.5)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 3000, backdropFilter: 'blur(3px)' }} onClick={onClose}>
+      <div style={{ background: '#ffffff', borderRadius: 12, width: 440, boxShadow: '0 20px 60px rgba(0,0,0,0.3)', overflow: 'hidden' }} onClick={(e) => e.stopPropagation()}>
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '16px 20px', borderBottom: '0.5px solid #e2e8f0', background: '#f8fafc' }}>
+          <span style={{ fontSize: 16, fontWeight: 600, color: '#1e293b' }}>Import JSON Workflow</span>
+          <button onClick={onClose} style={{ background: 'none', border: 'none', fontSize: 18, color: '#64748b', cursor: 'pointer' }}>✕</button>
+        </div>
+        <div style={{ padding: '20px' }}>
+          <p style={{ fontSize: 13, color: '#334155', margin: '0 0 16px', lineHeight: '1.5' }}>
+            Ready to import <strong>{totalStages} stage{totalStages === 1 ? '' : 's'}</strong> across <strong>{totalFiles} file{totalFiles === 1 ? '' : 's'}</strong>. How would you like to load this data?
+          </p>
+
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
+            <button
+              onClick={onJoin}
+              style={{ display: 'flex', alignItems: 'center', gap: '12px', padding: '14px 16px', borderRadius: '8px', border: '1.5px solid #2563eb', background: '#eff6ff', color: '#1e40af', cursor: 'pointer', textAlign: 'left', transition: 'all 0.15s' }}
+              onMouseEnter={(e) => e.currentTarget.style.background = '#dbeafe'}
+              onMouseLeave={(e) => e.currentTarget.style.background = '#eff6ff'}
+            >
+              <span style={{ fontSize: '20px' }}>➕</span>
+              <div>
+                <div style={{ fontSize: '13px', fontWeight: 700 }}>Add as new tab(s) (Recommended)</div>
+                <div style={{ fontSize: '11px', color: '#3b82f6', marginTop: '2px' }}>Appends stages as new tabs alongside your current diagram. Unique IDs and names are assigned automatically to prevent collisions.</div>
+              </div>
+            </button>
+
+            <button
+              onClick={onReplace}
+              style={{ display: 'flex', alignItems: 'center', gap: '12px', padding: '14px 16px', borderRadius: '8px', border: '1.5px solid #cbd5e1', background: '#f8fafc', color: '#334155', cursor: 'pointer', textAlign: 'left', transition: 'all 0.15s' }}
+              onMouseEnter={(e) => { e.currentTarget.style.borderColor = '#ef4444'; e.currentTarget.style.background = '#fef2f2'; }}
+              onMouseLeave={(e) => { e.currentTarget.style.borderColor = '#cbd5e1'; e.currentTarget.style.background = '#f8fafc'; }}
+            >
+              <span style={{ fontSize: '20px' }}>🔄</span>
+              <div>
+                <div style={{ fontSize: '13px', fontWeight: 700, color: '#b91c1c' }}>Replace entire workspace</div>
+                <div style={{ fontSize: '11px', color: '#64748b', marginTop: '2px' }}>Overwrites all current stages and replaces your workspace with the imported file(s).</div>
+              </div>
+            </button>
+          </div>
+        </div>
+        <div style={{ display: 'flex', justifyContent: 'flex-end', padding: '12px 20px', borderTop: '0.5px solid #e2e8f0', background: '#f8fafc' }}>
+          <button className="btn-secondary" onClick={onClose}>Cancel</button>
+        </div>
+      </div>
+    </div>
+  );
+};
+
 // ── App ───────────────────────────────────────────────────────────────────────
 const App = () => {
   const saved = loadAppState();
@@ -118,6 +169,7 @@ const App = () => {
   // feedbackItems: array of imported reviewer comments
   const [feedbackItems, setFeedbackItems] = useState(saved?.feedbackItems || []);
   const [showFeedbackModal, setShowFeedbackModal] = useState(false);
+  const [pendingImport, setPendingImport] = useState(null);
 
   useAutoSave({ workflowData, activeActivityIndex, filters, showLinks, toolNotes, docPositions, archPositions, edgeSides, feedbackItems });
 
@@ -199,31 +251,153 @@ const App = () => {
     a.click();
   };
 
-  const handleLoadJson = (e) => {
-    const file = e.target.files[0];
-    if (!file) return;
-    const reader = new FileReader();
-    reader.onload = (ev) => {
-      try {
-        const parsed = JSON.parse(ev.target.result);
-        if (!parsed.activities || !Array.isArray(parsed.activities)) {
-          alert('Invalid JSON file: missing "activities" array.');
-          return;
+  const handleLoadJson = async (e) => {
+    const files = Array.from(e.target.files);
+    if (!files || files.length === 0) return;
+
+    const readPromises = files.map((file) => new Promise((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onload = (ev) => {
+        try {
+          const parsed = JSON.parse(ev.target.result);
+          resolve(parsed);
+        } catch (err) {
+          reject(new Error(`Failed to parse ${file.name}: ${err.message}`));
         }
-        // Ensure every activity has a clean chapters array if missing or invalid, so no issues occur when chapters were never created
+      };
+      reader.onerror = () => reject(new Error(`Failed to read ${file.name}`));
+      reader.readAsText(file);
+    }));
+
+    try {
+      const parsedFiles = await Promise.all(readPromises);
+      const validPayloads = [];
+      let totalStages = 0;
+      for (const parsed of parsedFiles) {
+        if (!parsed.activities || !Array.isArray(parsed.activities)) {
+          alert('Invalid JSON file skipped: missing "activities" array.');
+          continue;
+        }
         const cleanedActivities = parsed.activities.map((act) => ({
           ...act,
           chapters: Array.isArray(act.chapters) ? act.chapters : []
         }));
-        setWorkflowData({ ...parsed, activities: cleanedActivities });
-        setActiveActivityIndex(0);
-        setFilters({ responsibles: [], tools: [], chapters: [] });
-      } catch (err) {
-        alert('Failed to parse JSON file: ' + err.message);
+        validPayloads.push({ ...parsed, activities: cleanedActivities });
+        totalStages += cleanedActivities.length;
       }
-    };
-    reader.readAsText(file);
-    e.target.value = '';
+      if (validPayloads.length === 0) return;
+
+      setPendingImport({
+        payloads: validPayloads,
+        totalFiles: validPayloads.length,
+        totalStages
+      });
+    } catch (err) {
+      alert(err.message);
+    } finally {
+      e.target.value = '';
+    }
+  };
+
+  const handleJoinImport = () => {
+    if (!pendingImport) return;
+    const prevActivities = workflowData.activities || [];
+    const newActivities = [...prevActivities];
+    const newNotes = { ...toolNotes };
+    const newDocPos = { ...docPositions };
+    const newArchPos = { ...archPositions };
+    const newEdgeSides = { ...edgeSides };
+
+    const firstNewIndex = prevActivities.length;
+
+    pendingImport.payloads.forEach((payload) => {
+      Object.assign(newNotes, payload.toolNotes || {});
+
+      payload.activities.forEach((act) => {
+        const oldId = act.id || `stage-${Date.now()}`;
+        let newId = oldId;
+        let newName = act.name || 'Stage';
+
+        if (newActivities.some(a => a.id === newId)) {
+          newId = `${oldId}-imported-${Math.random().toString(36).substring(2, 7)}`;
+        }
+        if (newActivities.some(a => a.name === newName)) {
+          let c = 2;
+          while (newActivities.some(a => a.name === `${newName} (${c})`)) c++;
+          newName = `${newName} (${c})`;
+        }
+
+        if (payload.docPositions?.[oldId]) newDocPos[newId] = payload.docPositions[oldId];
+        if (payload.toolPositions?.[oldId]) newArchPos[newId] = payload.toolPositions[oldId];
+        if (payload.edgeSides?.[oldId]) newEdgeSides[newId] = payload.edgeSides[oldId];
+
+        newActivities.push({ ...act, id: newId, name: newName });
+      });
+    });
+
+    setWorkflowData((prev) => ({
+      ...prev,
+      activities: newActivities,
+      toolNotes: newNotes,
+      docPositions: newDocPos,
+      toolPositions: newArchPos,
+      edgeSides: newEdgeSides
+    }));
+    setToolNotes(newNotes);
+    setDocPositions(newDocPos);
+    setArchPositions(newArchPos);
+    setEdgeSides(newEdgeSides);
+    setActiveActivityIndex(firstNewIndex);
+    setFilters({ responsibles: [], tools: [], chapters: [] });
+    setPendingImport(null);
+  };
+
+  const handleReplaceImport = () => {
+    if (!pendingImport) return;
+    const combinedActivities = [];
+    const combinedNotes = {};
+    const combinedDocPos = {};
+    const combinedArchPos = {};
+    const combinedEdgeSides = {};
+
+    pendingImport.payloads.forEach((payload) => {
+      Object.assign(combinedNotes, payload.toolNotes || {});
+
+      payload.activities.forEach((act) => {
+        const oldId = act.id || `stage-${Date.now()}`;
+        let actId = oldId;
+        let actName = act.name || 'Stage';
+        if (combinedActivities.some(a => a.id === actId)) {
+          actId = `${actId}-${Math.random().toString(36).substring(2, 6)}`;
+        }
+        if (combinedActivities.some(a => a.name === actName)) {
+          let c = 2;
+          while (combinedActivities.some(a => a.name === `${actName} (${c})`)) c++;
+          actName = `${actName} (${c})`;
+        }
+
+        if (payload.docPositions?.[oldId]) combinedDocPos[actId] = payload.docPositions[oldId];
+        if (payload.toolPositions?.[oldId]) combinedArchPos[actId] = payload.toolPositions[oldId];
+        if (payload.edgeSides?.[oldId]) combinedEdgeSides[actId] = payload.edgeSides[oldId];
+
+        combinedActivities.push({ ...act, id: actId, name: actName });
+      });
+    });
+
+    setWorkflowData({
+      activities: combinedActivities,
+      toolNotes: combinedNotes,
+      docPositions: combinedDocPos,
+      toolPositions: combinedArchPos,
+      edgeSides: combinedEdgeSides
+    });
+    setToolNotes(combinedNotes);
+    setDocPositions(combinedDocPos);
+    setArchPositions(combinedArchPos);
+    setEdgeSides(combinedEdgeSides);
+    setActiveActivityIndex(0);
+    setFilters({ responsibles: [], tools: [], chapters: [] });
+    setPendingImport(null);
   };
 
   const handleSave = (newData, activityIdMap) => {
@@ -404,6 +578,15 @@ const App = () => {
           onDeleteComment={(id) => setFeedbackItems((prev) => prev.filter(c => c.id !== id))}
           onClearAll={() => { if (window.confirm('Clear all imported feedback?')) setFeedbackItems([]); }}
           workflowData={workflowData}
+        />
+      )}
+
+      {pendingImport && (
+        <ImportChoiceModal
+          pendingImport={pendingImport}
+          onJoin={handleJoinImport}
+          onReplace={handleReplaceImport}
+          onClose={() => setPendingImport(null)}
         />
       )}
     </div>
