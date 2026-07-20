@@ -46,6 +46,8 @@ const STATIC_CSS = `
   .chip-tool { border-color: #93c5fd; color: #1d4ed8; }
   .chip-tool.chip-active { background: #2563eb; color: #fff; border-color: #2563eb; }
   .chip-clear { border-color: #fca5a5; color: #dc2626; }
+  .chip-chapter { border-color: #a78bfa; color: #7c3aed; }
+  .chip-chapter.chip-active { background: #7c3aed; color: #fff; border-color: #6d28d9; }
 
   /* Canvas area */
   .tab-panel { display: none; flex: 1; position: relative; overflow: hidden; background: #f8f9fb; }
@@ -327,7 +329,13 @@ const VIEWER_JS = `
     var visibleTasks = tasks.filter(function(t) {
       var byResp = filterState.responsibles.length === 0 || filterState.responsibles.indexOf(t.responsible) >= 0;
       var byTool = filterState.tools.length === 0 || filterState.tools.indexOf(t.tool) >= 0;
-      return byResp && byTool;
+      var activeChapters = filterState.chapters || [];
+      var byChapter = activeChapters.length === 0 || (activity.chapters || []).filter(function(c) {
+        return activeChapters.indexOf(c.id) >= 0;
+      }).some(function(c) {
+        return (c.tasks || []).indexOf(t.id) >= 0;
+      });
+      return byResp && byTool && byChapter;
     });
     var visibleToolSet = new Set(visibleTasks.map(function(t) { return t.tool; }));
     var visibleTools = tools.filter(function(t) { return visibleToolSet.has(t); });
@@ -342,8 +350,13 @@ const VIEWER_JS = `
     currTimeScale = Math.max(1.15, (availW * stretchFactor) / maxEnd);
 
     var canvasWidth = Math.max(maxEnd * currTimeScale, availW);
+    // visibleCanvasWidth: width from visible (filtered) tasks only — mirrors editor visibleCanvasWidth
+    var visibleMaxEnd = visibleTasks.length > 0
+      ? Math.max.apply(null, visibleTasks.map(function(t) { return (t.startTime || 0) + (t.duration || 0); }))
+      : maxEnd;
+    var visibleCanvasWidth = Math.max(visibleMaxEnd * currTimeScale, 200) + 20;
     var canvasHeight = visibleTools.reduce(function(sum, tool) { return sum + getToolHeight(tool, visibleTasks, collapsedSet) + LANE_GAP; }, 0);
-    var svgWidth = canvasWidth + MARGIN.left + MARGIN.right;
+    var svgWidth = visibleCanvasWidth + MARGIN.left + MARGIN.right;
     var svgHeight = canvasHeight + MARGIN.top + MARGIN.bottom;
 
     var docHeights = {};
@@ -351,7 +364,7 @@ const VIEWER_JS = `
       var lines = wrapDocName(doc.name);
       docHeights[doc.id] = Math.max(DOC_MIN_HEIGHT, lines.length * 12 + 24);
     });
-    var docPositions = buildDocPositions(visibleDocuments, visibleTasks, visibleTools, collapsedSet, canvasWidth, canvasHeight, docHeights);
+    var docPositions = buildDocPositions(visibleDocuments, visibleTasks, visibleTools, collapsedSet, visibleCanvasWidth, canvasHeight, docHeights);
 
     // Build SVG string
     var svg = '';
@@ -378,7 +391,7 @@ const VIEWER_JS = `
     });
     svg += '</g>';
 
-    svg += '<text x="' + (canvasWidth / 2) + '" y="-30" text-anchor="middle" font-size="18px" font-weight="700" fill="#1e293b">' + escapeHtml(activity.name) + '</text>';
+    svg += '<text x="' + (visibleCanvasWidth / 2) + '" y="-30" text-anchor="middle" font-size="18px" font-weight="700" fill="#1e293b">' + escapeHtml(activity.name) + '</text>';
 
     // Tool lanes
     var toolY = 0;
@@ -388,7 +401,7 @@ const VIEWER_JS = `
       var h = getToolHeight(tool, visibleTasks, collapsedSet);
       var hasNote = !!(toolNotes[tool] && toolNotes[tool].trim());
       svg += '<g class="tool-lane" data-tool="' + escapeHtml(tool) + '">';
-      svg += '<rect x="0" y="' + toolY + '" width="' + canvasWidth + '" height="' + h + '" rx="6" fill="#ffffff" stroke="#2563eb" stroke-width="2"/>';
+      svg += '<rect x="0" y="' + toolY + '" width="' + visibleCanvasWidth + '" height="' + h + '" rx="6" fill="#ffffff" stroke="#2563eb" stroke-width="2"/>';
       svg += '<text x="12" y="' + (toolY + 24) + '" font-size="' + toolNameFontSize + 'px" font-weight="700" fill="#1d4ed8" style="pointer-events:none">' + escapeHtml(tool) + '</text>';
       // Collapse toggle
       svg += '<g class="collapse-toggle" data-tool="' + escapeHtml(tool) + '" style="cursor:pointer">';
@@ -403,14 +416,14 @@ const VIEWER_JS = `
       var fillCol = hasNote ? '#2563eb' : '#eff6ff';
       var textCol = hasNote ? '#ffffff' : '#2563eb';
       svg += '<g class="note-icon" data-tool="' + escapeHtml(tool) + '" style="cursor:pointer" title="Click to view tool notes">';
-      svg += '<circle cx="' + (canvasWidth - 18) + '" cy="' + (toolY + 17) + '" r="10" fill="' + fillCol + '" stroke="#2563eb" stroke-width="1.5"/>';
-      svg += '<text x="' + (canvasWidth - 18) + '" y="' + (toolY + 22) + '" text-anchor="middle" font-size="13px" font-weight="700" fill="' + textCol + '" style="pointer-events:none;user-select:none">✎</text>';
+      svg += '<circle cx="' + (visibleCanvasWidth - 18) + '" cy="' + (toolY + 17) + '" r="10" fill="' + fillCol + '" stroke="#2563eb" stroke-width="1.5"/>';
+      svg += '<text x="' + (visibleCanvasWidth - 18) + '" y="' + (toolY + 22) + '" text-anchor="middle" font-size="13px" font-weight="700" fill="' + textCol + '" style="pointer-events:none;user-select:none">✎</text>';
       svg += '</g>';
       if (!isCollapsed) {
-        svg += '<line x1="0" y1="' + (toolY + 34) + '" x2="' + canvasWidth + '" y2="' + (toolY + 34) + '" stroke="#2563eb" stroke-width="1" stroke-opacity="0.15"/>';
+        svg += '<line x1="0" y1="' + (toolY + 34) + '" x2="' + visibleCanvasWidth + '" y2="' + (toolY + 34) + '" stroke="#2563eb" stroke-width="1" stroke-opacity="0.15"/>';
         // Background watermark label at bottom-right
         var bgFontSize = Math.max(18, FONT_SIZE * 2.2);
-        svg += '<text x="' + (canvasWidth - 14) + '" y="' + (toolY + h - 10) + '" text-anchor="end" font-size="' + bgFontSize + 'px" font-weight="800" fill="#2563eb" fill-opacity="0.15" style="pointer-events:none;user-select:none">' + escapeHtml(tool) + '</text>';
+        svg += '<text x="' + (visibleCanvasWidth - 14) + '" y="' + (toolY + h - 10) + '" text-anchor="end" font-size="' + bgFontSize + 'px" font-weight="800" fill="#2563eb" fill-opacity="0.15" style="pointer-events:none;user-select:none">' + escapeHtml(tool) + '</text>';
       }
       svg += '</g>';
       toolY += h + LANE_GAP;
@@ -493,6 +506,11 @@ const VIEWER_JS = `
       var lines = wrapDocName(doc.name);
       svg += '<g class="doc-node" data-doc-id="' + escapeHtml(doc.id) + '" style="cursor:pointer;">';
       svg += '<rect x="' + pos.x + '" y="' + y + '" width="' + DOC_WIDTH + '" height="' + dH + '" rx="' + DOC_RADIUS + '" fill="' + fill + '" stroke="rgba(0,0,0,0.3)" stroke-width="1.5" class="doc-rect"/>';
+      // DocIcon — mirrors DocumentNode.jsx lines 9-22
+      var iconX = pos.x + 8;
+      var iconY = y + (dH - 16) / 2 - 6;
+      svg += '<path d="M' + iconX + ',' + (iconY+4) + ' L' + iconX + ',' + (iconY+16) + ' L' + (iconX+12) + ',' + (iconY+16) + ' L' + (iconX+12) + ',' + (iconY+8) + ' L' + (iconX+8) + ',' + (iconY+4) + ' Z" fill="white" fill-opacity="0.85" stroke="rgba(255,255,255,0.6)" stroke-width="1"/>';
+      svg += '<path d="M' + (iconX+8) + ',' + (iconY+4) + ' L' + (iconX+8) + ',' + (iconY+8) + ' L' + (iconX+12) + ',' + (iconY+8) + '" fill="none" stroke="rgba(255,255,255,0.6)" stroke-width="1"/>';
       var startY = y + dH / 2 - ((lines.length - 1) * 6);
       lines.forEach(function(line, i) {
         svg += '<text x="' + (pos.x + DOC_WIDTH / 2 + 6) + '" y="' + (startY + i * 12) + '" text-anchor="middle" font-size="10px" font-weight="600" fill="white" pointer-events="none">' + escapeHtml(typeof line === 'string' ? line : line.join(' ')) + '</text>';
@@ -1325,7 +1343,17 @@ const VIEWER_JS = `
   function buildFilterBar(panelEl, activity, filterState, collapsedSet) {
     var barEl = panelEl.querySelector('.filter-bar');
     if (!barEl) return;
-    var html = '<span class="filter-label">RESPONSIBLE</span>';
+    var html = '';
+    // Chapter chips — only render when chapters exist
+    if ((activity.chapters || []).length > 0) {
+      html += '<span class="filter-label">CHAPTER</span>';
+      (activity.chapters || []).forEach(function(ch) {
+        var active = (filterState.chapters || []).indexOf(ch.id) >= 0;
+        html += '<button class="chip chip-chapter' + (active ? ' chip-active' : '') + '" data-type="chapters" data-key="' + escapeHtml(ch.id) + '" title="' + escapeHtml(ch.notes || ch.name) + '"><span class="chip-dot" style="background-color:' + (active ? '#7c3aed' : '#a78bfa') + '"></span>' + escapeHtml(ch.name) + '</button>';
+      });
+      html += '<div class="filter-divider"></div>';
+    }
+    html += '<span class="filter-label">RESPONSIBLE</span>';
     (activity.responsibles || []).forEach(function(r) {
       var active = filterState.responsibles.indexOf(r.key) >= 0;
       var style = active
@@ -1338,7 +1366,7 @@ const VIEWER_JS = `
       var active = filterState.tools.indexOf(tool) >= 0;
       html += '<button class="chip chip-tool' + (active ? ' chip-active' : '') + '" data-type="tools" data-key="' + escapeHtml(tool) + '">' + escapeHtml(tool) + '</button>';
     });
-    if (filterState.responsibles.length > 0 || filterState.tools.length > 0) {
+    if (filterState.responsibles.length > 0 || filterState.tools.length > 0 || (filterState.chapters || []).length > 0) {
       html += '<div class="filter-divider"></div><button class="chip chip-clear" data-action="clear">✕ Clear filters</button>';
     }
     barEl.innerHTML = html;
@@ -1359,6 +1387,7 @@ const VIEWER_JS = `
       btn.addEventListener('click', function() {
         filterState.responsibles = [];
         filterState.tools = [];
+        filterState.chapters = [];
         buildFilterBar(panelEl, activity, filterState, collapsedSet);
         renderTimeline(panelEl, activity, collapsedSet, filterState);
       });
@@ -1375,7 +1404,7 @@ const VIEWER_JS = `
     if (type === 'timeline') {
       var act = activities[idx];
       var cs = activePanel.__collapsedSet || new Set(initialCollapsed);
-      var fs = activePanel.__filterState || { responsibles: [], tools: [] };
+      var fs = activePanel.__filterState || { responsibles: [], tools: [], chapters: [] };
       buildFilterBar(activePanel, act, fs, cs);
       renderTimeline(activePanel, act, cs, fs);
     } else if (type === 'arch') {
@@ -1406,7 +1435,7 @@ const VIEWER_JS = `
       if (type === 'timeline') {
         var act = activities[idx];
         var cs = panel.__collapsedSet || new Set(initialCollapsed);
-        var fs = panel.__filterState || { responsibles: [], tools: [] };
+        var fs = panel.__filterState || { responsibles: [], tools: [], chapters: [] };
         panel.__collapsedSet = cs;
         panel.__filterState = fs;
         buildFilterBar(panel, act, fs, cs);
