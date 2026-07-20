@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 
-const FilterBar = ({ activity, filters, onChange, onImport, onToolNotes, onChapters, searchQuery, onSearchChange }) => {
+const FilterBar = ({ activity, filters, onChange, onImport, onToolNotes, onChapters, onSaveJson, onLoadJson, searchQuery, onSearchChange }) => {
   const { responsibles, tools } = activity;
 
   // Local state so typing is always instant (no React state round-trip stutter)
@@ -133,6 +133,13 @@ const FilterBar = ({ activity, filters, onChange, onImport, onToolNotes, onChapt
 
       <div className="filter-spacer" />
 
+      <button className="import-btn" style={{ marginRight: 6, background: '#059669' }} onClick={onSaveJson} title="Download complete workflow state including tasks, layout, and chapters to a JSON file">
+        ⬇ Save JSON
+      </button>
+      <label className="import-btn" style={{ marginRight: 6, background: '#059669', cursor: 'pointer', display: 'inline-flex', alignItems: 'center' }} title="Load a workflow JSON file">
+        ⬆ Load JSON
+        <input type="file" accept=".json" onChange={onLoadJson} style={{ display: 'none' }} />
+      </label>
       <button className="import-btn" style={{ marginRight: 6 }} onClick={onToolNotes}>
         ☰ Tool notes
       </button>

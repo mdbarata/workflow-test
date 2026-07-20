@@ -183,6 +183,49 @@ const App = () => {
     setFilters((f) => ({ ...f, chapters: [] }));
   };
 
+  const handleSaveJson = () => {
+    // Ensure activities always have at least a clean chapters array in the exported JSON
+    const cleanData = {
+      ...workflowData,
+      activities: (workflowData.activities || []).map((act) => ({
+        ...act,
+        chapters: Array.isArray(act.chapters) ? act.chapters : []
+      }))
+    };
+    const data = JSON.stringify(cleanData, null, 2);
+    const a = document.createElement('a');
+    a.href = 'data:application/json;charset=utf-8,' + encodeURIComponent(data);
+    a.download = 'workflow.json';
+    a.click();
+  };
+
+  const handleLoadJson = (e) => {
+    const file = e.target.files[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = (ev) => {
+      try {
+        const parsed = JSON.parse(ev.target.result);
+        if (!parsed.activities || !Array.isArray(parsed.activities)) {
+          alert('Invalid JSON file: missing "activities" array.');
+          return;
+        }
+        // Ensure every activity has a clean chapters array if missing or invalid, so no issues occur when chapters were never created
+        const cleanedActivities = parsed.activities.map((act) => ({
+          ...act,
+          chapters: Array.isArray(act.chapters) ? act.chapters : []
+        }));
+        setWorkflowData({ ...parsed, activities: cleanedActivities });
+        setActiveActivityIndex(0);
+        setFilters({ responsibles: [], tools: [], chapters: [] });
+      } catch (err) {
+        alert('Failed to parse JSON file: ' + err.message);
+      }
+    };
+    reader.readAsText(file);
+    e.target.value = '';
+  };
+
   const handleSave = (newData, activityIdMap) => {
     if (activityIdMap && Object.keys(activityIdMap).length > 0) {
       // A stage was renamed, which changes its derived id. Migrate any
@@ -295,6 +338,8 @@ const App = () => {
           onImport={() => setShowEditor(true)}
           onToolNotes={() => setShowToolNotes(true)}
           onChapters={() => setShowChapterEditor(true)}
+          onSaveJson={handleSaveJson}
+          onLoadJson={handleLoadJson}
           searchQuery={searchQuery}
           onSearchChange={setSearchQuery}
         />

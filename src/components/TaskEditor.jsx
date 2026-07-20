@@ -118,9 +118,15 @@ const rowsToWorkflow = (rows, originalData) => {
       outputs: splitList(r.outputs).map(slugify),
     }));
     const origAct = originalActivitiesById[act.id] || {};
-    const result = { id: act.id, name: act.name, tools: [...act.toolsSet], responsibles: Object.values(act.responsiblesMap), documents: Object.values(act.docsSet), tasks };
-    // Preserve chapters if they exist on the original activity
-    if (origAct.chapters && origAct.chapters.length > 0) result.chapters = origAct.chapters;
+    const result = {
+      id: act.id,
+      name: act.name,
+      tools: [...act.toolsSet],
+      responsibles: Object.values(act.responsiblesMap),
+      documents: Object.values(act.docsSet),
+      tasks,
+      chapters: origAct.chapters && Array.isArray(origAct.chapters) ? origAct.chapters : []
+    };
     return result;
   });
 
