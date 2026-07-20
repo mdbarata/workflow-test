@@ -242,6 +242,7 @@ const ArchitectureView = ({ activity, filters, toolNotes, onToolNoteChange, onTo
   const [toolPositions, setToolPositions] = useState(() => archPositions || loadPositions(activity.id) || null);
   const [edgeSides, setEdgeSides] = useState(() => propEdgeSides || loadEdgeSides(activity.id) || {});
   const [selectedEdge, setSelectedEdge] = useState(null);
+  const [hoveredEdge, setHoveredEdge] = useState(null);
   const [draggingHandle, setDraggingHandle] = useState(null);
 
   const archPosKey = JSON.stringify(archPositions || null);
@@ -487,7 +488,12 @@ const ArchitectureView = ({ activity, filters, toolNotes, onToolNoteChange, onTo
     setIsPanning(false);
   }, [draggingTool, draggingHandle, toolPositions, pos, activity.id, onArchPositionsChange]);
 
-  const handleSvgMouseDown = useCallback((e) => { if (e.button !== 0) return; setIsPanning(true); setPanStart({ x: e.clientX, y: e.clientY }); }, []);
+  const handleSvgMouseDown = useCallback((e) => {
+    if (e.button !== 0) return;
+    if (selectedEdge) setSelectedEdge(null);
+    setIsPanning(true);
+    setPanStart({ x: e.clientX, y: e.clientY });
+  }, [selectedEdge]);
   const handleResetLayout = useCallback(() => {
     setToolPositions(null);
     localStorage.removeItem(ARCH_POS_KEY(activity.id));
@@ -514,7 +520,7 @@ const ArchitectureView = ({ activity, filters, toolNotes, onToolNoteChange, onTo
 
     const isPlanned = edgeData && edgeData.statuses ? edgeData.statuses.has('plan') : false;
     const isPlugin = edgeData && edgeData.types ? edgeData.types.has('plugin') : false;
-    const isHov = hoveredTool === from || hoveredTool === to || selectedEdge === key;
+    const isHov = hoveredTool === from || hoveredTool === to || selectedEdge === key || hoveredEdge === key;
     const color = isHov ? '#2563eb' : isPlanned ? '#d97706' : '#64748b';
 
     const port = edgePorts[key] || {};
@@ -567,38 +573,54 @@ const ArchitectureView = ({ activity, filters, toolNotes, onToolNoteChange, onTo
     const badgeFill = isPlugin ? '#faf5ff' : isPlanned ? '#fffbeb' : isHov ? '#eff6ff' : '#f1f5f9';
     const badgeStroke = isPlugin ? '#9333ea' : isPlanned ? '#d97706' : color;
     const badgeTextFill = isPlugin ? '#6b21a8' : isPlanned ? '#b45309' : isHov ? '#1d4ed8' : '#475569';
-    const lineOpacity = hoveredTool ? (isHov ? 1 : 0.12) : 0.55;
+    const lineOpacity = hoveredTool ? (isHov ? 1 : 0.12) : 0.65;
 
     return (
-      <g key={key} onClick={(e) => { e.stopPropagation(); setSelectedEdge(selectedEdge === key ? null : key); }}>
+      <g key={key}
+        onMouseEnter={() => setHoveredEdge(key)}
+        onMouseLeave={() => setHoveredEdge(null)}
+        onClick={(e) => { e.stopPropagation(); setSelectedEdge(selectedEdge === key ? null : key); }}>
+        {/* Fat invisible hit area so clicking/hovering anywhere near the arrow line works easily */}
         <path d={pathD}
-          fill="none" stroke={color} strokeWidth={isHov ? 2.5 : 1.5}
+          fill="none" stroke="transparent" strokeWidth={24}
+          style={{ cursor: 'pointer' }} />
+
+        <path d={pathD}
+          fill="none" stroke={color} strokeWidth={isHov ? 2.8 : 1.8}
           strokeDasharray={isPlanned ? '6,4' : undefined}
           strokeOpacity={lineOpacity}
           markerEnd={`url(#${markerId})`}
           markerStart={isBidi ? `url(#${markerId})` : undefined}
           style={{ transition: 'stroke 0.2s ease, stroke-opacity 0.2s ease, stroke-width 0.2s ease', cursor: 'pointer' }} />
 
-        <circle cx={lx1} cy={ly1} r={isHov ? 5 : 3.5} fill={color} stroke="#ffffff" strokeWidth={1}
-          style={{ cursor: 'pointer', opacity: lineOpacity }}
+        {/* Source port handle with large 16px transparent hit area */}
+        <g style={{ cursor: 'pointer', opacity: lineOpacity }}
           onMouseDown={(e) => e.stopPropagation()}
           onClick={(e) => { e.stopPropagation(); togglePortSide(key, 'from', fromSide); }}
-          title={`Click to switch source port (${fromSide})`} />
+          title={`Click to switch source port side (currently ${fromSide})`}>
+          <circle cx={lx1} cy={ly1} r={16} fill="transparent" stroke="none" />
+          <circle cx={lx1} cy={ly1} r={isHov ? 6 : 4} fill={color} stroke="#ffffff" strokeWidth={1.5}
+            style={{ transition: 'r 0.15s ease' }} />
+        </g>
 
-        <circle cx={lx2} cy={ly2} r={isHov ? 5 : 3.5} fill={color} stroke="#ffffff" strokeWidth={1}
-          style={{ cursor: 'pointer', opacity: lineOpacity }}
+        {/* Target port handle with large 16px transparent hit area */}
+        <g style={{ cursor: 'pointer', opacity: lineOpacity }}
           onMouseDown={(e) => e.stopPropagation()}
           onClick={(e) => { e.stopPropagation(); togglePortSide(key, 'to', toSide); }}
-          title={`Click to switch target port (${toSide})`} />
+          title={`Click to switch target port side (currently ${toSide})`}>
+          <circle cx={lx2} cy={ly2} r={16} fill="transparent" stroke="none" />
+          <circle cx={lx2} cy={ly2} r={isHov ? 6 : 4} fill={color} stroke="#ffffff" strokeWidth={1.5}
+            style={{ transition: 'r 0.15s ease' }} />
+        </g>
 
         {labelTxt && (
           <g transform={`translate(${fwdX}, ${fwdY})`}
             style={{ cursor: 'pointer', opacity: lineOpacity }}
             onMouseDown={(e) => e.stopPropagation()}
             onClick={(e) => { e.stopPropagation(); setSelectedEdge(key); }}>
-            <rect x={-badgeW / 2} y={-9} width={badgeW} height={18} rx={5}
-              fill={badgeFill} stroke={badgeStroke} strokeWidth={1} />
-            <text textAnchor="middle" y={4} fontSize="9.5px" fontWeight="700" fill={badgeTextFill}
+            <rect x={-badgeW / 2 - 4} y={-11} width={badgeW + 8} height={22} rx={6}
+              fill={badgeFill} stroke={badgeStroke} strokeWidth={isHov ? 1.5 : 1} />
+            <text textAnchor="middle" y={4.5} fontSize="10px" fontWeight="700" fill={badgeTextFill}
               style={{ pointerEvents: 'none', userSelect: 'none' }}>{labelTxt}</text>
           </g>
         )}
@@ -608,36 +630,39 @@ const ArchitectureView = ({ activity, filters, toolNotes, onToolNoteChange, onTo
             style={{ cursor: 'pointer', opacity: lineOpacity }}
             onMouseDown={(e) => e.stopPropagation()}
             onClick={(e) => { e.stopPropagation(); setSelectedEdge(key); }}>
-            <rect x={-revBadgeW / 2} y={-9} width={revBadgeW} height={18} rx={5}
-              fill={badgeFill} stroke={badgeStroke} strokeWidth={1} />
-            <text textAnchor="middle" y={4} fontSize="9.5px" fontWeight="700" fill={badgeTextFill}
+            <rect x={-revBadgeW / 2 - 4} y={-11} width={revBadgeW + 8} height={22} rx={6}
+              fill={badgeFill} stroke={badgeStroke} strokeWidth={isHov ? 1.5 : 1} />
+            <text textAnchor="middle" y={4.5} fontSize="10px" fontWeight="700" fill={badgeTextFill}
               style={{ pointerEvents: 'none', userSelect: 'none' }}>{revFmts}</text>
           </g>
         )}
 
         {selectedEdge === key && (
           <g>
-            <circle cx={midX} cy={midY} r={6} fill="#2563eb" stroke="#ffffff" strokeWidth={2}
-              style={{ cursor: 'move' }}
+            {/* Large 18px transparent hit circle + 8px visible circle for adjusting curve */}
+            <g style={{ cursor: 'move' }}
               onMouseDown={(e) => {
                 e.stopPropagation();
                 setDraggingHandle({ key, startX: e.clientX, startY: e.clientY, startDx: dx, startDy: dy });
               }}
-              title="Drag to adjust arrow curve" />
+              title="Drag to adjust arrow curve">
+              <circle cx={midX} cy={midY} r={18} fill="transparent" stroke="none" />
+              <circle cx={midX} cy={midY} r={7.5} fill="#2563eb" stroke="#ffffff" strokeWidth={2.5} />
+            </g>
 
-            <foreignObject x={midX - 110} y={midY - 45} width={220} height={32} style={{ overflow: 'visible' }}>
-              <div style={{ display: 'flex', gap: '4px', background: '#1e293b', padding: '4px 6px', borderRadius: '8px', boxShadow: '0 4px 12px rgba(0,0,0,0.25)', alignItems: 'center', justifyContent: 'center' }}
+            <foreignObject x={midX - 125} y={midY - 50} width={250} height={38} style={{ overflow: 'visible' }}>
+              <div style={{ display: 'flex', gap: '6px', background: '#1e293b', padding: '6px 8px', borderRadius: '8px', boxShadow: '0 6px 16px rgba(0,0,0,0.3)', alignItems: 'center', justifyContent: 'center' }}
                 onMouseDown={(e) => e.stopPropagation()}>
                 {['curve', 'straight', 'elbow'].map((st) => (
                   <button key={st} type="button"
-                    style={{ background: style === st ? '#2563eb' : 'transparent', color: '#fff', border: 'none', borderRadius: '4px', padding: '2px 6px', fontSize: '10px', fontWeight: '600', cursor: 'pointer', textTransform: 'capitalize' }}
+                    style={{ background: style === st ? '#2563eb' : 'transparent', color: '#fff', border: 'none', borderRadius: '5px', padding: '4px 8px', fontSize: '11px', fontWeight: '600', cursor: 'pointer', textTransform: 'capitalize' }}
                     onClick={() => updateEdgeConfig(key, { style: st })}>
                     {st}
                   </button>
                 ))}
-                <div style={{ width: '1px', height: '14px', background: '#475569', margin: '0 2px' }} />
+                <div style={{ width: '1px', height: '16px', background: '#475569', margin: '0 2px' }} />
                 <button type="button"
-                  style={{ background: '#334155', color: '#cbd5e1', border: 'none', borderRadius: '4px', padding: '2px 5px', fontSize: '10px', cursor: 'pointer' }}
+                  style={{ background: '#334155', color: '#cbd5e1', border: 'none', borderRadius: '5px', padding: '4px 8px', fontSize: '11px', cursor: 'pointer', fontWeight: '500' }}
                   onClick={() => updateEdgeConfig(key, { dx: 0, dy: 0 })}
                   title="Reset curve offset">
                   Reset
