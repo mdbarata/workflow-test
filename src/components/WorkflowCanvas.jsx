@@ -1020,11 +1020,17 @@ const WorkflowCanvas = ({ activity, filters, toolNotes, onToolNoteChange, onFilt
 
   // visibleCanvasWidth: horizontal extent of only the visible (filtered) tasks.
   // This makes lane length shrink proportionally when a chapter filter is active.
+  const visibleMinStart = useMemo(
+    () => visibleTasks.length > 0
+      ? Math.min(...visibleTasks.map((t) => t.startTime))
+      : 0,
+    [visibleTasks]
+  );
   const visibleCanvasWidth = useMemo(
     () => visibleTasks.length > 0
-      ? Math.max(...visibleTasks.map((t) => t.startTime + t.duration), 600) + 20
+      ? Math.max(...visibleTasks.map((t) => t.startTime + t.duration), 600) + 20 - visibleMinStart
       : 620,
-    [visibleTasks]
+    [visibleTasks, visibleMinStart]
   );
 
   // Now that visible* vars are available, define handleResetDocPositions so it
@@ -1187,9 +1193,11 @@ const WorkflowCanvas = ({ activity, filters, toolNotes, onToolNoteChange, onFilt
             return connectedTasks.map((ct) => {
               const ty = getTaskY(ct, visibleTasks, visibleTools, collapsedTools);
               if (ty < -1000) return null;
+              // taskX: shifts task positions left by visibleMinStart so filtered view starts at x=0
+              const taskX = (t) => getTaskX(t) - visibleMinStart;
               return (
                 <path key={`${doc.id}<->${ct.id}`}
-                  d={elbowPath(isInput ? pos.x + DOC_WIDTH : pos.x, docCenterY, isInput ? getTaskX(ct) : getTaskX(ct) + ct.duration, ty + TASK_HEIGHT / 2, isInput)}
+                  d={elbowPath(isInput ? pos.x + DOC_WIDTH : pos.x, docCenterY, isInput ? taskX(ct) : taskX(ct) + ct.duration, ty + TASK_HEIGHT / 2, isInput)}
                   fill="none" stroke={color} strokeWidth={strokeWidth} strokeDasharray="5,4" strokeOpacity={opacity} strokeLinecap="round"
                   markerEnd={`url(#${arrowId})`} style={{ transition: 'stroke 0.18s ease, stroke-opacity 0.18s ease' }}
                 />
@@ -1206,8 +1214,8 @@ const WorkflowCanvas = ({ activity, filters, toolNotes, onToolNoteChange, onFilt
               const y1 = getTaskY(depTask, visibleTasks, visibleTools, collapsedTools) + TASK_HEIGHT / 2;
               const y2 = getTaskY(task, visibleTasks, visibleTools, collapsedTools) + TASK_HEIGHT / 2;
               if (y1 < -1000 || y2 < -1000) return null;
-              const x1 = getTaskX(depTask) + depTask.duration;
-              const x2 = getTaskX(task);
+              const x1 = getTaskX(depTask) + depTask.duration - visibleMinStart;
+              const x2 = getTaskX(task) - visibleMinStart;
               const isGold = hoveredTask && (hoveredTask.id === task.id || depChain.has(task.id)) && depChain.has(dId);
               return (
                 <g key={`${dId}->${task.id}`}>
@@ -1236,7 +1244,7 @@ const WorkflowCanvas = ({ activity, filters, toolNotes, onToolNoteChange, onFilt
             const isDocRelated = docHoverTaskIds.has(task.id);
             const isSearchMatch = !searchMatchTaskIds || searchMatchTaskIds.has(task.id);
             return (
-              <TaskNode key={task.id} task={task} x={getTaskX(task)} y={taskY} width={task.duration}
+              <TaskNode key={task.id} task={task} x={getTaskX(task) - visibleMinStart} y={taskY} width={task.duration}
                 responsible={resp} isHovered={isHovered || isDocRelated}
                 isDimmed={
                   (!isSearchMatch) ||

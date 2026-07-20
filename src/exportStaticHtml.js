@@ -216,6 +216,7 @@ const VIEWER_JS = `
   }
 
   var currTimeScale = 1;
+  var currTimeOffset = 0; // pixel offset to subtract from all task X coords when chapter/filter is active
   function getTaskW(task) { return Math.max(40, (task.duration || 0) * currTimeScale); }
 
   function getTaskHeight(taskName, taskWidth) {
@@ -250,7 +251,7 @@ const VIEWER_JS = `
     return baseY + offset;
   }
 
-  function getTaskX(task) { return (task.startTime || 0) * currTimeScale; }
+  function getTaskX(task) { return (task.startTime || 0) * currTimeScale - currTimeOffset; }
 
   function curvedPath(x1, y1, x2, y2) { var m = (x1 + x2) / 2; return 'M ' + x1 + ' ' + y1 + ' C ' + m + ' ' + y1 + ', ' + m + ' ' + y2 + ', ' + x2 + ' ' + y2; }
   function elbowPath(x1, y1, x2, y2, isInput) {
@@ -354,7 +355,13 @@ const VIEWER_JS = `
     var visibleMaxEnd = visibleTasks.length > 0
       ? Math.max.apply(null, visibleTasks.map(function(t) { return (t.startTime || 0) + (t.duration || 0); }))
       : maxEnd;
-    var visibleCanvasWidth = Math.max(visibleMaxEnd * currTimeScale, 200) + 20;
+    // visibleMinStart: shift filtered view so the first visible task starts at x=0
+    // Only apply offset when filtering is active (visibleTasks is a strict subset of tasks)
+    var visibleMinStart = (visibleTasks.length > 0 && visibleTasks.length < tasks.length)
+      ? Math.min.apply(null, visibleTasks.map(function(t) { return t.startTime || 0; }))
+      : 0;
+    currTimeOffset = visibleMinStart * currTimeScale;
+    var visibleCanvasWidth = Math.max((visibleMaxEnd - visibleMinStart) * currTimeScale, 200) + 20;
     var canvasHeight = visibleTools.reduce(function(sum, tool) { return sum + getToolHeight(tool, visibleTasks, collapsedSet) + LANE_GAP; }, 0);
     var svgWidth = visibleCanvasWidth + MARGIN.left + MARGIN.right;
     var svgHeight = canvasHeight + MARGIN.top + MARGIN.bottom;
