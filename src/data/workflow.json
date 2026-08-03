@@ -21,7 +21,8 @@
         {
           "id": "task1", "name": "Task 1", "tool": "TOOL 1", "responsible": "RESPONSIBLE_A",
           "startTime": 100, "duration": 150, "details": "Initial processing",
-          "dependencies": [], "inputs": ["doc_in_1", "doc_in_2"], "outputs": []
+          "dependencies": [], "inputs": ["doc_in_1", "doc_in_2"], "outputs": [],
+          "sequences": ["seq_1"]
         },
         {
           "id": "task2", "name": "Task 2", "tool": "TOOL 2", "responsible": "RESPONSIBLE_A",
@@ -53,6 +54,27 @@
           "inputs": [], "outputs": ["doc_out_3"]
         }
       ]
+    }
+  ],
+  "sequences": [
+    {
+      "id": "seq_1",
+      "name": "Integration Test"
+    }
+  ],
+  "hiddenTasks": [
+    {
+      "id": "hidden_task_1",
+      "name": "Hidden subtask 1",
+      "tool": "TOOL 1",
+      "responsible": "RESPONSIBLE_A",
+      "startTime": 100,
+      "duration": 100,
+      "details": "This task only appears in the Sequence view",
+      "dependencies": [],
+      "inputs": [],
+      "outputs": [],
+      "sequences": ["seq_1"]
     }
   ]
 }

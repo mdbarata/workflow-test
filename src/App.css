@@ -172,6 +172,17 @@ body {
   background: #fef2f2;
 }
 
+.chip-chapter {
+  border-color: #7c3aed;
+  color: #7c3aed;
+}
+
+.chip-chapter-active {
+  background-color: #7c3aed !important;
+  color: white !important;
+  border-color: #6d28d9 !important;
+}
+
 /* ── Import button ─────────────────────────────────────────────────────────── */
 
 .import-btn {
@@ -239,8 +250,15 @@ body {
 }
 
 @keyframes tooltipFadeIn {
-  from { opacity: 0; transform: translateY(6px); }
-  to   { opacity: 1; transform: translateY(0); }
+  from {
+    opacity: 0;
+    transform: translateY(6px);
+  }
+
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
 }
 
 /* ── JSON Importer modal ───────────────────────────────────────────────────── */
@@ -409,15 +427,44 @@ body {
 
 /* ── Scrollbar ─────────────────────────────────────────────────────────────── */
 
-.svg-container::-webkit-scrollbar { width: 10px; height: 10px; }
-.svg-container::-webkit-scrollbar-track { background: #f1f5f9; border-radius: 8px; }
-.svg-container::-webkit-scrollbar-thumb { background: #94a3b8; border-radius: 8px; }
-.svg-container::-webkit-scrollbar-thumb:hover { background: #64748b; }
-.svg-container { scrollbar-color: #94a3b8 #f1f5f9; scrollbar-width: thin; }
+.svg-container::-webkit-scrollbar {
+  width: 10px;
+  height: 10px;
+}
+
+.svg-container::-webkit-scrollbar-track {
+  background: #f1f5f9;
+  border-radius: 8px;
+}
+
+.svg-container::-webkit-scrollbar-thumb {
+  background: #94a3b8;
+  border-radius: 8px;
+}
+
+.svg-container::-webkit-scrollbar-thumb:hover {
+  background: #64748b;
+}
+
+.svg-container {
+  scrollbar-color: #94a3b8 #f1f5f9;
+  scrollbar-width: thin;
+}
 
 /* ── Print ─────────────────────────────────────────────────────────────────── */
 
 @media print {
-  .filter-bar, .d3-tooltip, .importer-overlay, .import-btn { display: none; }
-  .svg-container { box-shadow: none; overflow: visible; margin: 0; }
+
+  .filter-bar,
+  .d3-tooltip,
+  .importer-overlay,
+  .import-btn {
+    display: none;
+  }
+
+  .svg-container {
+    box-shadow: none;
+    overflow: visible;
+    margin: 0;
+  }
 }

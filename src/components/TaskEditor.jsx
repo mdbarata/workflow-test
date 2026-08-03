@@ -63,13 +63,24 @@ const computeStartTimes = (rows) => {
 };
 
 // ── Convert flat rows → workflow.json ────────────────────────────────────────
-const rowsToWorkflow = (rows) => {
+// Pass originalData to preserve per-activity metadata (chapters, etc.) that
+// TaskEditor does not edit — so they aren't dropped when the user saves.
+const rowsToWorkflow = (rows, originalData) => {
   const activitiesMap = {};
   const respColorMap = {};
   let presetIdx = 0;
+  const sequencesSet = new Set();
+  const hiddenRows = [];
 
   rows.forEach((r) => {
-    const actId = slugify(r.activity) || 'activity_1';
+    splitList(r.sequences).forEach(seq => sequencesSet.add(seq));
+
+    const actId = slugify(r.activity);
+    if (!actId) {
+      hiddenRows.push(r);
+      return;
+    }
+    
     const actName = r.activity.toUpperCase();
     if (!activitiesMap[actId]) {
       activitiesMap[actId] = { id: actId, name: actName, toolsSet: new Set(), responsiblesMap: {}, docsSet: {}, rows: [] };
@@ -88,31 +99,60 @@ const rowsToWorkflow = (rows) => {
     splitList(r.outputs).forEach((name) => { const id = slugify(name); if (!act.docsSet[id]) act.docsSet[id] = { id, name, type: 'output' }; });
   });
 
-  const activities = Object.values(activitiesMap).map((act) => {
-    const startTimes = computeStartTimes(act.rows);
-    const tasks = act.rows.map((r) => ({
-      id: r.taskId,
-      name: r.label,
-      tool: r.tool,
-      responsible: slugify(r.responsible) || 'responsible_a',
-      startTime: startTimes[r.taskId] || DEFAULT_START,
-      duration: parseInt(r.duration, 10) || DEFAULT_DURATION,
-      details: r.notes || '',
-      alternativeTools: splitList(r.altTools),
-      // Zip pre-task IDs with interface formats → [{id, format?, type?, status?}, ...]
-      dependencies: splitList(r.pre).map((id, i) => {
-        const fmt = splitList(r.preFormats)[i] || '';
-        const type = splitList(r.preTypes)[i] || splitList(r.preTypes)[0] || 'undefined';
-        const status = splitList(r.preStatuses)[i] || splitList(r.preStatuses)[0] || 'undefined';
-        return { id, format: fmt, type, status };
-      }),
-      inputs: splitList(r.inputs).map(slugify),
-      outputs: splitList(r.outputs).map(slugify),
-    }));
-    return { id: act.id, name: act.name, tools: [...act.toolsSet], responsibles: Object.values(act.responsiblesMap), documents: Object.values(act.docsSet), tasks };
+  // Build a lookup of original activities by id so we can preserve metadata
+  const originalActivitiesById = {};
+  if (originalData && originalData.activities) {
+    originalData.activities.forEach((a) => { originalActivitiesById[a.id] = a; });
+  }
+
+  const rowToTask = (r, startTimes) => ({
+    id: r.taskId,
+    name: r.label,
+    tool: r.tool,
+    responsible: slugify(r.responsible) || 'responsible_a',
+    startTime: startTimes[r.taskId] || DEFAULT_START,
+    duration: parseInt(r.duration, 10) || DEFAULT_DURATION,
+    details: r.notes || '',
+    alternativeTools: splitList(r.altTools),
+    // Zip pre-task IDs with interface formats → [{id, format?, type?, status?}, ...]
+    dependencies: splitList(r.pre).map((id, i) => {
+      const fmt = splitList(r.preFormats)[i] || '';
+      const type = splitList(r.preTypes)[i] || splitList(r.preTypes)[0] || 'undefined';
+      const status = splitList(r.preStatuses)[i] || splitList(r.preStatuses)[0] || 'undefined';
+      return { id, format: fmt, type, status };
+    }),
+    inputs: splitList(r.inputs).map(slugify),
+    outputs: splitList(r.outputs).map(slugify),
+    sequences: splitList(r.sequences),
   });
 
-  return { activities };
+  const activities = Object.values(activitiesMap).map((act) => {
+    const startTimes = computeStartTimes(act.rows);
+    const tasks = act.rows.map((r) => rowToTask(r, startTimes));
+    const origAct = originalActivitiesById[act.id] || {};
+    const result = {
+      id: act.id,
+      name: act.name,
+      tools: [...act.toolsSet],
+      responsibles: Object.values(act.responsiblesMap),
+      documents: Object.values(act.docsSet),
+      tasks,
+      chapters: origAct.chapters && Array.isArray(origAct.chapters) ? origAct.chapters : []
+    };
+    return result;
+  });
+
+  const hiddenStartTimes = computeStartTimes(hiddenRows);
+  const hiddenTasks = hiddenRows.map((r) => rowToTask(r, hiddenStartTimes));
+
+  // Merge existing sequences with new ones to preserve properties like name
+  const originalSequences = originalData?.sequences || [];
+  const sequences = Array.from(sequencesSet).map(seqId => {
+    const existing = originalSequences.find(s => s.id === seqId);
+    return existing || { id: seqId, name: seqId };
+  });
+
+  return { activities, hiddenTasks, sequences };
 };
 
 const TYPE_ICONS = { file: '📄', plugin: '🔌', undefined: '⚪' };
@@ -121,7 +161,7 @@ const STATUS_ICONS = { impl: '🟢', plan: '🟡', undefined: '⚪' };
 // ── Empty row factory ─────────────────────────────────────────────────────────
 let _uid = 1;
 const emptyRow = (activityName = '') => ({
-  _key: _uid++, taskId: '', activity: activityName, label: '', responsible: '', tool: '',
+  _key: _uid++, taskId: '', activity: activityName, sequences: '', label: '', responsible: '', tool: '',
   startTime: '', duration: String(DEFAULT_DURATION), inputs: '', outputs: '',
   pre: '', preFormats: '', preTypes: 'undefined', preStatuses: 'undefined', notes: '', altTools: '',
 });
@@ -129,34 +169,41 @@ const emptyRow = (activityName = '') => ({
 // ── Seed rows from existing workflowData ──────────────────────────────────────
 const workflowToRows = (data) => {
   const rows = [];
-  (data.activities || []).forEach((act) => {
-    (act.tasks || []).forEach((t) => {
-      // dependencies may be [{id, format, type, status}] or plain strings
-      const deps = (t.dependencies || []);
-      const preIds = deps.map((d) => (typeof d === 'object' ? d.id : d));
-      const preFmts = deps.map((d) => (typeof d === 'object' ? d.format || '' : ''));
-      const preTypes = deps.map((d) => (typeof d === 'object' ? d.type || 'undefined' : 'undefined'));
-      const preStatuses = deps.map((d) => (typeof d === 'object' ? d.status || 'undefined' : 'undefined'));
-      rows.push({
-        _key: _uid++,
-        taskId: t.id,
-        activity: act.name,
-        label: t.name,
-        responsible: act.responsibles.find((r) => r.key === t.responsible)?.name || t.responsible,
-        tool: t.tool,
-        startTime: t.startTime !== undefined && t.startTime !== null ? String(t.startTime) : '',
-        duration: String(t.duration || DEFAULT_DURATION),
-        inputs: joinList((t.inputs || []).map((id) => act.documents.find((d) => d.id === id)?.name || id)),
-        outputs: joinList((t.outputs || []).map((id) => act.documents.find((d) => d.id === id)?.name || id)),
-        pre: joinList(preIds),
-        preFormats: joinList(preFmts),
-        preTypes: joinList(preTypes),
-        preStatuses: joinList(preStatuses),
-        notes: t.details || '',
-        altTools: joinList(t.alternativeTools || []),
-      });
+  const addRow = (t, activityName, documents, responsibles) => {
+    const deps = (t.dependencies || []);
+    const preIds = deps.map((d) => (typeof d === 'object' ? d.id : d));
+    const preFmts = deps.map((d) => (typeof d === 'object' ? d.format || '' : ''));
+    const preTypes = deps.map((d) => (typeof d === 'object' ? d.type || 'undefined' : 'undefined'));
+    const preStatuses = deps.map((d) => (typeof d === 'object' ? d.status || 'undefined' : 'undefined'));
+    rows.push({
+      _key: _uid++,
+      taskId: t.id,
+      activity: activityName,
+      sequences: joinList(t.sequences || []),
+      label: t.name,
+      responsible: responsibles.find((r) => r.key === t.responsible)?.name || t.responsible,
+      tool: t.tool,
+      startTime: t.startTime !== undefined && t.startTime !== null ? String(t.startTime) : '',
+      duration: String(t.duration || DEFAULT_DURATION),
+      inputs: joinList((t.inputs || []).map((id) => documents.find((d) => d.id === id)?.name || id)),
+      outputs: joinList((t.outputs || []).map((id) => documents.find((d) => d.id === id)?.name || id)),
+      pre: joinList(preIds),
+      preFormats: joinList(preFmts),
+      preTypes: joinList(preTypes),
+      preStatuses: joinList(preStatuses),
+      notes: t.details || '',
+      altTools: joinList(t.alternativeTools || []),
     });
+  };
+
+  (data.activities || []).forEach((act) => {
+    (act.tasks || []).forEach((t) => addRow(t, act.name, act.documents, act.responsibles));
   });
+
+  (data.hiddenTasks || []).forEach((t) => {
+    addRow(t, '', [], []);
+  });
+
   return rows.length ? rows : [emptyRow()];
 };
 
@@ -345,7 +392,7 @@ const TaskEditor = ({ workflowData, onSave, onClose }) => {
 
   const handleExport = () => {
     const withIds = rows.map((r, i) => ({ ...r, taskId: r.taskId.trim() || `task${i + 1}` }));
-    const data = JSON.stringify(rowsToWorkflow(withIds), null, 2);
+    const data = JSON.stringify(rowsToWorkflow(withIds, workflowData), null, 2);
     const a = document.createElement('a');
     a.href = 'data:application/json;charset=utf-8,' + encodeURIComponent(data);
     a.download = 'workflow.json';
@@ -355,9 +402,9 @@ const TaskEditor = ({ workflowData, onSave, onClose }) => {
   const handleSave = () => {
     const filled = rows.filter((r) => r.label.trim());
     if (!filled.length) { setError('Add at least one task with a label.'); return; }
-    if (filled.some((r) => !r.activity.trim())) { setError('Some tasks are missing a stage name.'); return; }
+    if (filled.some((r) => !r.activity.trim() && !r.sequences.trim())) { setError('Some tasks are missing both a stage name and sequences. Please provide at least one.'); return; }
     const withIds = rows.map((r, i) => ({ ...r, taskId: r.taskId.trim() || `task${i + 1}` }));
-    onSave(rowsToWorkflow(withIds));
+    onSave(rowsToWorkflow(withIds, workflowData));
     onClose();
   };
 
@@ -416,6 +463,7 @@ const TaskEditor = ({ workflowData, onSave, onClose }) => {
                 <th style={{ ...thStyle, width: 28 }}>#</th>
                 <th style={thStyle}>Task ID</th>
                 <th style={{ ...thStyle, minWidth: 110 }}>Stage</th>
+                <th style={{ ...thStyle, minWidth: 110 }}>Sequences</th>
                 <th style={{ ...thStyle, minWidth: 110 }}>Label</th>
                 <th style={{ ...thStyle, minWidth: 120 }}>Responsible</th>
                 <th style={{ ...thStyle, minWidth: 100 }}>Tool</th>
@@ -451,6 +499,7 @@ const TaskEditor = ({ workflowData, onSave, onClose }) => {
                   <td style={{ padding: '3px 6px', fontSize: 11, color: '#64748b', textAlign: 'center' }}>{i + 1}</td>
                   <Cell value={row.taskId} onChange={(v) => updateRow(row._key, 'taskId', v)} placeholder="task1" />
                   <Cell value={row.activity} onChange={(v) => updateRow(row._key, 'activity', v)} placeholder="Stage 1" list="act-list" wide />
+                  <Cell value={row.sequences} onChange={(v) => updateRow(row._key, 'sequences', v)} placeholder="seq_1, seq_2" wide />
                   <Cell value={row.label} onChange={(v) => updateRow(row._key, 'label', v)} placeholder="Task name" wide />
                   <Cell value={row.responsible} onChange={(v) => updateRow(row._key, 'responsible', v)} placeholder="Responsible A" list="resp-list" wide />
                   <Cell value={row.tool} onChange={(v) => updateRow(row._key, 'tool', v)} placeholder="Tool 1" list="tool-list" />

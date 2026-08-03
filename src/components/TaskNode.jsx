@@ -42,6 +42,7 @@ const TaskNode = ({
   isDepHighlighted,
   onMouseEnter,
   onMouseLeave,
+  onNavigateToSequence
 }) => {
   const fillColor = responsible?.taskColor || '#888';
   const strokeWidth = isHovered || isDepHighlighted ? 3 : 1.5;
@@ -78,7 +79,7 @@ const TaskNode = ({
       style={{
         opacity: isDimmed ? 0.2 : 1,
         filter: shadow,
-        transition: 'all 0.2s ease',
+        transition: 'opacity 0.2s ease, filter 0.2s ease, transform 0.2s ease',
         cursor: 'pointer',
         // Scale from centre when hovered, just like DocumentNode
         transform: isHovered
@@ -113,6 +114,28 @@ const TaskNode = ({
           {line}
         </text>
       ))}
+      
+      {task.sequences && task.sequences.length > 0 && onNavigateToSequence && (
+        <g
+          transform={`translate(${x + width - 16}, ${y + rectHeight - 16})`}
+          onClick={(e) => {
+            e.stopPropagation();
+            onNavigateToSequence(task.sequences[0]);
+          }}
+          style={{ cursor: 'pointer', pointerEvents: 'all' }}
+          title="Open Sequence View"
+        >
+          {/* Large clickable area (transparent) */}
+          <rect x="-8" y="-8" width="24" height="24" fill="transparent" />
+          <path
+            d="M6,1 L1,3.5 L6,6 L11,3.5 Z M1,6 L6,8.5 L11,6 M1,8.5 L6,11 L11,8.5"
+            fill="none"
+            stroke="rgba(255,255,255,0.9)"
+            strokeWidth="1.2"
+            strokeLinejoin="round"
+          />
+        </g>
+      )}
     </g>
   );
 };
