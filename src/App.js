@@ -584,6 +584,9 @@ const App = () => {
             edgeSides={edgeSides[`seq_${activeSequenceId}`] || {}}
             onEdgeSidesChange={(sides) => handleEdgeSidesChange(`seq_${activeSequenceId}`, sides)}
             searchQuery={searchQuery}
+            onSearchChange={setSearchQuery}
+            onEditTasks={() => setShowEditor(true)}
+            onToolNotes={() => setShowToolNotes(true)}
           />
         ) : isLinksViewActive ? (
           <ActivityLinksView activities={activities} onEditTasks={() => setShowEditor(true)} />

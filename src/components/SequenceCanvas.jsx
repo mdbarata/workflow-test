@@ -1,5 +1,6 @@
 import React, { useMemo } from 'react';
 import WorkflowCanvas from './WorkflowCanvas';
+import FilterBar from './FilterBar';
 
 const SequenceCanvas = ({
   activeSequenceId,
@@ -14,7 +15,10 @@ const SequenceCanvas = ({
   onArchPositionsChange,
   edgeSides,
   onEdgeSidesChange,
-  searchQuery
+  searchQuery,
+  onSearchChange,
+  onEditTasks,
+  onToolNotes
 }) => {
   const sequenceActivity = useMemo(() => {
     if (!activeSequenceId || !workflowData) return null;
@@ -81,6 +85,19 @@ const SequenceCanvas = ({
         .sequence-canvas-wrapper .svg-container { background: transparent !important; }
         .sequence-canvas-wrapper svg { background: #e0f2fe !important; }
       `}</style>
+      <FilterBar
+        activity={sequenceActivity}
+        filters={filters}
+        onChange={onFilterChange}
+        onImport={onEditTasks}
+        onToolNotes={onToolNotes}
+        searchQuery={searchQuery}
+        onSearchChange={onSearchChange}
+        // Exclude chapters for sequences
+        onChapters={() => {}} 
+        onSaveJson={() => {}}
+        onLoadJson={() => {}}
+      />
       <WorkflowCanvas
         activity={sequenceActivity}
         filters={filters}

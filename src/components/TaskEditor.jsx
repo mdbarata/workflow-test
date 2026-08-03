@@ -160,8 +160,8 @@ const STATUS_ICONS = { impl: '🟢', plan: '🟡', undefined: '⚪' };
 
 // ── Empty row factory ─────────────────────────────────────────────────────────
 let _uid = 1;
-const emptyRow = (activityName = '') => ({
-  _key: _uid++, taskId: '', activity: activityName, sequences: '', label: '', responsible: '', tool: '',
+const emptyRow = (activityName = '', sequenceName = '') => ({
+  _key: _uid++, taskId: '', activity: activityName, sequences: sequenceName, label: '', responsible: '', tool: '',
   startTime: '', duration: String(DEFAULT_DURATION), inputs: '', outputs: '',
   pre: '', preFormats: '', preTypes: 'undefined', preStatuses: 'undefined', notes: '', altTools: '',
 });
@@ -300,6 +300,8 @@ const RenameDropdown = ({ label, options, onRename }) => {
 const TaskEditor = ({ workflowData, onSave, onClose }) => {
   const [rows, setRows] = useState(() => workflowToRows(workflowData));
   const [activeAct, setActiveAct] = useState('__all__');
+  const [activeSeq, setActiveSeq] = useState('__all__');
+  const [tabMode, setTabMode] = useState('stages');
   const [error, setError] = useState(null);
   const [dragKey, setDragKey] = useState(null);
   const [dragOverKey, setDragOverKey] = useState(null);
@@ -308,6 +310,7 @@ const TaskEditor = ({ workflowData, onSave, onClose }) => {
   const tools = useMemo(() => [...new Set(rows.map((r) => r.tool).filter(Boolean))], [rows]);
   const responsibles = useMemo(() => [...new Set(rows.map((r) => r.responsible).filter(Boolean))], [rows]);
   const taskIds = useMemo(() => rows.map((r) => r.taskId).filter(Boolean), [rows]);
+  const sequencesList = useMemo(() => [...new Set(rows.flatMap((r) => splitList(r.sequences)).filter(Boolean))], [rows]);
 
   // Pin the set of row keys visible on the current tab. This set is only
   // recomputed when the tab changes or rows are added/removed — NOT when a
@@ -317,15 +320,20 @@ const TaskEditor = ({ workflowData, onSave, onClose }) => {
   const [pinnedKeys, setPinnedKeys] = useState(null);
 
   useEffect(() => {
-    if (activeAct === '__all__') { setPinnedKeys(null); return; }
-    setPinnedKeys(new Set(rows.filter((r) => r.activity === activeAct).map((r) => r._key)));
-
-  }, [activeAct, rowKeySignature]);
+    if (tabMode === 'stages') {
+      if (activeAct === '__all__') { setPinnedKeys(null); return; }
+      setPinnedKeys(new Set(rows.filter((r) => r.activity === activeAct).map((r) => r._key)));
+    } else {
+      if (activeSeq === '__all__') { setPinnedKeys(null); return; }
+      setPinnedKeys(new Set(rows.filter((r) => splitList(r.sequences).includes(activeSeq)).map((r) => r._key)));
+    }
+  }, [tabMode, activeAct, activeSeq, rowKeySignature]);
 
   const visibleRows = useMemo(() => {
-    if (activeAct === '__all__' || !pinnedKeys) return rows;
+    const isAll = (tabMode === 'stages' && activeAct === '__all__') || (tabMode === 'sequences' && activeSeq === '__all__');
+    if (isAll || !pinnedKeys) return rows;
     return rows.filter((r) => pinnedKeys.has(r._key));
-  }, [rows, activeAct, pinnedKeys]);
+  }, [rows, tabMode, activeAct, activeSeq, pinnedKeys]);
 
   const updateRow = useCallback((key, field, value) => {
     setRows((prev) => prev.map((r) => (r._key === key ? { ...r, [field]: value } : r)));
@@ -342,8 +350,9 @@ const TaskEditor = ({ workflowData, onSave, onClose }) => {
   }, [activeAct]);
 
   const addRow = () => {
-    const actName = activeAct === '__all__' ? (activities[0] || '') : activeAct;
-    setRows((prev) => [...prev, emptyRow(actName)]);
+    const actName = tabMode === 'stages' && activeAct !== '__all__' ? activeAct : (tabMode === 'stages' ? (activities[0] || '') : '');
+    const seqName = tabMode === 'sequences' && activeSeq !== '__all__' ? activeSeq : '';
+    setRows((prev) => [...prev, emptyRow(actName, seqName)]);
   };
 
   const deleteRow = (key) => setRows((prev) => prev.filter((r) => r._key !== key));
@@ -429,24 +438,53 @@ const TaskEditor = ({ workflowData, onSave, onClose }) => {
           <button onClick={onClose} style={{ background: 'none', border: 'none', fontSize: 18, color: '#64748b', cursor: 'pointer', padding: '2px 6px', borderRadius: 4 }}>✕</button>
         </div>
 
-        {/* Stage tabs */}
-        <div style={{ display: 'flex', alignItems: 'center', gap: 4, padding: '8px 20px 0', borderBottom: '0.5px solid #e2e8f0', background: '#f8fafc' }}>
-          {['__all__', ...activities].map((act) => (
-            <button key={act} onClick={() => setActiveAct(act)} style={{
-              padding: '4px 14px', fontSize: 12, cursor: 'pointer', borderRadius: '6px 6px 0 0',
-              border: '0.5px solid', borderColor: activeAct === act ? '#e2e8f0' : 'transparent',
-              borderBottom: 'none', background: activeAct === act ? '#ffffff' : 'transparent',
-              color: activeAct === act ? '#1e293b' : '#64748b',
-              fontWeight: activeAct === act ? 500 : 400, marginBottom: -1,
-            }}>
-              {act === '__all__' ? 'All' : act}
-            </button>
-          ))}
-          {activeAct !== '__all__' && (
+        {/* Stage / Sequence tabs */}
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '8px 20px 0', borderBottom: '0.5px solid #e2e8f0', background: '#f8fafc' }}>
+          
+          <div style={{ display: 'flex', background: '#e2e8f0', padding: 2, borderRadius: 6, marginRight: 8 }}>
+            <button onClick={() => setTabMode('stages')} style={{ padding: '4px 12px', fontSize: 12, borderRadius: 4, border: 'none', cursor: 'pointer', background: tabMode === 'stages' ? '#fff' : 'transparent', color: tabMode === 'stages' ? '#1e293b' : '#64748b', fontWeight: tabMode === 'stages' ? 500 : 400, boxShadow: tabMode === 'stages' ? '0 1px 3px rgba(0,0,0,0.1)' : 'none' }}>Stages</button>
+            <button onClick={() => setTabMode('sequences')} style={{ padding: '4px 12px', fontSize: 12, borderRadius: 4, border: 'none', cursor: 'pointer', background: tabMode === 'sequences' ? '#fff' : 'transparent', color: tabMode === 'sequences' ? '#1e293b' : '#64748b', fontWeight: tabMode === 'sequences' ? 500 : 400, boxShadow: tabMode === 'sequences' ? '0 1px 3px rgba(0,0,0,0.1)' : 'none' }}>Sequences</button>
+          </div>
+
+          {['__all__', ...(tabMode === 'stages' ? activities : sequencesList)].map((item) => {
+            const isActive = tabMode === 'stages' ? activeAct === item : activeSeq === item;
+            return (
+              <button key={item} onClick={() => tabMode === 'stages' ? setActiveAct(item) : setActiveSeq(item)} style={{
+                padding: '4px 14px', fontSize: 12, cursor: 'pointer', borderRadius: '6px 6px 0 0',
+                border: '0.5px solid', borderColor: isActive ? '#e2e8f0' : 'transparent',
+                borderBottom: 'none', background: isActive ? '#ffffff' : 'transparent',
+                color: isActive ? '#1e293b' : '#64748b',
+                fontWeight: isActive ? 500 : 400, marginBottom: -1,
+              }}>
+                {item === '__all__' ? 'All' : item}
+              </button>
+            );
+          })}
+          
+          {tabMode === 'stages' && activeAct !== '__all__' && (
             <RenameButton
               label="Rename stage"
               currentValue={activeAct}
               onRename={(newVal) => renameValue('activity', activeAct, newVal)}
+            />
+          )}
+          {tabMode === 'sequences' && activeSeq !== '__all__' && (
+            <RenameButton
+              label="Rename sequence (in tasks)"
+              currentValue={activeSeq}
+              onRename={(newVal) => {
+                if (!newVal || !newVal.trim() || newVal === activeSeq) return;
+                setRows((prev) => prev.map((r) => {
+                  let seqs = splitList(r.sequences);
+                  if (seqs.includes(activeSeq)) {
+                    seqs = seqs.map(s => s === activeSeq ? newVal : s);
+                    return { ...r, sequences: seqs.join(', ') };
+                  }
+                  return r;
+                }));
+                setActiveSeq(newVal);
+                setError(null);
+              }}
             />
           )}
           <div style={{ flex: 1 }} />
