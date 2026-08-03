@@ -468,7 +468,7 @@ const VIEWER_JS = `
         if (y1 < -1000 || y2 < -1000) return;
         var x1 = getTaskX(depTask) + getTaskW(depTask);
         var x2 = getTaskX(task);
-        svg += '<g class="dep-arrow" data-from="' + escapeHtml(dId) + '" data-to="' + escapeHtml(task.id) + '">';
+        svg += '<g class="dep-arrow" data-from="' + escapeHtml(dId) + '" data-to="' + escapeHtml(task.id) + '" data-source-tool="' + escapeHtml(depTask.tool || '') + '" data-target-tool="' + escapeHtml(task.tool || '') + '" style="cursor:pointer;">';
         svg += '<path d="' + curvedPath(x1, y1, x2, y2) + '" fill="none" stroke="#64748b" stroke-width="1.8" stroke-opacity="0.6" marker-end="url(#arrow)"/>';
         if (depTask.tool !== task.tool && fmt) {
           var mx = (x1 + x2) / 2, my = (y1 + y2) / 2;
@@ -492,7 +492,7 @@ const VIEWER_JS = `
       var cx = getTaskX(task) + w / 2;
       var firstBaselineY = taskYVal + PAD_Y + LINE_HEIGHT - 2;
 
-      svg += '<g class="task-node" data-id="' + escapeHtml(task.id) + '" data-task-id="' + escapeHtml(task.id) + '" style="cursor:pointer;">';
+      svg += '<g class="task-node" data-id="' + escapeHtml(task.id) + '" data-task-id="' + escapeHtml(task.id) + '" data-tool="' + escapeHtml(task.tool || '') + '" style="cursor:pointer;">';
       svg += '<rect x="' + getTaskX(task) + '" y="' + taskYVal + '" width="' + w + '" height="' + h + '" rx="' + TASK_RADIUS + '" fill="' + fill + '" stroke="rgba(0,0,0,0.25)" stroke-width="1.5" class="task-rect"/>';
       lines.forEach(function(line, i) {
         svg += '<text x="' + cx + '" y="' + (firstBaselineY + i * LINE_HEIGHT) + '" text-anchor="middle" font-size="' + FONT_SIZE + 'px" font-weight="bold" fill="white" pointer-events="none">' + escapeHtml(line) + '</text>';
@@ -1235,7 +1235,12 @@ const VIEWER_JS = `
       var gapStart = (y1 + y2) / 2 - stackH / 2;
       var midX = (x1 + x2) / 2;
 
-      svg += '<g class="link-group" data-from="' + escapeHtml(link.from) + '" data-to="' + escapeHtml(link.to) + '">';
+      var sourceAct = (activities || []).find(function(a) { return a.id === link.from; });
+      var targetAct = (activities || []).find(function(a) { return a.id === link.to; });
+      var sourceTool = sourceAct && sourceAct.tools && sourceAct.tools[0] ? sourceAct.tools[0] : '';
+      var targetTool = targetAct && targetAct.tools && targetAct.tools[0] ? targetAct.tools[0] : '';
+
+      svg += '<g class="link-group" data-from="' + escapeHtml(link.from) + '" data-to="' + escapeHtml(link.to) + '" data-source-tool="' + escapeHtml(sourceTool) + '" data-target-tool="' + escapeHtml(targetTool) + '" style="cursor:pointer;">';
       svg += '<path d="M ' + x1 + ' ' + y1 + ' C ' + x1 + ' ' + ((y1 + y2) / 2) + ', ' + x2 + ' ' + ((y1 + y2) / 2) + ', ' + x2 + ' ' + y2 + '" fill="none" stroke="#94a3b8" stroke-width="1.4" stroke-dasharray="5,4" stroke-opacity="0.75" marker-end="url(#link-arrow)"/>';
       link.docNames.forEach(function(docName, i) {
         var labelW = docName.length * LABEL_CHAR_W + LABEL_PAD_X * 2;
@@ -1493,6 +1498,8 @@ const VIEWER_JS = `
   var targetBadge = document.getElementById('fb-target-badge');
   var clearTargetBtn = document.getElementById('fb-clear-target');
   var textInput = document.getElementById('fb-text');
+  var refNoteContainer = document.getElementById('fb-ref-note-container');
+  var refNoteInput = document.getElementById('fb-ref-note');
   var submitBtn = document.getElementById('fb-submit-btn');
   var listEl = document.getElementById('fb-list');
   var copyMdBtn = document.getElementById('fb-copy-md');
@@ -1515,23 +1522,33 @@ const VIEWER_JS = `
     countEl.style.display = c > 0 ? 'inline-block' : 'none';
   }
 
-  function setFbTarget(type, key, actId, actName) {
-    currentTarget = { type: type, key: key, activityId: actId || null, activityName: actName || null };
+  function setFbTarget(type, key, actId, actName, tools) {
+    currentTarget = { type: type, key: key, activityId: actId || null, activityName: actName || null, tools: tools || [] };
     if (targetBadge) {
       var label = '';
       if (type === 'general') label = 'General Workflow';
       else if (type === 'tool') label = 'Tool: ' + key + (actName ? ' (' + actName + ')' : '');
       else if (type === 'activity') label = 'Activity: ' + key;
+      else if (type === 'task') label = 'Task: ' + key;
       else if (type === 'link') label = 'Link: ' + key;
       else label = key;
       targetBadge.textContent = label;
+    }
+    if (refNoteContainer) {
+      if (type === 'task' || type === 'link') {
+        refNoteContainer.style.display = 'block';
+        if (refNoteInput) refNoteInput.value = '';
+      } else {
+        refNoteContainer.style.display = 'none';
+        if (refNoteInput) refNoteInput.value = '';
+      }
     }
   }
 
   function renderFbList() {
     if (!listEl) return;
     if (fbState.comments.length === 0) {
-      listEl.innerHTML = '<div style="text-align:center;color:#94a3b8;font-size:12px;padding:20px 0;">No comments yet. Click any tool lane, architecture box, or link in the diagram to attach a note!</div>';
+      listEl.innerHTML = '<div style="text-align:center;color:#94a3b8;font-size:12px;padding:20px 0;">No comments yet. Click any tool lane, architecture box, or link in the diagram to attach a note! Double click a task node or link to add a Reference Note and provide more details. </div>';
       return;
     }
     var html = '';
@@ -1584,6 +1601,8 @@ const VIEWER_JS = `
         targetKey: currentTarget.key,
         activityId: currentTarget.activityId,
         activityName: currentTarget.activityName,
+        associatedTools: currentTarget.tools || [],
+        referenceNote: refNoteInput ? refNoteInput.value.trim() : '',
         timestamp: new Date().toISOString()
       };
       fbState.comments.push(comment);
@@ -1636,11 +1655,12 @@ const VIEWER_JS = `
   document.addEventListener('click', function(e) {
     var targetEl = e.target.closest('[data-key], [data-tool], .link-group, .chip-tool');
     if (!targetEl) return;
-    // Don't trigger if clicking inside feedback drawer or buttons
+    // We handle task nodes and links separately in dblclick now
+    if (targetEl.classList.contains('task-node') || targetEl.classList.contains('link-group') || targetEl.classList.contains('dep-arrow')) return;
+    
     if (e.target.closest('#feedback-drawer, #tool-note-modal, .view-toggle, .filter-bar, .topbar, .tab-bar, .zoom-controls, .note-icon, .arch-note-icon')) return;
 
     var type = 'general', key = 'General Workflow', actId = null, actName = null;
-    // Check which activity panel we are in
     var panelEl = targetEl.closest('.tab-panel');
     if (panelEl) {
       var idx = parseInt(panelEl.getAttribute('data-index') || '0', 10);
@@ -1653,13 +1673,40 @@ const VIEWER_JS = `
       type = 'tool'; key = targetEl.getAttribute('data-key');
     } else if (targetEl.classList.contains('chip-tool')) {
       type = 'tool'; key = targetEl.textContent.trim();
-    } else if (targetEl.classList.contains('link-group')) {
-      type = 'link'; key = targetEl.getAttribute('data-from') + ' -> ' + targetEl.getAttribute('data-to');
     }
 
     if (type !== 'general') {
-      setFbTarget(type, key, actId, actName);
+      setFbTarget(type, key, actId, actName, [key]);
       if (drawerEl && !drawerEl.classList.contains('open')) drawerEl.classList.add('open');
+    }
+  });
+
+  document.addEventListener('dblclick', function(e) {
+    var targetEl = e.target.closest('.task-node, .link-group, .dep-arrow');
+    if (!targetEl) return;
+    if (e.target.closest('#feedback-drawer, #tool-note-modal, .view-toggle, .filter-bar, .topbar, .tab-bar, .zoom-controls, .note-icon, .arch-note-icon')) return;
+
+    var type = 'general', key = 'General Workflow', actId = null, actName = null;
+    var panelEl = targetEl.closest('.tab-panel');
+    if (panelEl) {
+      var idx = parseInt(panelEl.getAttribute('data-index') || '0', 10);
+      if (activities[idx]) { actId = activities[idx].id; actName = activities[idx].name; }
+    }
+
+    var tools = [];
+    if (targetEl.classList.contains('task-node')) {
+      type = 'task'; key = targetEl.getAttribute('data-id');
+      if (targetEl.getAttribute('data-tool')) tools.push(targetEl.getAttribute('data-tool'));
+    } else if (targetEl.classList.contains('link-group') || targetEl.classList.contains('dep-arrow')) {
+      type = 'link'; key = targetEl.getAttribute('data-from') + ' -> ' + targetEl.getAttribute('data-to');
+      if (targetEl.getAttribute('data-source-tool')) tools.push(targetEl.getAttribute('data-source-tool'));
+      if (targetEl.getAttribute('data-target-tool')) tools.push(targetEl.getAttribute('data-target-tool'));
+    }
+
+    if (type !== 'general') {
+      setFbTarget(type, key, actId, actName, tools);
+      if (drawerEl && !drawerEl.classList.contains('open')) drawerEl.classList.add('open');
+      if (window.getSelection) window.getSelection().removeAllRanges();
     }
   });
 
@@ -1999,14 +2046,18 @@ function buildHtml(workflowData, options) {
           <button id="fb-clear-target" type="button" style="background:none;border:none;color:#64748b;cursor:pointer;font-size:11px;text-decoration:underline;">Reset</button>
         </div>
         <div style="font-size:11px;color:#1e40af;background:#eff6ff;padding:6px 8px;border-radius:6px;border:1px solid #bfdbfe;line-height:1.3;margin:2px 0;">
-          💡 <strong>Tip:</strong> Click any <strong>Tool lane</strong>, <strong>Architecture box</strong>, or <strong>Link</strong> in the diagram to attach your comment directly to that item!
+          💡 <strong>Tip:</strong> Click any <strong>Tool lane</strong> or <strong>Architecture box</strong>, or double-click any <strong>Task</strong> or <strong>Link</strong> in the diagram to attach your comment directly to that item!
+        </div>
+        <div id="fb-ref-note-container" style="display:none;margin-top:8px;">
+          <label>Reference Note (Optional)</label>
+          <input id="fb-ref-note" type="text" placeholder="Explain exactly what this comment refers to..." />
         </div>
         <label id="fb-note-label">Comment</label>
         <textarea id="fb-text" placeholder="Write your observation, question, or suggestion..."></textarea>
         <button id="fb-submit-btn" type="button" class="feedback-btn-primary">Add Comment</button>
       </div>
       <div id="fb-list" class="feedback-list">
-        <div style="text-align:center;color:#94a3b8;font-size:12px;padding:20px 0;">No comments yet. Click any tool lane, architecture box, or link in the diagram to attach a note!</div>
+        <div style="text-align:center;color:#94a3b8;font-size:12px;padding:20px 0;">No comments yet. Click any tool lane, architecture box, or link in the diagram to attach a note! Double click a task node or link to add a Reference Note and provide more details.</div>
       </div>
     </div>
     <div class="feedback-footer">

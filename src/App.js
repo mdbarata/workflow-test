@@ -31,7 +31,17 @@ const ToolNotesEditor = ({ tools, toolNotes, onChange, onClose }) => {
           if (text && text !== '(no notes)') parsed[tool] = text;
         }
       });
-      setDraft((prev) => ({ ...prev, ...parsed }));
+      setDraft((prev) => {
+        const next = { ...prev };
+        Object.keys(parsed).forEach((tool) => {
+          if (next[tool] && next[tool].trim() !== '') {
+            next[tool] = next[tool] + '\n\n' + parsed[tool];
+          } else {
+            next[tool] = parsed[tool];
+          }
+        });
+        return next;
+      });
     };
     reader.readAsText(file);
     e.target.value = '';
@@ -87,6 +97,7 @@ const ToolNotesEditor = ({ tools, toolNotes, onChange, onClose }) => {
             </label>
           </div>
           <div style={{ display: 'flex', gap: 8 }}>
+            <button className="btn-secondary" onClick={() => { if (window.confirm('Clear all notes?')) setDraft({}); }} style={{ color: '#ef4444' }}>Clear All</button>
             <button className="btn-secondary" onClick={onClose}>Cancel</button>
             <button className="btn-primary" onClick={() => { onChange(draft); onClose(); }}>Save notes</button>
           </div>

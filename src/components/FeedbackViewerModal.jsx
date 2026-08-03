@@ -103,16 +103,30 @@ const FeedbackViewerModal = ({ isOpen, onClose, feedbackItems = [], onImportFeed
     const map = {};
     displayList.forEach((item) => {
       const isUnmatched = unmatched.includes(item);
-      const baseLabel = item.targetType === 'tool'
-        ? `Tool: ${item.targetKey}${item.activityName ? ` (${item.activityName})` : ''}`
-        : item.targetType === 'activity'
-        ? `Activity: ${item.targetKey}`
-        : item.targetType === 'link'
-        ? `Link: ${item.targetKey}`
-        : 'General Workflow';
-      const label = isUnmatched ? `⚠️ Target Modified: ${baseLabel}` : `📌 ${baseLabel}`;
-      if (!map[label]) map[label] = { isUnmatched, items: [] };
-      map[label].items.push(item);
+      
+      if (item.targetType === 'link') {
+        const label = isUnmatched ? `⚠️ Target Modified: Link: ${item.targetKey}` : `📌 Link: ${item.targetKey}`;
+        if (!map[label]) map[label] = { isUnmatched, items: [] };
+        map[label].items.push(item);
+      } else {
+        const tools = item.associatedTools && item.associatedTools.length > 0 
+          ? item.associatedTools 
+          : (item.targetType === 'tool' ? [item.targetKey] : []);
+
+        if (tools.length === 0) {
+          const baseLabel = item.targetType === 'task' ? `Task: ${item.targetKey}` : `General Workflow`;
+          const label = isUnmatched ? `⚠️ Target Modified: ${baseLabel}` : `📌 ${baseLabel}`;
+          if (!map[label]) map[label] = { isUnmatched, items: [] };
+          map[label].items.push(item);
+        } else {
+          tools.forEach(t => {
+            const baseLabel = `Tool: ${t}`;
+            const label = isUnmatched ? `⚠️ Target Modified: ${baseLabel}` : `📌 ${baseLabel}`;
+            if (!map[label]) map[label] = { isUnmatched, items: [] };
+            map[label].items.push(item);
+          });
+        }
+      }
     });
     return map;
   }, [displayList, unmatched]);
@@ -207,27 +221,12 @@ const FeedbackViewerModal = ({ isOpen, onClose, feedbackItems = [], onImportFeed
                 </div>
                 <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', paddingLeft: '6px', borderLeft: '2px solid #e2e8f0', marginTop: '8px' }}>
                   {groupData.items.map((item) => (
-                    <div key={item.id || Math.random()} style={{ ...styles.card, ...(groupData.isUnmatched ? styles.cardUnmatched : {}) }}>
-                      <div style={styles.cardHeader}>
-                        <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-                          <span style={{ fontWeight: 700, color: '#0f172a', fontSize: '13px' }}>
-                            {item.author || 'Anonymous'}
-                          </span>
-                          {item.sourceFile && (
-                            <span style={{ fontSize: '10px', color: '#94a3b8', background: '#f1f5f9', padding: '1px 5px', borderRadius: '4px' }}>
-                              from {item.sourceFile}
-                            </span>
-                          )}
-                        </div>
-                        <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                          <span style={{ fontSize: '11px', color: '#64748b' }}>
-                            {new Date(item.timestamp || Date.now()).toLocaleString([], { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' })}
-                          </span>
-                          <button onClick={() => onDeleteComment(item.id)} style={styles.delBtn} title="Dismiss comment">✕</button>
-                        </div>
-                      </div>
-                      <div style={styles.cardText}>{item.text}</div>
-                    </div>
+                    <CommentCard 
+                      key={`${groupLabel}-${item.id || Math.random()}`} 
+                      item={item} 
+                      groupData={groupData} 
+                      onDeleteComment={onDeleteComment} 
+                    />
                   ))}
                 </div>
               </div>
@@ -307,46 +306,67 @@ const styles = {
   emptyState: {
     textAlign: 'center', padding: '40px 20px', color: '#94a3b8'
   },
-  card: {
-    background: '#fff', border: '1px solid #e2e8f0', borderRadius: '8px', padding: '14px',
-    boxShadow: '0 1px 3px rgba(0,0,0,0.02)', transition: 'all 0.15s'
-  },
-  cardUnmatched: {
-    background: '#fffefc', borderColor: '#fde68a'
-  },
-  cardHeader: {
-    display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '8px'
-  },
-  delBtn: {
-    background: 'none', border: 'none', color: '#94a3b8', cursor: 'pointer', fontSize: '14px',
-    fontWeight: 700, padding: '0 4px'
-  },
-  targetBadge: {
-    background: '#eff6ff', color: '#1e40af', padding: '3px 8px', borderRadius: '4px',
-    fontSize: '11px', fontWeight: 600, border: '1px solid #bfdbfe'
-  },
-  targetBadgeUnmatched: {
-    background: '#fef3c7', color: '#b45309', borderColor: '#fde68a'
-  },
-  groupHeader: {
-    background: '#eff6ff', color: '#1e40af', padding: '8px 12px', borderRadius: '6px',
-    fontSize: '12px', fontWeight: 700, border: '1px solid #bfdbfe', display: 'flex',
-    alignItems: 'center', justifyContent: 'space-between'
-  },
-  groupHeaderUnmatched: {
-    background: '#fef3c7', color: '#b45309', borderColor: '#fde68a'
-  },
-  cardText: {
-    fontSize: '13px', color: '#1e293b', lineHeight: 1.5, whiteSpace: 'pre-wrap'
-  },
-  footer: {
-    padding: '12px 20px', background: '#f8fafc', borderTop: '1px solid #e2e8f0',
-    display: 'flex', justifyContent: 'flex-end'
-  },
-  doneBtn: {
-    padding: '8px 18px', background: '#0f172a', color: '#fff', fontSize: '12px',
-    fontWeight: 600, border: 'none', borderRadius: '6px', cursor: 'pointer'
-  }
+  card: { background: '#fff', border: '1px solid #e2e8f0', borderRadius: '8px', padding: '12px', position: 'relative', boxShadow: '0 1px 2px rgba(0,0,0,0.02)' },
+  cardUnmatched: { border: '1px dashed #fca5a5', background: '#fffcfc' },
+  cardHeader: { display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '8px' },
+  delBtn: { background: 'none', border: 'none', padding: '2px', color: '#cbd5e1', cursor: 'pointer', fontSize: '14px', lineHeight: 1 },
+  targetBadge: { background: '#eff6ff', color: '#1e40af', padding: '3px 8px', borderRadius: '4px', fontSize: '11px', fontWeight: 600, border: '1px solid #bfdbfe' },
+  groupHeader: { background: '#eff6ff', color: '#1e40af', padding: '8px 12px', borderRadius: '6px', fontSize: '12px', fontWeight: 700, border: '1px solid #bfdbfe', display: 'flex', alignItems: 'center', justifyContent: 'space-between' },
+  groupHeaderUnmatched: { background: '#fef2f2', borderBottom: '1px solid #fecaca', color: '#991b1b' },
+  cardText: { fontSize: '12px', color: '#334155', lineHeight: 1.5, whiteSpace: 'pre-wrap', wordBreak: 'break-word' },
+  footer: { padding: '14px 20px', borderTop: '1px solid #e2e8f0', background: '#f8fafc', display: 'flex', justifyContent: 'flex-end' },
+  doneBtn: { padding: '8px 24px', background: '#2563eb', color: '#fff', border: 'none', borderRadius: '6px', fontSize: '13px', fontWeight: 600, cursor: 'pointer' }
+};
+
+const CommentCard = ({ item, groupData, onDeleteComment }) => {
+  const [showNote, setShowNote] = useState(false);
+
+  return (
+    <div style={{ ...styles.card, ...(groupData.isUnmatched ? styles.cardUnmatched : {}) }}>
+      <div style={styles.cardHeader}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+          <span style={{ fontWeight: 700, color: '#0f172a', fontSize: '13px' }}>
+            {item.author || 'Anonymous'}
+          </span>
+          {item.sourceFile && (
+            <span style={{ fontSize: '10px', color: '#94a3b8', background: '#f1f5f9', padding: '1px 5px', borderRadius: '4px' }}>
+              from {item.sourceFile}
+            </span>
+          )}
+        </div>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+          <span style={{ fontSize: '11px', color: '#64748b' }}>
+            {new Date(item.timestamp || Date.now()).toLocaleString([], { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' })}
+          </span>
+          <button onClick={() => onDeleteComment(item.id)} style={styles.delBtn} title="Dismiss comment">✕</button>
+        </div>
+      </div>
+      
+      {(item.targetType === 'task' || item.targetType === 'link') && (
+        <div style={{ fontSize: '12px', fontWeight: 600, color: '#2563eb', marginBottom: '4px' }}>
+          {item.targetType === 'task' ? `[Task: ${item.targetKey}]` : `[Link: ${item.targetKey}]`}
+        </div>
+      )}
+      <div style={styles.cardText}>{item.text}</div>
+      
+      {item.referenceNote && (
+        <div style={{ marginTop: '8px' }}>
+          <button 
+            onClick={() => setShowNote(!showNote)}
+            style={{ background: 'none', border: 'none', color: '#3b82f6', fontSize: '11px', fontWeight: 600, cursor: 'pointer', padding: 0, textDecoration: 'underline' }}
+          >
+            {showNote ? 'Hide Note' : 'Expand/View Note'}
+          </button>
+          {showNote && (
+            <div style={{ marginTop: '6px', padding: '8px', background: '#f8fafc', borderLeft: '3px solid #cbd5e1', fontSize: '12px', color: '#475569', fontStyle: 'italic' }}>
+              <strong style={{ fontStyle: 'normal', display: 'block', marginBottom: '4px', fontSize: '11px', textTransform: 'uppercase', color: '#94a3b8' }}>Reference Note</strong>
+              {item.referenceNote}
+            </div>
+          )}
+        </div>
+      )}
+    </div>
+  );
 };
 
 export default FeedbackViewerModal;

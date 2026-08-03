@@ -553,30 +553,56 @@ const TaskEditor = ({ workflowData, onSave, onClose }) => {
                   <Cell value={row.outputs} onChange={(v) => updateRow(row._key, 'outputs', v)} placeholder="Doc C" wide />
                   <Cell value={row.pre} onChange={(v) => updateRow(row._key, 'pre', v)} placeholder="task1, task2" list="id-list" wide />
                   <Cell value={row.preFormats} onChange={(v) => updateRow(row._key, 'preFormats', v)} placeholder="REST/JSON, CSV" wide />
-                  <td style={{ padding: '3px 4px', textAlign: 'center' }}>
-                    <div style={{ position: 'relative', width: 34, height: 26, margin: '0 auto', display: 'flex', alignItems: 'center', justifyContent: 'center', background: '#f8fafc', border: '1px solid #cbd5e1', borderRadius: 4, cursor: 'pointer' }}>
-                      <span style={{ fontSize: 14, pointerEvents: 'none', userSelect: 'none' }}>
-                        {TYPE_ICONS[row.preTypes] || TYPE_ICONS.undefined}
-                      </span>
-                      <select value={row.preTypes || 'undefined'} onChange={(e) => updateRow(row._key, 'preTypes', e.target.value)}
-                        style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', opacity: 0, cursor: 'pointer' }}>
-                        <option value="undefined">⚪ Undefined</option>
-                        <option value="file">📄 File format</option>
-                        <option value="plugin">🔌 Plug-in / Native</option>
-                      </select>
+                  <td style={{ padding: '3px 4px', textAlign: 'center', verticalAlign: 'top' }}>
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+                      {splitList(row.pre).length === 0 && <span style={{ color: '#cbd5e1', fontSize: 12, padding: 4 }}>-</span>}
+                      {splitList(row.pre).map((preId, idx) => {
+                        const types = splitList(row.preTypes);
+                        const t = types[idx] || 'undefined';
+                        return (
+                          <div key={idx} style={{ position: 'relative', width: 34, height: 26, margin: '0 auto', display: 'flex', alignItems: 'center', justifyContent: 'center', background: '#f8fafc', border: '1px solid #cbd5e1', borderRadius: 4, cursor: 'pointer' }} title={`Type for link with ${preId}`}>
+                            <span style={{ fontSize: 14, pointerEvents: 'none', userSelect: 'none' }}>
+                              {TYPE_ICONS[t] || TYPE_ICONS.undefined}
+                            </span>
+                            <select value={t} onChange={(e) => {
+                              const newTypes = [...types];
+                              while (newTypes.length < splitList(row.pre).length) newTypes.push('undefined');
+                              newTypes[idx] = e.target.value;
+                              updateRow(row._key, 'preTypes', newTypes.join(', '));
+                            }} style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', opacity: 0, cursor: 'pointer' }}>
+                              <option value="undefined">⚪ Undefined</option>
+                              <option value="file">📄 File format</option>
+                              <option value="plugin">🔌 Plug-in / Native</option>
+                            </select>
+                          </div>
+                        );
+                      })}
                     </div>
                   </td>
-                  <td style={{ padding: '3px 4px', textAlign: 'center' }}>
-                    <div style={{ position: 'relative', width: 34, height: 26, margin: '0 auto', display: 'flex', alignItems: 'center', justifyContent: 'center', background: '#f8fafc', border: '1px solid #cbd5e1', borderRadius: 4, cursor: 'pointer' }}>
-                      <span style={{ fontSize: 14, pointerEvents: 'none', userSelect: 'none' }}>
-                        {STATUS_ICONS[row.preStatuses] || STATUS_ICONS.undefined}
-                      </span>
-                      <select value={row.preStatuses || 'undefined'} onChange={(e) => updateRow(row._key, 'preStatuses', e.target.value)}
-                        style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', opacity: 0, cursor: 'pointer' }}>
-                        <option value="undefined">⚪ Undefined</option>
-                        <option value="impl">🟢 Implemented</option>
-                        <option value="plan">🟡 Planned / Wip</option>
-                      </select>
+                  <td style={{ padding: '3px 4px', textAlign: 'center', verticalAlign: 'top' }}>
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+                      {splitList(row.pre).length === 0 && <span style={{ color: '#cbd5e1', fontSize: 12, padding: 4 }}>-</span>}
+                      {splitList(row.pre).map((preId, idx) => {
+                        const statuses = splitList(row.preStatuses);
+                        const s = statuses[idx] || 'undefined';
+                        return (
+                          <div key={idx} style={{ position: 'relative', width: 34, height: 26, margin: '0 auto', display: 'flex', alignItems: 'center', justifyContent: 'center', background: '#f8fafc', border: '1px solid #cbd5e1', borderRadius: 4, cursor: 'pointer' }} title={`Status for link with ${preId}`}>
+                            <span style={{ fontSize: 14, pointerEvents: 'none', userSelect: 'none' }}>
+                              {STATUS_ICONS[s] || STATUS_ICONS.undefined}
+                            </span>
+                            <select value={s} onChange={(e) => {
+                              const newStatuses = [...statuses];
+                              while (newStatuses.length < splitList(row.pre).length) newStatuses.push('undefined');
+                              newStatuses[idx] = e.target.value;
+                              updateRow(row._key, 'preStatuses', newStatuses.join(', '));
+                            }} style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', opacity: 0, cursor: 'pointer' }}>
+                              <option value="undefined">⚪ Undefined</option>
+                              <option value="impl">🟢 Implemented</option>
+                              <option value="plan">🟡 Planned / Wip</option>
+                            </select>
+                          </div>
+                        );
+                      })}
                     </div>
                   </td>
                   <Cell value={row.notes} onChange={(v) => updateRow(row._key, 'notes', v)} placeholder="Details…" wide />
