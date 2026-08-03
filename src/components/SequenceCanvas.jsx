@@ -24,17 +24,26 @@ const SequenceCanvas = ({
     if (!activeSequenceId || !workflowData) return null;
     
     // Aggregating all tasks that belong to this sequence
-    const allTasks = [];
+    const sequenceTasks = [];
+    const parentTasks = [];
     (workflowData.activities || []).forEach(act => {
       (act.tasks || []).forEach(t => {
         if ((t.sequences || []).includes(activeSequenceId)) {
-          allTasks.push(t);
+          if (t.isSequenceParent) {
+            parentTasks.push({ ...t, activityName: act.name });
+          } else {
+            sequenceTasks.push(t);
+          }
         }
       });
     });
     (workflowData.hiddenTasks || []).forEach(t => {
       if ((t.sequences || []).includes(activeSequenceId)) {
-        allTasks.push(t);
+        if (t.isSequenceParent) {
+          parentTasks.push({ ...t, activityName: 'Hidden Tasks' });
+        } else {
+          sequenceTasks.push(t);
+        }
       }
     });
 
@@ -43,7 +52,7 @@ const SequenceCanvas = ({
     const respSet = new Set();
     const docIds = new Set();
 
-    allTasks.forEach(t => {
+    [...sequenceTasks, ...parentTasks].forEach(t => {
       if (t.tool) toolsSet.add(t.tool);
       if (t.responsible) respSet.add(t.responsible);
       (t.inputs || []).forEach(id => docIds.add(id));
@@ -70,7 +79,8 @@ const SequenceCanvas = ({
       tools: Array.from(toolsSet),
       responsibles: globalResponsibles,
       documents: globalDocs,
-      tasks: allTasks,
+      tasks: sequenceTasks,
+      parentTasks: parentTasks,
       chapters: [] // Chapters don't make sense in sequence view right now
     };
   }, [activeSequenceId, workflowData]);
@@ -98,6 +108,18 @@ const SequenceCanvas = ({
         onSaveJson={() => {}}
         onLoadJson={() => {}}
       />
+      {sequenceActivity.parentTasks && sequenceActivity.parentTasks.length > 0 && (
+        <div style={{ padding: '12px 20px', background: '#e0f2fe', borderBottom: '1px solid #bae6fd', color: '#0369a1', fontSize: 14, fontWeight: 500, display: 'flex', alignItems: 'center', gap: 8 }}>
+          <span>Associated to:</span>
+          <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+            {sequenceActivity.parentTasks.map(pt => (
+              <span key={pt.id} style={{ background: '#fff', padding: '4px 12px', borderRadius: 16, border: '1px solid #7dd3fc', fontSize: 13, color: '#0c4a6e', boxShadow: '0 1px 2px rgba(0,0,0,0.05)' }}>
+                <strong>{pt.name}</strong> <span style={{ opacity: 0.7, fontWeight: 'normal' }}>(in {pt.activityName})</span>
+              </span>
+            ))}
+          </div>
+        </div>
+      )}
       <WorkflowCanvas
         activity={sequenceActivity}
         filters={filters}

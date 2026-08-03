@@ -124,6 +124,7 @@ const rowsToWorkflow = (rows, originalData) => {
     inputs: splitList(r.inputs).map(slugify),
     outputs: splitList(r.outputs).map(slugify),
     sequences: splitList(r.sequences),
+    isSequenceParent: !!r.isParent,
   });
 
   const activities = Object.values(activitiesMap).map((act) => {
@@ -161,7 +162,7 @@ const STATUS_ICONS = { impl: '🟢', plan: '🟡', undefined: '⚪' };
 // ── Empty row factory ─────────────────────────────────────────────────────────
 let _uid = 1;
 const emptyRow = (activityName = '', sequenceName = '') => ({
-  _key: _uid++, taskId: '', activity: activityName, sequences: sequenceName, label: '', responsible: '', tool: '',
+  _key: _uid++, taskId: '', activity: activityName, sequences: sequenceName, isParent: false, label: '', responsible: '', tool: '',
   startTime: '', duration: String(DEFAULT_DURATION), inputs: '', outputs: '',
   pre: '', preFormats: '', preTypes: 'undefined', preStatuses: 'undefined', notes: '', altTools: '',
 });
@@ -180,6 +181,7 @@ const workflowToRows = (data) => {
       taskId: t.id,
       activity: activityName,
       sequences: joinList(t.sequences || []),
+      isParent: !!t.isSequenceParent,
       label: t.name,
       responsible: responsibles.find((r) => r.key === t.responsible)?.name || t.responsible,
       tool: t.tool,
@@ -502,6 +504,7 @@ const TaskEditor = ({ workflowData, onSave, onClose }) => {
                 <th style={thStyle}>Task ID</th>
                 <th style={{ ...thStyle, minWidth: 110 }}>Stage</th>
                 <th style={{ ...thStyle, minWidth: 110 }}>Sequences</th>
+                <th style={{ ...thStyle, minWidth: 70, textAlign: 'center' }} title="Is Parent of Sequence?">Seq. Parent?</th>
                 <th style={{ ...thStyle, minWidth: 110 }}>Label</th>
                 <th style={{ ...thStyle, minWidth: 120 }}>Responsible</th>
                 <th style={{ ...thStyle, minWidth: 100 }}>Tool</th>
@@ -538,6 +541,9 @@ const TaskEditor = ({ workflowData, onSave, onClose }) => {
                   <Cell value={row.taskId} onChange={(v) => updateRow(row._key, 'taskId', v)} placeholder="task1" />
                   <Cell value={row.activity} onChange={(v) => updateRow(row._key, 'activity', v)} placeholder="Stage 1" list="act-list" wide />
                   <Cell value={row.sequences} onChange={(v) => updateRow(row._key, 'sequences', v)} placeholder="seq_1, seq_2" wide />
+                  <td style={{ padding: '3px 4px', textAlign: 'center' }}>
+                    <input type="checkbox" checked={!!row.isParent} onChange={(e) => updateRow(row._key, 'isParent', e.target.checked)} style={{ cursor: 'pointer' }} title="Is this task the parent of the listed sequences?" />
+                  </td>
                   <Cell value={row.label} onChange={(v) => updateRow(row._key, 'label', v)} placeholder="Task name" wide />
                   <Cell value={row.responsible} onChange={(v) => updateRow(row._key, 'responsible', v)} placeholder="Responsible A" list="resp-list" wide />
                   <Cell value={row.tool} onChange={(v) => updateRow(row._key, 'tool', v)} placeholder="Tool 1" list="tool-list" />
