@@ -158,6 +158,70 @@ const ImportChoiceModal = ({ pendingImport, onJoin, onReplace, onClose }) => {
   );
 };
 
+// ── Alt Tools Modal ────────────────────────────────────────────────────────────
+const AltToolsModal = ({ workflowData, onClose }) => {
+  const tasksByTool = {};
+  
+  const allTasks = [];
+  (workflowData.activities || []).forEach(act => {
+    (act.tasks || []).forEach(t => allTasks.push({ ...t, stageName: act.name }));
+  });
+  (workflowData.hiddenTasks || []).forEach(t => allTasks.push({ ...t, stageName: 'Hidden Tasks' }));
+
+  allTasks.forEach(task => {
+    if (task.alternativeTools && task.alternativeTools.length > 0) {
+      const tool = task.tool || 'Unassigned Tool';
+      if (!tasksByTool[tool]) tasksByTool[tool] = [];
+      tasksByTool[tool].push(task);
+    }
+  });
+
+  const tools = Object.keys(tasksByTool).sort();
+
+  return (
+    <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.5)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 3000, backdropFilter: 'blur(3px)' }} onClick={onClose}>
+      <div style={{ background: '#ffffff', borderRadius: 12, width: 600, maxHeight: '80vh', display: 'flex', flexDirection: 'column', boxShadow: '0 20px 60px rgba(0,0,0,0.3)', overflow: 'hidden' }} onClick={(e) => e.stopPropagation()}>
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '16px 20px', borderBottom: '0.5px solid #e2e8f0', background: '#f8fafc' }}>
+          <span style={{ fontSize: 16, fontWeight: 600, color: '#1e293b' }}>Alternative Tools Compilation</span>
+          <button onClick={onClose} style={{ background: 'none', border: 'none', fontSize: 18, color: '#64748b', cursor: 'pointer' }}>✕</button>
+        </div>
+        <div style={{ padding: '20px', overflowY: 'auto', flex: 1 }}>
+          {tools.length === 0 ? (
+            <p style={{ fontSize: 13, color: '#64748b', textAlign: 'center', margin: '40px 0' }}>No alternative tools proposed in any task.</p>
+          ) : (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '24px' }}>
+              {tools.map(tool => (
+                <div key={tool}>
+                  <h3 style={{ margin: '0 0 12px 0', fontSize: 15, color: '#0f172a', display: 'flex', alignItems: 'center', gap: 8 }}>
+                    <span style={{ padding: '4px 8px', background: '#eff6ff', color: '#1d4ed8', borderRadius: 6, fontSize: 13, border: '1px solid #bfdbfe' }}>{tool}</span>
+                  </h3>
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                    {tasksByTool[tool].map((task, i) => (
+                      <div key={i} style={{ border: '1px solid #e2e8f0', borderRadius: 8, padding: '12px', background: '#f8fafc' }}>
+                        <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '8px' }}>
+                          <strong style={{ fontSize: 14, color: '#334155' }}>{task.name}</strong>
+                          <span style={{ fontSize: 11, color: '#94a3b8' }}>{task.stageName}</span>
+                        </div>
+                        <div style={{ fontSize: 13, color: '#475569', display: 'flex', alignItems: 'flex-start', gap: '8px' }}>
+                          <span style={{ fontWeight: 600, color: '#059669', flexShrink: 0 }}>Alternatives:</span>
+                          <span style={{ lineHeight: 1.4 }}>{task.alternativeTools.join(', ')}</span>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+        <div style={{ display: 'flex', justifyContent: 'flex-end', padding: '12px 20px', borderTop: '0.5px solid #e2e8f0', background: '#f8fafc' }}>
+          <button className="btn-secondary" onClick={onClose}>Close</button>
+        </div>
+      </div>
+    </div>
+  );
+};
+
 // ── App ───────────────────────────────────────────────────────────────────────
 const App = () => {
   const saved = loadAppState();
@@ -170,6 +234,7 @@ const App = () => {
   const [showChapterEditor, setShowChapterEditor] = useState(false);
   const [showToolNotes, setShowToolNotes] = useState(false);
   const [showLinks, setShowLinks] = useState(saved?.showLinks || false);
+  const [showAltTools, setShowAltTools] = useState(false);
   const [activeSequenceId, setActiveSequenceId] = useState(null);
   // toolNotes: { [toolName]: string } — shared across all activities
   const [toolNotes, setToolNotes] = useState(saved?.toolNotes || {});
@@ -531,29 +596,47 @@ const App = () => {
 
   return (
     <div className="workflow-d3-container">
-      {/* Floating Sequences Button */}
-      {workflowData.sequences && workflowData.sequences.length > 0 && (
+      {/* Floating Buttons Group (Bottom Left) */}
+      <div style={{ position: 'fixed', bottom: 24, left: 24, zIndex: 3000, display: 'flex', gap: 12 }}>
+        {workflowData.sequences && workflowData.sequences.length > 0 && (
+          <button
+            onClick={() => {
+              if (activeSequenceId) {
+                setActiveSequenceId(null);
+              } else {
+                setActiveSequenceId(workflowData.sequences[0].id);
+                setShowLinks(false);
+                setFilters({ responsibles: [], tools: [], chapters: [] });
+              }
+            }}
+            style={{
+              padding: '10px 16px', background: activeSequenceId ? '#2563eb' : '#ffffff',
+              color: activeSequenceId ? '#ffffff' : '#1e293b',
+              border: `1.5px solid ${activeSequenceId ? '#2563eb' : '#cbd5e1'}`,
+              borderRadius: 8, boxShadow: '0 4px 12px rgba(0,0,0,0.15)', cursor: 'pointer',
+              fontWeight: 600, display: 'flex', alignItems: 'center', gap: 8, transition: 'all 0.2s'
+            }}
+          >
+            <span style={{ fontSize: 16 }}>📚</span> {activeSequenceId ? 'Exit Sequences' : 'Sequences View'}
+          </button>
+        )}
         <button
-          onClick={() => {
-            if (activeSequenceId) {
-              setActiveSequenceId(null);
-            } else {
-              setActiveSequenceId(workflowData.sequences[0].id);
-              setShowLinks(false);
-              setFilters({ responsibles: [], tools: [], chapters: [] });
-            }
-          }}
+          onClick={() => setShowAltTools(true)}
           style={{
-            position: 'fixed', bottom: 24, left: 24, zIndex: 3000,
-            padding: '10px 16px', background: activeSequenceId ? '#2563eb' : '#ffffff',
-            color: activeSequenceId ? '#ffffff' : '#1e293b',
-            border: `1.5px solid ${activeSequenceId ? '#2563eb' : '#cbd5e1'}`,
+            padding: '10px 16px', background: showAltTools ? '#059669' : '#ffffff',
+            color: showAltTools ? '#ffffff' : '#1e293b',
+            border: `1.5px solid ${showAltTools ? '#059669' : '#cbd5e1'}`,
             borderRadius: 8, boxShadow: '0 4px 12px rgba(0,0,0,0.15)', cursor: 'pointer',
             fontWeight: 600, display: 'flex', alignItems: 'center', gap: 8, transition: 'all 0.2s'
           }}
+          title="View alternative tools proposed across the workflow"
         >
-          <span style={{ fontSize: 16 }}>📚</span> {activeSequenceId ? 'Exit Sequences' : 'Sequences View'}
+          <span style={{ fontSize: 16 }}>💡</span> Alternative Tools
         </button>
+      </div>
+
+      {showAltTools && (
+        <AltToolsModal workflowData={workflowData} onClose={() => setShowAltTools(false)} />
       )}
 
       <div className="activity-tabs">
