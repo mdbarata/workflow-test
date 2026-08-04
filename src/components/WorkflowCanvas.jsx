@@ -140,6 +140,7 @@ const Tooltip = ({ task, responsible, documents, pos }) => {
         {task.dependencies.length > 0 && <p><strong>Depends on:</strong> {task.dependencies.map(depId).join(', ')}</p>}
         {inputDocs.length > 0 && <p><strong>Inputs:</strong> {inputDocs.map((d) => d.name).join(', ')}</p>}
         {outputDocs.length > 0 && <p><strong>Outputs:</strong> {outputDocs.map((d) => d.name).join(', ')}</p>}
+        {task.alternativeTools?.length > 0 && <p><strong>Alternative tools:</strong> {task.alternativeTools.join(', ')}</p>}
       </div>
     </div>
   );

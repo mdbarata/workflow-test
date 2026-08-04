@@ -109,7 +109,7 @@ const ToolNotesEditor = ({ tools, toolNotes, onChange, onClose }) => {
 
 // ── Import Choice Modal ────────────────────────────────────────────────────────
 const ImportChoiceModal = ({ pendingImport, onJoin, onReplace, onClose }) => {
-  const { totalFiles, totalStages } = pendingImport;
+  const { totalFiles, totalStages, totalSequences } = pendingImport;
   return (
     <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.5)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 3000, backdropFilter: 'blur(3px)' }} onClick={onClose}>
       <div style={{ background: '#ffffff', borderRadius: 12, width: 440, boxShadow: '0 20px 60px rgba(0,0,0,0.3)', overflow: 'hidden' }} onClick={(e) => e.stopPropagation()}>
@@ -119,7 +119,7 @@ const ImportChoiceModal = ({ pendingImport, onJoin, onReplace, onClose }) => {
         </div>
         <div style={{ padding: '20px' }}>
           <p style={{ fontSize: 13, color: '#334155', margin: '0 0 16px', lineHeight: '1.5' }}>
-            Ready to import <strong>{totalStages} stage{totalStages === 1 ? '' : 's'}</strong> across <strong>{totalFiles} file{totalFiles === 1 ? '' : 's'}</strong>. How would you like to load this data?
+            Ready to import <strong>{totalStages} stage{totalStages === 1 ? '' : 's'}</strong>{totalSequences > 0 && <> and <strong>{totalSequences} sequence{totalSequences === 1 ? '' : 's'}</strong></>} across <strong>{totalFiles} file{totalFiles === 1 ? '' : 's'}</strong>. How would you like to load this data?
           </p>
 
           <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
@@ -132,7 +132,7 @@ const ImportChoiceModal = ({ pendingImport, onJoin, onReplace, onClose }) => {
               <span style={{ fontSize: '20px' }}>➕</span>
               <div>
                 <div style={{ fontSize: '13px', fontWeight: 700 }}>Add as new tab(s) (Recommended)</div>
-                <div style={{ fontSize: '11px', color: '#3b82f6', marginTop: '2px' }}>Appends stages as new tabs alongside your current diagram. Unique IDs and names are assigned automatically to prevent collisions.</div>
+                <div style={{ fontSize: '11px', color: '#3b82f6', marginTop: '2px' }}>Appends stages and sequences as new tabs alongside your current diagram. New sequences and hidden tasks are merged by ID — existing ones are preserved.</div>
               </div>
             </button>
 
@@ -145,7 +145,7 @@ const ImportChoiceModal = ({ pendingImport, onJoin, onReplace, onClose }) => {
               <span style={{ fontSize: '20px' }}>🔄</span>
               <div>
                 <div style={{ fontSize: '13px', fontWeight: 700, color: '#b91c1c' }}>Replace entire workspace</div>
-                <div style={{ fontSize: '11px', color: '#64748b', marginTop: '2px' }}>Overwrites all current stages and replaces your workspace with the imported file(s).</div>
+                <div style={{ fontSize: '11px', color: '#64748b', marginTop: '2px' }}>Overwrites all current stages, sequences, and hidden tasks and replaces your entire workspace with the imported file(s).</div>
               </div>
             </button>
           </div>
@@ -286,6 +286,7 @@ const App = () => {
       const parsedFiles = await Promise.all(readPromises);
       const validPayloads = [];
       let totalStages = 0;
+      let totalSequences = 0;
       for (const parsed of parsedFiles) {
         if (!parsed.activities || !Array.isArray(parsed.activities)) {
           alert('Invalid JSON file skipped: missing "activities" array.');
@@ -297,13 +298,15 @@ const App = () => {
         }));
         validPayloads.push({ ...parsed, activities: cleanedActivities });
         totalStages += cleanedActivities.length;
+        totalSequences += (parsed.sequences || []).length;
       }
       if (validPayloads.length === 0) return;
 
       setPendingImport({
         payloads: validPayloads,
         totalFiles: validPayloads.length,
-        totalStages
+        totalStages,
+        totalSequences
       });
     } catch (err) {
       alert(err.message);
@@ -320,11 +323,32 @@ const App = () => {
     const newDocPos = { ...docPositions };
     const newArchPos = { ...archPositions };
     const newEdgeSides = { ...edgeSides };
+    // Merge sequences and hiddenTasks by ID so existing entries are preserved.
+    const existingSeqIds = new Set((workflowData.sequences || []).map(s => s.id));
+    const newSequences = [...(workflowData.sequences || [])];
+    const existingHiddenIds = new Set((workflowData.hiddenTasks || []).map(t => t.id));
+    const newHiddenTasks = [...(workflowData.hiddenTasks || [])];
 
     const firstNewIndex = prevActivities.length;
 
     pendingImport.payloads.forEach((payload) => {
       Object.assign(newNotes, payload.toolNotes || {});
+
+      // Merge sequences — skip those whose ID already exists
+      (payload.sequences || []).forEach((seq) => {
+        if (!existingSeqIds.has(seq.id)) {
+          existingSeqIds.add(seq.id);
+          newSequences.push(seq);
+        }
+      });
+
+      // Merge hiddenTasks — skip those whose ID already exists
+      (payload.hiddenTasks || []).forEach((t) => {
+        if (!existingHiddenIds.has(t.id)) {
+          existingHiddenIds.add(t.id);
+          newHiddenTasks.push(t);
+        }
+      });
 
       payload.activities.forEach((act) => {
         const oldId = act.id || `stage-${Date.now()}`;
@@ -351,6 +375,8 @@ const App = () => {
     setWorkflowData((prev) => ({
       ...prev,
       activities: newActivities,
+      sequences: newSequences,
+      hiddenTasks: newHiddenTasks,
       toolNotes: newNotes,
       docPositions: newDocPos,
       toolPositions: newArchPos,
@@ -372,9 +398,30 @@ const App = () => {
     const combinedDocPos = {};
     const combinedArchPos = {};
     const combinedEdgeSides = {};
+    // Collect sequences and hiddenTasks from all imported files, de-duped by ID.
+    const seenSeqIds = new Set();
+    const combinedSequences = [];
+    const seenHiddenIds = new Set();
+    const combinedHiddenTasks = [];
 
     pendingImport.payloads.forEach((payload) => {
       Object.assign(combinedNotes, payload.toolNotes || {});
+
+      // Collect sequences
+      (payload.sequences || []).forEach((seq) => {
+        if (!seenSeqIds.has(seq.id)) {
+          seenSeqIds.add(seq.id);
+          combinedSequences.push(seq);
+        }
+      });
+
+      // Collect hiddenTasks
+      (payload.hiddenTasks || []).forEach((t) => {
+        if (!seenHiddenIds.has(t.id)) {
+          seenHiddenIds.add(t.id);
+          combinedHiddenTasks.push(t);
+        }
+      });
 
       payload.activities.forEach((act) => {
         const oldId = act.id || `stage-${Date.now()}`;
@@ -399,6 +446,8 @@ const App = () => {
 
     setWorkflowData({
       activities: combinedActivities,
+      sequences: combinedSequences,
+      hiddenTasks: combinedHiddenTasks,
       toolNotes: combinedNotes,
       docPositions: combinedDocPos,
       toolPositions: combinedArchPos,
