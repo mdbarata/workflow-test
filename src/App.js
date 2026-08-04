@@ -491,6 +491,7 @@ const App = () => {
             } else {
               setActiveSequenceId(workflowData.sequences[0].id);
               setShowLinks(false);
+              setFilters({ responsibles: [], tools: [], chapters: [] });
             }
           }}
           style={{
@@ -619,7 +620,11 @@ const App = () => {
             workflowData={workflowData}
             activeActivityIndex={activeActivityIndex}
             searchQuery={searchQuery}
-            onNavigateToSequence={setActiveSequenceId}
+            onNavigateToSequence={(seqId) => {
+              setActiveSequenceId(seqId);
+              setShowLinks(false);
+              setFilters({ responsibles: [], tools: [], chapters: [] });
+            }}
           />
         )}
       </div>

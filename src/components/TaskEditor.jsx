@@ -72,6 +72,33 @@ const rowsToWorkflow = (rows, originalData) => {
   const sequencesSet = new Set();
   const hiddenRows = [];
 
+  // Build a lookup of all existing responsibles by their display name (case-insensitive)
+  // so that we can preserve the original key instead of re-deriving it via slugify.
+  // This prevents the key from changing (e.g. "RESPONSIBLE_A" → "responsible_a") every
+  // time the editor round-trips the data.
+  const originalRespByName = {};
+  const originalRespByKey = {};
+  (originalData?.activities || []).forEach((act) => {
+    (act.responsibles || []).forEach((r) => {
+      if (r.key) originalRespByKey[r.key] = r;
+      if (r.name) originalRespByName[r.name.toLowerCase()] = r;
+    });
+  });
+
+  // Given a display name from the editor row, return the best responsible key to use.
+  // Priority: (1) exact name match in original data, (2) exact key match (user typed the key),
+  // (3) slugify as a last resort for genuinely new responsibles.
+  const resolveRespKey = (displayName) => {
+    if (!displayName) return 'responsible_a';
+    // 1. Match by display name (case-insensitive) → preserve original key
+    const byName = originalRespByName[displayName.toLowerCase()];
+    if (byName) return byName.key;
+    // 2. The user may have typed the raw key directly (e.g. "RESPONSIBLE_A")
+    if (originalRespByKey[displayName]) return displayName;
+    // 3. New responsible — derive key from name
+    return slugify(displayName) || 'responsible_a';
+  };
+
   rows.forEach((r) => {
     splitList(r.sequences).forEach(seq => sequencesSet.add(seq));
 
@@ -89,10 +116,21 @@ const rowsToWorkflow = (rows, originalData) => {
     act.rows.push(r);
     if (r.tool) act.toolsSet.add(r.tool);
 
-    const respKey = slugify(r.responsible) || 'responsible_a';
+    const respKey = resolveRespKey(r.responsible);
     if (!act.responsiblesMap[respKey]) {
-      if (!respColorMap[respKey]) { respColorMap[respKey] = RESP_PRESETS[presetIdx % RESP_PRESETS.length]; presetIdx++; }
-      act.responsiblesMap[respKey] = { key: respKey, name: r.responsible.toUpperCase(), ...respColorMap[respKey] };
+      // Preserve full original responsible object (colours etc.) if available
+      const orig = originalRespByKey[respKey];
+      if (!respColorMap[respKey]) {
+        respColorMap[respKey] = orig
+          ? { color: orig.color, borderColor: orig.borderColor, taskColor: orig.taskColor }
+          : RESP_PRESETS[presetIdx % RESP_PRESETS.length];
+        if (!orig) presetIdx++;
+      }
+      act.responsiblesMap[respKey] = {
+        key: respKey,
+        name: orig?.name || r.responsible.toUpperCase(),
+        ...respColorMap[respKey],
+      };
     }
 
     splitList(r.inputs).forEach((name) => { const id = slugify(name); if (!act.docsSet[id]) act.docsSet[id] = { id, name, type: 'input' }; });
@@ -109,7 +147,7 @@ const rowsToWorkflow = (rows, originalData) => {
     id: r.taskId,
     name: r.label,
     tool: r.tool,
-    responsible: slugify(r.responsible) || 'responsible_a',
+    responsible: resolveRespKey(r.responsible),
     startTime: startTimes[r.taskId] || DEFAULT_START,
     duration: parseInt(r.duration, 10) || DEFAULT_DURATION,
     details: r.notes || '',
@@ -202,8 +240,23 @@ const workflowToRows = (data) => {
     (act.tasks || []).forEach((t) => addRow(t, act.name, act.documents, act.responsibles));
   });
 
+  // Build a combined responsibles list from all activities so that hidden tasks
+  // (which don't belong to any activity) can still resolve their responsible key
+  // to a human-readable display name. Without this they fall back to the raw key
+  // string, which then gets re-slugified on save and corrupts the data.
+  const allResponsibles = [];
+  const seenRespKeys = new Set();
+  (data.activities || []).forEach((act) => {
+    (act.responsibles || []).forEach((r) => {
+      if (!seenRespKeys.has(r.key)) {
+        seenRespKeys.add(r.key);
+        allResponsibles.push(r);
+      }
+    });
+  });
+
   (data.hiddenTasks || []).forEach((t) => {
-    addRow(t, '', [], []);
+    addRow(t, '', [], allResponsibles);
   });
 
   return rows.length ? rows : [emptyRow()];
