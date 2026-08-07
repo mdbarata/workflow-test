@@ -1,4 +1,4 @@
-import React, { useMemo } from 'react';
+import React, { useMemo, useState } from 'react';
 import WorkflowCanvas from './WorkflowCanvas';
 import FilterBar from './FilterBar';
 
@@ -85,15 +85,44 @@ const SequenceCanvas = ({
     };
   }, [activeSequenceId, workflowData]);
 
+  const [assocOpen, setAssocOpen] = useState(false);
+
   if (!sequenceActivity) {
     return <div className="workflow-d3-container"><p style={{ padding: 20 }}>Sequence not found.</p></div>;
   }
+
+  const parentCount = sequenceActivity.parentTasks ? sequenceActivity.parentTasks.length : 0;
 
   return (
     <div className="sequence-canvas-wrapper" style={{ flex: 1, display: 'flex', flexDirection: 'column', background: '#f0f8ff', height: '100%' }}>
       <style>{`
         .sequence-canvas-wrapper .svg-container { background: transparent !important; }
         .sequence-canvas-wrapper svg { background: #e0f2fe !important; }
+        .assoc-toggle-btn {
+          display: flex; align-items: center; gap: 6px;
+          background: none; border: none; cursor: pointer;
+          color: #0369a1; font-size: 13px; font-weight: 600;
+          padding: 0; user-select: none;
+        }
+        .assoc-toggle-btn:hover { color: #0c4a6e; }
+        .assoc-chevron {
+          display: inline-block;
+          transition: transform 0.2s ease;
+          font-style: normal;
+          line-height: 1;
+          font-size: 11px;
+        }
+        .assoc-chevron.open { transform: rotate(90deg); }
+        .assoc-panel {
+          overflow: hidden;
+          transition: max-height 0.25s ease, opacity 0.25s ease;
+          max-height: 0;
+          opacity: 0;
+        }
+        .assoc-panel.open {
+          max-height: 200px;
+          opacity: 1;
+        }
       `}</style>
       <FilterBar
         activity={sequenceActivity}
@@ -108,15 +137,25 @@ const SequenceCanvas = ({
         onSaveJson={() => {}}
         onLoadJson={() => {}}
       />
-      {sequenceActivity.parentTasks && sequenceActivity.parentTasks.length > 0 && (
-        <div style={{ padding: '12px 20px', background: '#e0f2fe', borderBottom: '1px solid #bae6fd', color: '#0369a1', fontSize: 14, fontWeight: 500, display: 'flex', alignItems: 'center', gap: 8 }}>
-          <span>Associated to:</span>
-          <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
-            {sequenceActivity.parentTasks.map(pt => (
-              <span key={pt.id} style={{ background: '#fff', padding: '4px 12px', borderRadius: 16, border: '1px solid #7dd3fc', fontSize: 13, color: '#0c4a6e', boxShadow: '0 1px 2px rgba(0,0,0,0.05)' }}>
-                <strong>{pt.name}</strong> <span style={{ opacity: 0.7, fontWeight: 'normal' }}>(in {pt.activityName})</span>
-              </span>
-            ))}
+      {parentCount > 0 && (
+        <div style={{ background: '#e0f2fe', borderBottom: assocOpen ? '1px solid #bae6fd' : 'none' }}>
+          {/* Collapsed header / toggle */}
+          <div style={{ padding: '6px 16px', display: 'flex', alignItems: 'center', gap: 8, borderBottom: assocOpen ? '1px solid #bae6fd' : 'none' }}>
+            <button className="assoc-toggle-btn" onClick={() => setAssocOpen(o => !o)}>
+              <i className={`assoc-chevron${assocOpen ? ' open' : ''}`}>&#9654;</i>
+              Associated to
+              <span style={{ background: '#7dd3fc', color: '#0c4a6e', borderRadius: 10, padding: '1px 7px', fontSize: 11, fontWeight: 700, marginLeft: 2 }}>{parentCount}</span>
+            </button>
+          </div>
+          {/* Expandable content */}
+          <div className={`assoc-panel${assocOpen ? ' open' : ''}`}>
+            <div style={{ padding: '8px 16px 10px', display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+              {sequenceActivity.parentTasks.map(pt => (
+                <span key={pt.id} style={{ background: '#fff', padding: '4px 12px', borderRadius: 16, border: '1px solid #7dd3fc', fontSize: 13, color: '#0c4a6e', boxShadow: '0 1px 2px rgba(0,0,0,0.05)' }}>
+                  <strong>{pt.name}</strong> <span style={{ opacity: 0.7, fontWeight: 'normal' }}>(in {pt.activityName})</span>
+                </span>
+              ))}
+            </div>
           </div>
         </div>
       )}
