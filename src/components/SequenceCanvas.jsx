@@ -50,13 +50,32 @@ const SequenceCanvas = ({
     // Compute unique tools, responsibles, documents used by these tasks
     const toolsSet = new Set();
     const respSet = new Set();
-    const docIds = new Set();
+    const inputDocIds = new Set();
+    const outputDocIds = new Set();
 
     [...sequenceTasks, ...parentTasks].forEach(t => {
       if (t.tool) toolsSet.add(t.tool);
       if (t.responsible) respSet.add(t.responsible);
-      (t.inputs || []).forEach(id => docIds.add(id));
-      (t.outputs || []).forEach(id => docIds.add(id));
+      (t.inputs || []).forEach(id => inputDocIds.add(id));
+      (t.outputs || []).forEach(id => outputDocIds.add(id));
+    });
+    const allDocIds = new Set([...inputDocIds, ...outputDocIds]);
+
+    // Build a global document map from all activities AND hiddenTasks
+    const globalDocMap = {};
+    (workflowData.activities || []).forEach(act => {
+      (act.documents || []).forEach(d => {
+        if (!globalDocMap[d.id]) globalDocMap[d.id] = d;
+      });
+    });
+    // hiddenTasks don't have a documents array — reconstruct entries from task data
+    (workflowData.hiddenTasks || []).forEach(t => {
+      (t.inputs || []).forEach(id => {
+        if (!globalDocMap[id]) globalDocMap[id] = { id, name: id, type: 'input' };
+      });
+      (t.outputs || []).forEach(id => {
+        if (!globalDocMap[id]) globalDocMap[id] = { id, name: id, type: 'output' };
+      });
     });
 
     // Gather global definitions
@@ -66,9 +85,21 @@ const SequenceCanvas = ({
       (act.responsibles || []).forEach(r => {
         if (respSet.has(r.key) && !globalResponsibles.find(x => x.key === r.key)) globalResponsibles.push(r);
       });
-      (act.documents || []).forEach(d => {
-        if (docIds.has(d.id) && !globalDocs.find(x => x.id === d.id)) globalDocs.push(d);
-      });
+    });
+
+    // Collect documents referenced by the sequence tasks, preserving their
+    // type as stored (or deriving it from usage if not found in globalDocMap).
+    // WorkflowCanvas now checks both t.inputs and t.outputs regardless of doc.type,
+    // so we don't need to duplicate docs used in both directions.
+    allDocIds.forEach(id => {
+      if (globalDocMap[id]) {
+        const isUsedAsInput = inputDocIds.has(id);
+        globalDocs.push({ ...globalDocMap[id], type: isUsedAsInput ? 'input' : 'output' });
+      } else {
+        // Fallback: doc not found in any activity's document list
+        const isInput = inputDocIds.has(id) && !outputDocIds.has(id);
+        globalDocs.push({ id, name: id, type: isInput ? 'input' : 'output' });
+      }
     });
 
     const seqInfo = (workflowData.sequences || []).find(s => s.id === activeSequenceId);

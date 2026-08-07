@@ -544,7 +544,7 @@ const ArchitectureView = ({ activity, filters, toolNotes, onToolNoteChange, onTo
 
     let pathD = '';
     if (style === 'straight') {
-      pathD = `M ${lx1} ${ly1} Q ${(lx1 + lx2)/2 + dx} ${(ly1 + ly2)/2 + dy} ${lx2} ${ly2}`;
+      pathD = `M ${lx1} ${ly1} Q ${(lx1 + lx2) / 2 + dx} ${(ly1 + ly2) / 2 + dy} ${lx2} ${ly2}`;
     } else if (style === 'elbow') {
       const midElbowX = (lx1 + lx2) / 2 + dx;
       pathD = `M ${lx1} ${ly1} H ${midElbowX} V ${ly2 + dy} H ${lx2}`;
@@ -557,12 +557,12 @@ const ArchitectureView = ({ activity, filters, toolNotes, onToolNoteChange, onTo
 
     // Receive-side label placement (t = 0.78 for from->to, t = 0.22 for to->from)
     const tFwd = 0.78;
-    const fwdX = Math.pow(1-tFwd, 3)*lx1 + 3*Math.pow(1-tFwd, 2)*tFwd*(cx1+dx) + 3*(1-tFwd)*tFwd*tFwd*(cx2+dx) + tFwd*tFwd*tFwd*lx2;
-    const fwdY = Math.pow(1-tFwd, 3)*ly1 + 3*Math.pow(1-tFwd, 2)*tFwd*(cy1+dy) + 3*(1-tFwd)*tFwd*tFwd*(cy2+dy) + tFwd*tFwd*tFwd*ly2;
+    const fwdX = Math.pow(1 - tFwd, 3) * lx1 + 3 * Math.pow(1 - tFwd, 2) * tFwd * (cx1 + dx) + 3 * (1 - tFwd) * tFwd * tFwd * (cx2 + dx) + tFwd * tFwd * tFwd * lx2;
+    const fwdY = Math.pow(1 - tFwd, 3) * ly1 + 3 * Math.pow(1 - tFwd, 2) * tFwd * (cy1 + dy) + 3 * (1 - tFwd) * tFwd * tFwd * (cy2 + dy) + tFwd * tFwd * tFwd * ly2;
 
     const tRev = 0.22;
-    const revX = Math.pow(1-tRev, 3)*lx1 + 3*Math.pow(1-tRev, 2)*tRev*(cx1+dx) + 3*(1-tRev)*tRev*tRev*(cx2+dx) + tRev*tRev*tRev*lx2;
-    const revY = Math.pow(1-tRev, 3)*ly1 + 3*Math.pow(1-tRev, 2)*tRev*(cy1+dy) + 3*(1-tRev)*tRev*tRev*(cy2+dy) + tRev*tRev*tRev*ly2;
+    const revX = Math.pow(1 - tRev, 3) * lx1 + 3 * Math.pow(1 - tRev, 2) * tRev * (cx1 + dx) + 3 * (1 - tRev) * tRev * tRev * (cx2 + dx) + tRev * tRev * tRev * lx2;
+    const revY = Math.pow(1 - tRev, 3) * ly1 + 3 * Math.pow(1 - tRev, 2) * tRev * (cy1 + dy) + 3 * (1 - tRev) * tRev * tRev * (cy2 + dy) + tRev * tRev * tRev * ly2;
 
     const markerId = isHov ? 'arch-arr-blue' : isPlanned ? 'arch-arr-orange' : 'arch-arr-gray';
 
@@ -1225,25 +1225,36 @@ const WorkflowCanvas = ({
           {visibleDocuments.map((doc) => {
             const pos = docPositions[doc.id];
             if (!pos) return null;
-            const isInput = doc.type === 'input';
-            const connectedTasks = visibleTasks.filter((t) => isInput ? t.inputs?.includes(doc.id) : t.outputs?.includes(doc.id));
-            if (connectedTasks.length === 0) return null;
-            const { color, opacity, strokeWidth } = getDocLineProps(doc.id, isInput);
-            const arrowId = color === '#2563eb' ? 'arrow-doc-blue' : color === '#059669' ? 'arrow-doc-green' : 'arrow-doc';
+            // Determine each visible task's relationship to this doc:
+            // a task may list the doc in inputs, outputs, or both.
+            // We render a separate connector for each relationship so the
+            // direction (left-side vs right-side) is always correct.
+            const inputTasks = visibleTasks.filter((t) => t.inputs?.includes(doc.id));
+            const outputTasks = visibleTasks.filter((t) => t.outputs?.includes(doc.id));
+            if (inputTasks.length === 0 && outputTasks.length === 0) return null;
             const docCenterY = pos.y + (docHeights[doc.id] || DOC_HEIGHT) / 2;
-            return connectedTasks.map((ct) => {
-              const ty = getTaskY(ct, visibleTasks, visibleTools, collapsedTools);
-              if (ty < -1000) return null;
-              // taskX: shifts task positions left by visibleMinStart so filtered view starts at x=0
-              const taskX = (t) => getTaskX(t) - visibleMinStart;
-              return (
-                <path key={`${doc.id}<->${ct.id}`}
-                  d={elbowPath(isInput ? pos.x + DOC_WIDTH : pos.x, docCenterY, isInput ? taskX(ct) : taskX(ct) + ct.duration, ty + TASK_HEIGHT / 2, isInput)}
-                  fill="none" stroke={color} strokeWidth={strokeWidth} strokeDasharray="5,4" strokeOpacity={opacity} strokeLinecap="round"
-                  markerEnd={`url(#${arrowId})`} style={{ transition: 'stroke 0.18s ease, stroke-opacity 0.18s ease' }}
-                />
-              );
-            });
+
+            const renderConnectors = (connectedTasks, isInput) => {
+              const { color, opacity, strokeWidth } = getDocLineProps(doc.id, isInput);
+              const arrowId = color === '#2563eb' ? 'arrow-doc-blue' : color === '#059669' ? 'arrow-doc-green' : 'arrow-doc';
+              return connectedTasks.map((ct) => {
+                const ty = getTaskY(ct, visibleTasks, visibleTools, collapsedTools);
+                if (ty < -1000) return null;
+                const taskX = (t) => getTaskX(t) - visibleMinStart;
+                return (
+                  <path key={`${doc.id}<->${ct.id}-${isInput ? 'in' : 'out'}`}
+                    d={elbowPath(isInput ? pos.x + DOC_WIDTH : pos.x, docCenterY, isInput ? taskX(ct) : taskX(ct) + ct.duration, ty + TASK_HEIGHT / 2, isInput)}
+                    fill="none" stroke={color} strokeWidth={strokeWidth} strokeDasharray="5,4" strokeOpacity={opacity} strokeLinecap="round"
+                    markerEnd={`url(#${arrowId})`} style={{ transition: 'stroke 0.18s ease, stroke-opacity 0.18s ease' }}
+                  />
+                );
+              });
+            };
+
+            return [
+              ...renderConnectors(inputTasks, true),
+              ...renderConnectors(outputTasks, false),
+            ];
           })}
 
           {visibleTasks.map((task) =>
