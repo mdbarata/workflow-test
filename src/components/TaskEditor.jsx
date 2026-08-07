@@ -72,16 +72,20 @@ const rowsToWorkflow = (rows, originalData) => {
   const sequencesSet = new Set();
   const hiddenRows = [];
 
-  // Build a lookup of all existing responsibles by their display name (case-insensitive)
-  // so that we can preserve the original key instead of re-deriving it via slugify.
-  // This prevents the key from changing (e.g. "RESPONSIBLE_A" → "responsible_a") every
-  // time the editor round-trips the data.
+  // Build lookups of all existing responsibles and documents (across ALL activities)
+  // so that keys/ids are preserved instead of re-derived via slugify on every round-trip.
   const originalRespByName = {};
   const originalRespByKey = {};
+  const originalDocByName = {};
   (originalData?.activities || []).forEach((act) => {
     (act.responsibles || []).forEach((r) => {
       if (r.key) originalRespByKey[r.key] = r;
       if (r.name) originalRespByName[r.name.toLowerCase()] = r;
+    });
+    (act.documents || []).forEach((d) => {
+      // Index by both the stored display name AND the id so either can be looked up.
+      if (d.name) originalDocByName[d.name.toLowerCase()] = d;
+      if (d.id) originalDocByName[d.id.toLowerCase()] = d;
     });
   });
 
@@ -133,8 +137,20 @@ const rowsToWorkflow = (rows, originalData) => {
       };
     }
 
-    splitList(r.inputs).forEach((name) => { const id = slugify(name); if (!act.docsSet[id]) act.docsSet[id] = { id, name, type: 'input' }; });
-    splitList(r.outputs).forEach((name) => { const id = slugify(name); if (!act.docsSet[id]) act.docsSet[id] = { id, name, type: 'output' }; });
+    splitList(r.inputs).forEach((name) => {
+      // Prefer the existing doc entry (by name, case-insensitive) so we never
+      // change a stored id after a round-trip through the editor.
+      const existing = originalDocByName[name.toLowerCase()];
+      const id = existing ? existing.id : slugify(name);
+      const displayName = existing ? existing.name : name;
+      if (!act.docsSet[id]) act.docsSet[id] = { id, name: displayName, type: 'input' };
+    });
+    splitList(r.outputs).forEach((name) => {
+      const existing = originalDocByName[name.toLowerCase()];
+      const id = existing ? existing.id : slugify(name);
+      const displayName = existing ? existing.name : name;
+      if (!act.docsSet[id]) act.docsSet[id] = { id, name: displayName, type: 'output' };
+    });
   });
 
   // Build a lookup of original activities by id so we can preserve metadata
@@ -159,8 +175,14 @@ const rowsToWorkflow = (rows, originalData) => {
       const status = splitList(r.preStatuses)[i] || splitList(r.preStatuses)[0] || 'undefined';
       return { id, format: fmt, type, status };
     }),
-    inputs: splitList(r.inputs).map(slugify),
-    outputs: splitList(r.outputs).map(slugify),
+    inputs: splitList(r.inputs).map((name) => {
+      const existing = originalDocByName[name.toLowerCase()];
+      return existing ? existing.id : slugify(name);
+    }),
+    outputs: splitList(r.outputs).map((name) => {
+      const existing = originalDocByName[name.toLowerCase()];
+      return existing ? existing.id : slugify(name);
+    }),
     sequences: splitList(r.sequences),
     isSequenceParent: !!r.isParent,
   });
@@ -208,7 +230,25 @@ const emptyRow = (activityName = '', sequenceName = '') => ({
 // ── Seed rows from existing workflowData ──────────────────────────────────────
 const workflowToRows = (data) => {
   const rows = [];
-  const addRow = (t, activityName, documents, responsibles) => {
+
+  // Build global lookups across ALL activities so cross-activity references
+  // (e.g. a task in activity A referencing a document defined in activity B)
+  // are always resolved to their display names rather than falling back to
+  // the raw slugified id.
+  const allDocuments = [];
+  const seenDocIds = new Set();
+  const allResponsibles = [];
+  const seenRespKeys = new Set();
+  (data.activities || []).forEach((act) => {
+    (act.documents || []).forEach((d) => {
+      if (!seenDocIds.has(d.id)) { seenDocIds.add(d.id); allDocuments.push(d); }
+    });
+    (act.responsibles || []).forEach((r) => {
+      if (!seenRespKeys.has(r.key)) { seenRespKeys.add(r.key); allResponsibles.push(r); }
+    });
+  });
+
+  const addRow = (t, activityName, responsibles) => {
     const deps = (t.dependencies || []);
     const preIds = deps.map((d) => (typeof d === 'object' ? d.id : d));
     const preFmts = deps.map((d) => (typeof d === 'object' ? d.format || '' : ''));
@@ -221,12 +261,14 @@ const workflowToRows = (data) => {
       sequences: joinList(t.sequences || []),
       isParent: !!t.isSequenceParent,
       label: t.name,
+      // Resolve responsible key → display name using the global responsibles list
       responsible: responsibles.find((r) => r.key === t.responsible)?.name || t.responsible,
       tool: t.tool,
       startTime: t.startTime !== undefined && t.startTime !== null ? String(t.startTime) : '',
       duration: String(t.duration || DEFAULT_DURATION),
-      inputs: joinList((t.inputs || []).map((id) => documents.find((d) => d.id === id)?.name || id)),
-      outputs: joinList((t.outputs || []).map((id) => documents.find((d) => d.id === id)?.name || id)),
+      // Use the global document list so cross-activity doc refs are resolved correctly
+      inputs: joinList((t.inputs || []).map((id) => allDocuments.find((d) => d.id === id)?.name || id)),
+      outputs: joinList((t.outputs || []).map((id) => allDocuments.find((d) => d.id === id)?.name || id)),
       pre: joinList(preIds),
       preFormats: joinList(preFmts),
       preTypes: joinList(preTypes),
@@ -237,26 +279,12 @@ const workflowToRows = (data) => {
   };
 
   (data.activities || []).forEach((act) => {
-    (act.tasks || []).forEach((t) => addRow(t, act.name, act.documents, act.responsibles));
+    (act.tasks || []).forEach((t) => addRow(t, act.name, allResponsibles));
   });
 
-  // Build a combined responsibles list from all activities so that hidden tasks
-  // (which don't belong to any activity) can still resolve their responsible key
-  // to a human-readable display name. Without this they fall back to the raw key
-  // string, which then gets re-slugified on save and corrupts the data.
-  const allResponsibles = [];
-  const seenRespKeys = new Set();
-  (data.activities || []).forEach((act) => {
-    (act.responsibles || []).forEach((r) => {
-      if (!seenRespKeys.has(r.key)) {
-        seenRespKeys.add(r.key);
-        allResponsibles.push(r);
-      }
-    });
-  });
-
+  // Hidden tasks also use the global responsibles and documents lists built above.
   (data.hiddenTasks || []).forEach((t) => {
-    addRow(t, '', [], allResponsibles);
+    addRow(t, '', allResponsibles);
   });
 
   return rows.length ? rows : [emptyRow()];
