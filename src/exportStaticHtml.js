@@ -142,6 +142,54 @@ const VIEWER_JS = `
   var scope = D.scope;
   var activeIdx = D.activeActivityIndex || 0;
   var options = { edgeSides: D.edgeSides || {}, toolPositions: D.toolPositions || {} };
+  var sequences = D.workflowData.sequences || [];
+  var hiddenTasks = D.workflowData.hiddenTasks || [];
+  // Shared state for sequence view — set up in BOOTSTRAP but referenced from timeline interaction handlers
+  var isSequenceView = false;
+  var enterSequenceView = function() {}; // will be replaced in BOOTSTRAP
+
+  function getSequenceActivity(idx) {
+    var seq = sequences[idx];
+    if (!seq) return null;
+    var allTasks = [];
+    activities.forEach(function(act) { allTasks = allTasks.concat(act.tasks || []); });
+    allTasks = allTasks.concat(hiddenTasks);
+    
+    var seqTasks = [];
+    allTasks.forEach(function(t) {
+      var sList = Array.isArray(t.sequences) ? t.sequences : (t.sequences ? String(t.sequences).split(',') : []);
+      sList = sList.map(function(s){return s.trim();}).filter(Boolean);
+      if (sList.indexOf(seq.name) >= 0 || sList.indexOf(seq.id) >= 0) {
+        seqTasks.push(JSON.parse(JSON.stringify(t)));
+      }
+    });
+    
+    var toolsSet = {}, respsSet = {}, docsSet = {};
+    seqTasks.forEach(function(t) {
+      if (t.tool) toolsSet[t.tool] = true;
+      if (t.responsible) respsSet[t.responsible] = true;
+      (t.inputs || []).forEach(function(d) { docsSet[d] = true; });
+      (t.outputs || []).forEach(function(d) { docsSet[d] = true; });
+    });
+    
+    var globalDocs = [];
+    activities.forEach(function(act) {
+      (act.documents || []).forEach(function(d) {
+        if (docsSet[d.id] && !globalDocs.find(function(gd) { return gd.id === d.id; })) {
+          globalDocs.push(d);
+        }
+      });
+    });
+    
+    return {
+      id: 'seq_' + seq.id,
+      name: 'Sequence: ' + seq.name,
+      tasks: seqTasks,
+      tools: Object.keys(toolsSet),
+      responsibles: activities[0] ? activities[0].responsibles.filter(function(r) { return respsSet[r.key]; }) : [],
+      documents: globalDocs
+    };
+  }
 
   // ── Constants (mirror the app) ──
   var MARGIN = { top: 110, right: 180, bottom: 60, left: 200 };
@@ -497,6 +545,18 @@ const VIEWER_JS = `
       lines.forEach(function(line, i) {
         svg += '<text x="' + cx + '" y="' + (firstBaselineY + i * LINE_HEIGHT) + '" text-anchor="middle" font-size="' + FONT_SIZE + 'px" font-weight="bold" fill="white" pointer-events="none">' + escapeHtml(line) + '</text>';
       });
+      
+      var taskSeqs = Array.isArray(task.sequences) ? task.sequences : (task.sequences ? String(task.sequences).split(',') : []);
+      taskSeqs = taskSeqs.map(function(s) { return s.trim(); }).filter(Boolean);
+      if (taskSeqs.length > 0) {
+        var seqIconX = getTaskX(task) + w - 24;
+        var seqIconY = taskYVal + h - 24;
+        svg += '<g class="seq-nav-icon" data-seq-name="' + escapeHtml(taskSeqs[0]) + '" transform="translate(' + seqIconX + ', ' + seqIconY + ')" style="cursor:pointer;pointer-events:all;" title="Open Sequence View">';
+        svg += '<rect x="-4" y="-4" width="24" height="24" fill="transparent" />';
+        svg += '<path d="M6,1 L1,3.5 L6,6 L11,3.5 Z M1,6 L6,8.5 L11,6 M1,8.5 L6,11 L11,8.5" fill="none" stroke="rgba(255,255,255,0.9)" stroke-width="1.2" stroke-linejoin="round" pointer-events="none" />';
+        svg += '</g>';
+      }
+
       svg += '</g>';
     });
 
@@ -555,15 +615,19 @@ const VIEWER_JS = `
     var zoom = 1, MIN_Z = 0.2, MAX_Z = 3, STEP = 0.15;
     var zoomLabel = panelEl.querySelector('.zoom-label');
     function applyZoom() { svgEl.style.transform = 'scale(' + zoom + ')'; svgEl.style.transformOrigin = '0 0'; if (zoomLabel) zoomLabel.textContent = Math.round(zoom * 100) + '%'; }
-    panelEl.querySelector('.zoom-in').onclick = function() { zoom = Math.min(MAX_Z, zoom + STEP); applyZoom(); };
-    panelEl.querySelector('.zoom-out').onclick = function() { zoom = Math.max(MIN_Z, zoom - STEP); applyZoom(); };
-    panelEl.querySelector('.zoom-fit').onclick = function() {
+    function doFit() {
       var hostRect = hostEl.getBoundingClientRect();
       var svgW = parseInt(svgEl.getAttribute('width'), 10);
       var svgH = parseInt(svgEl.getAttribute('height'), 10);
+      if (!svgW || !svgH) return;
       zoom = Math.max(MIN_Z, Math.min(hostRect.width / svgW, hostRect.height / svgH, 1));
       applyZoom(); hostEl.scrollTo(0, 0);
-    };
+    }
+    panelEl.querySelector('.zoom-in').onclick = function() { zoom = Math.min(MAX_Z, zoom + STEP); applyZoom(); };
+    panelEl.querySelector('.zoom-out').onclick = function() { zoom = Math.max(MIN_Z, zoom - STEP); applyZoom(); };
+    panelEl.querySelector('.zoom-fit').onclick = doFit;
+    // Auto-fit on first render — mirrors the editor's useEffect(() => handleFit(), [canvasWidth])
+    setTimeout(doFit, 0);
     hostEl.addEventListener('wheel', function(e) {
       if (!e.ctrlKey && !e.metaKey) return;
       e.preventDefault();
@@ -595,6 +659,19 @@ const VIEWER_JS = `
         var tool = el.getAttribute('data-tool');
         if (collapsedSet.has(tool)) collapsedSet.delete(tool); else collapsedSet.add(tool);
         renderTimeline(panelEl, activity, collapsedSet, filterState);
+      });
+    });
+
+    // Sequence navigation (clicking 📚 icon on task node)
+    svgEl.querySelectorAll('.seq-nav-icon').forEach(function(el) {
+      el.addEventListener('click', function(e) {
+        e.stopPropagation();
+        var seqName = el.getAttribute('data-seq-name');
+        var seqIdx = sequences.findIndex(function(s) { return s.name === seqName || s.id === seqName; });
+        if (seqIdx >= 0) {
+          if (!isSequenceView) enterSequenceView();
+          activateTab('tab-seq-' + seqIdx);
+        }
       });
     });
 
@@ -690,6 +767,21 @@ const VIEWER_JS = `
         html += '<p><strong>Tool:</strong> ' + escapeHtml(task.tool) + '</p>';
         html += '<p><strong>Responsible:</strong> ' + escapeHtml(resp ? resp.name : task.responsible) + '</p>';
         html += '<p><strong>Duration:</strong> ' + task.duration + ' units</p>';
+        var taskSeqs = Array.isArray(task.sequences) ? task.sequences : (task.sequences ? String(task.sequences).split(',') : []);
+        taskSeqs = taskSeqs.map(function(s) { return s.trim(); }).filter(Boolean);
+        if (taskSeqs.length) html += '<p><strong>Sequences:</strong> ' + escapeHtml(taskSeqs.join(', ')) + '</p>';
+        if (task.inputs && task.inputs.length) {
+          html += '<p><strong>Inputs:</strong> ' + task.inputs.map(function(did) {
+            var doc = visibleDocuments.find(function(d) { return d.id === did; }) || { name: did };
+            return escapeHtml(doc.name);
+          }).join(', ') + '</p>';
+        }
+        if (task.outputs && task.outputs.length) {
+          html += '<p><strong>Outputs:</strong> ' + task.outputs.map(function(did) {
+            var doc = visibleDocuments.find(function(d) { return d.id === did; }) || { name: did };
+            return escapeHtml(doc.name);
+          }).join(', ') + '</p>';
+        }
         if (task.details) html += '<p><strong>Details:</strong> ' + escapeHtml(task.details) + '</p>';
         if (task.alternativeTools && task.alternativeTools.length) html += '<p><strong>Alt. tools:</strong> ' + task.alternativeTools.map(escapeHtml).join(', ') + '</p>';
         if (task.dependencies && task.dependencies.length) {
@@ -1419,6 +1511,12 @@ const VIEWER_JS = `
       var fs = activePanel.__filterState || { responsibles: [], tools: [], chapters: [] };
       buildFilterBar(activePanel, act, fs, cs);
       renderTimeline(activePanel, act, cs, fs);
+    } else if (type === 'sequence') {
+      var seqAct = getSequenceActivity(idx);
+      var cs = activePanel.__collapsedSet || new Set(initialCollapsed);
+      var fs = activePanel.__filterState || { responsibles: [], tools: [], chapters: [] };
+      buildFilterBar(activePanel, seqAct, fs, cs);
+      renderTimeline(activePanel, seqAct, cs, fs);
     } else if (type === 'arch') {
       renderArchitecture(activePanel, activities[idx]);
     } else if (type === 'links') {
@@ -1452,6 +1550,14 @@ const VIEWER_JS = `
         panel.__filterState = fs;
         buildFilterBar(panel, act, fs, cs);
         renderTimeline(panel, act, cs, fs);
+      } else if (type === 'sequence') {
+        var seqAct = getSequenceActivity(idx);
+        var cs = panel.__collapsedSet || new Set(initialCollapsed);
+        var fs = panel.__filterState || { responsibles: [], tools: [], chapters: [] };
+        panel.__collapsedSet = cs;
+        panel.__filterState = fs;
+        buildFilterBar(panel, seqAct, fs, cs);
+        renderTimeline(panel, seqAct, cs, fs);
       } else if (type === 'arch') {
         renderArchitecture(panel, activities[idx]);
       } else if (type === 'links') {
@@ -1478,6 +1584,122 @@ const VIEWER_JS = `
       activateTab(target);
     });
   });
+
+  // ── Floating Buttons (bottom-left) — matches App.js layout exactly ──
+  var seqViewBtn = document.getElementById('seq-view-btn');
+  var altToolsBtn = document.getElementById('alt-tools-btn');
+  var altToolsModal = document.getElementById('alt-tools-modal');
+  var altToolsClose = document.getElementById('alt-tools-close');
+  var altToolsFooterClose = document.getElementById('alt-tools-footer-close');
+  var altToolsBackdrop = document.getElementById('alt-tools-backdrop');
+  var altToolsContent = document.getElementById('alt-tools-content');
+  var backToStagesBtn = document.getElementById('back-to-stages-btn');
+
+  function enterSequenceViewImpl() {
+    isSequenceView = true;
+    if (seqViewBtn) {
+      seqViewBtn.innerHTML = '<span style="font-size:16px;">📚</span> Exit Sequences';
+      seqViewBtn.style.background = '#2563eb';
+      seqViewBtn.style.color = '#ffffff';
+      seqViewBtn.style.borderColor = '#2563eb';
+    }
+    document.querySelectorAll('.tab-activity').forEach(function(b) { b.style.display = 'none'; });
+    document.querySelectorAll('.tab-sequence').forEach(function(b) { b.style.display = ''; });
+    if (backToStagesBtn) backToStagesBtn.style.display = '';
+    var firstSeqTab = document.querySelector('.tab-sequence');
+    if (firstSeqTab) activateTab(firstSeqTab.getAttribute('data-tab'));
+  }
+  // Override the stub so seq-nav-icon handlers work
+  enterSequenceView = enterSequenceViewImpl;
+
+  function exitSequenceView() {
+    isSequenceView = false;
+    if (seqViewBtn) {
+      seqViewBtn.innerHTML = '<span style="font-size:16px;">📚</span> Sequences View';
+      seqViewBtn.style.background = '#ffffff';
+      seqViewBtn.style.color = '#1e293b';
+      seqViewBtn.style.borderColor = '#cbd5e1';
+    }
+    document.querySelectorAll('.tab-activity').forEach(function(b) { b.style.display = ''; });
+    document.querySelectorAll('.tab-sequence').forEach(function(b) { b.style.display = 'none'; });
+    if (backToStagesBtn) backToStagesBtn.style.display = 'none';
+    var firstActTab = document.querySelector('.tab-activity');
+    if (firstActTab) activateTab(firstActTab.getAttribute('data-tab'));
+  }
+
+  if (seqViewBtn) {
+    seqViewBtn.addEventListener('click', function() {
+      if (isSequenceView) exitSequenceView(); else enterSequenceView();
+    });
+  }
+  if (backToStagesBtn) {
+    backToStagesBtn.addEventListener('click', exitSequenceView);
+  }
+
+  // Alternative Tools Modal — matches AltToolsModal in App.js (grouped by tool)
+  if (altToolsBtn) {
+    altToolsBtn.addEventListener('click', function() {
+      var allTasksFlat = [];
+      activities.forEach(function(act) {
+        (act.tasks || []).forEach(function(t) {
+          if (t.alternativeTools && t.alternativeTools.length > 0) {
+            allTasksFlat.push({ task: t, stageName: act.name });
+          }
+        });
+      });
+      (hiddenTasks || []).forEach(function(t) {
+        if (t.alternativeTools && t.alternativeTools.length > 0) {
+          allTasksFlat.push({ task: t, stageName: 'Hidden Tasks' });
+        }
+      });
+
+      // Group by tool
+      var byTool = {};
+      allTasksFlat.forEach(function(item) {
+        var tool = item.task.tool || 'Unassigned Tool';
+        if (!byTool[tool]) byTool[tool] = [];
+        byTool[tool].push(item);
+      });
+      var toolKeys = Object.keys(byTool).sort();
+
+      var html = '';
+      if (toolKeys.length === 0) {
+        html = '<p style="font-size:13px;color:#64748b;text-align:center;margin:40px 0;">No alternative tools proposed in any task.</p>';
+      } else {
+        html = '<div style="display:flex;flex-direction:column;gap:24px;">';
+        toolKeys.forEach(function(tool) {
+          html += '<div>';
+          html += '<h3 style="margin:0 0 12px 0;font-size:15px;color:#0f172a;display:flex;align-items:center;gap:8px;">';
+          html += '<span style="padding:4px 8px;background:#eff6ff;color:#1d4ed8;border-radius:6px;font-size:13px;border:1px solid #bfdbfe;">' + escapeHtml(tool) + '</span>';
+          html += '</h3>';
+          html += '<div style="display:flex;flex-direction:column;gap:8px;">';
+          byTool[tool].forEach(function(item) {
+            html += '<div style="border:1px solid #e2e8f0;border-radius:8px;padding:12px;background:#f8fafc;">';
+            html += '<div style="display:flex;justify-content:space-between;margin-bottom:8px;">';
+            html += '<strong style="font-size:14px;color:#334155;">' + escapeHtml(item.task.name) + '</strong>';
+            html += '<span style="font-size:11px;color:#94a3b8;">' + escapeHtml(item.stageName) + '</span>';
+            html += '</div>';
+            html += '<div style="font-size:13px;color:#475569;display:flex;align-items:flex-start;gap:8px;">';
+            html += '<span style="font-weight:600;color:#059669;flex-shrink:0;">Alternatives:</span>';
+            html += '<span style="line-height:1.4;">' + escapeHtml(item.task.alternativeTools.join(', ')) + '</span>';
+            html += '</div></div>';
+          });
+          html += '</div></div>';
+        });
+        html += '</div>';
+      }
+      altToolsContent.innerHTML = html;
+      altToolsModal.style.display = 'flex';
+      altToolsBackdrop.style.display = 'block';
+    });
+    var closeAltModal = function() {
+      altToolsModal.style.display = 'none';
+      altToolsBackdrop.style.display = 'none';
+    };
+    if (altToolsClose) altToolsClose.addEventListener('click', closeAltModal);
+    if (altToolsFooterClose) altToolsFooterClose.addEventListener('click', closeAltModal);
+    if (altToolsBackdrop) altToolsBackdrop.addEventListener('click', closeAltModal);
+  }
 
   // ══════════════════════════════════════════════════════════════════════════
   // FEEDBACK ENGINE
@@ -1548,7 +1770,7 @@ const VIEWER_JS = `
   function renderFbList() {
     if (!listEl) return;
     if (fbState.comments.length === 0) {
-      listEl.innerHTML = '<div style="text-align:center;color:#94a3b8;font-size:12px;padding:20px 0;">No comments yet. Click any tool lane, architecture box, or link in the diagram to attach a note! Double click a task node or link to add a Reference Note and provide more details. </div>';
+      listEl.innerHTML = '<div style="text-align:center;color:#94a3b8;font-size:12px;padding:20px 0;">No comments yet. Click any tool lane, architecture box, or link in the diagram to attach a note!</div>';
       return;
     }
     var html = '';
@@ -1916,7 +2138,11 @@ function buildHtml(workflowData, options) {
 
   // Build data blob
   const exportData = {
-    workflowData: { activities: visibleActivities },
+    workflowData: { 
+      activities: visibleActivities,
+      sequences: workflowData.sequences || [],
+      hiddenTasks: workflowData.hiddenTasks || []
+    },
     toolNotes: tNotes,
     collapsedTools: collapsedTools,
     edgeSides: options.edgeSides || {},
@@ -1934,7 +2160,7 @@ function buildHtml(workflowData, options) {
     const archId = 'tab-arch-' + i;
 
     // Timeline tab
-    tabBarHtml += `<button class="tab-btn" data-tab="${tlId}">${esc(act.name)}</button>`;
+    tabBarHtml += `<button class="tab-btn tab-activity" data-tab="${tlId}">${esc(act.name)}</button>`;
     panelsHtml += `<div class="tab-panel" id="${tlId}" data-type="timeline" data-index="${i}">
       <div class="filter-bar"></div>
       <div style="position:relative;flex:1;overflow:hidden;display:flex;flex-direction:column;">
@@ -1972,10 +2198,32 @@ function buildHtml(workflowData, options) {
     </div>`;
   });
 
+  // Sequences tabs
+  const sequences = workflowData.sequences || [];
+  if (scope === 'all' && sequences.length > 0) {
+    sequences.forEach((seq, i) => {
+      const tlId = 'tab-seq-' + i;
+      tabBarHtml += `<button class="tab-btn tab-sequence" style="display:none;" data-tab="${tlId}">${esc(seq.name)}</button>`;
+      panelsHtml += `<div class="tab-panel" id="${tlId}" data-type="sequence" data-index="${i}">
+        <div class="filter-bar"></div>
+        <div style="position:relative;flex:1;overflow:hidden;display:flex;flex-direction:column;">
+          <div class="canvas-host" style="flex:1;overflow:auto;"></div>
+          <div class="zoom-controls">
+            <button class="zoom-out" title="Zoom out">−</button>
+            <span class="zoom-label">100%</span>
+            <button class="zoom-in" title="Zoom in">+</button>
+            <div style="width:1px;height:16px;background:#e2e8f0;margin:0 2px;"></div>
+            <button class="zoom-fit" title="Fit to screen">⊡</button>
+          </div>
+        </div>
+      </div>`;
+    });
+  }
+
   // Activity Links tab
   if (showLinks) {
-    tabBarHtml += `<div class="tab-sep"></div>`;
-    tabBarHtml += `<button class="tab-btn" data-tab="tab-links">Activity links</button>`;
+    tabBarHtml += `<div class="tab-sep tab-activity"></div>`;
+    tabBarHtml += `<button class="tab-btn tab-activity" data-tab="tab-links">Activity links</button>`;
     panelsHtml += `<div class="tab-panel" id="tab-links" data-type="links">
       <div style="position:relative;flex:1;overflow:hidden;display:flex;flex-direction:column;">
         <div class="canvas-host" style="flex:1;overflow:auto;"></div>
@@ -1989,6 +2237,9 @@ function buildHtml(workflowData, options) {
       </div>
     </div>`;
   }
+
+  const hasSequences = scope === 'all' && (workflowData.sequences || []).length > 0;
+  const showTabBar = visibleActivities.length > 1 || showLinks || hasSequences;
 
   const title = scope === 'all'
     ? 'Workflow — All Activities (read-only)'
@@ -2028,8 +2279,26 @@ function buildHtml(workflowData, options) {
       💬 Leave Feedback <span id="feedback-count" class="feedback-count-badge" style="display:none;">0</span>
     </button>
   </div>
-  ${visibleActivities.length > 1 || showLinks ? `<div class="tab-bar">${tabBarHtml}</div>` : `<div class="tab-bar" style="display:none">${tabBarHtml}</div>`}
+  ${showTabBar ? `<div class="tab-bar">${tabBarHtml}${hasSequences ? `<button id="back-to-stages-btn" class="tab-btn" style="display:none;margin-left:auto;color:#64748b;">← Back to Stages</button>` : ''}</div>` : `<div class="tab-bar" style="display:none">${tabBarHtml}</div>`}
   ${panelsHtml}
+  <!-- Floating bottom-left buttons — mirrors App.js position:fixed bottom:24 left:24 group -->
+  <div style="position:fixed;bottom:24px;left:24px;z-index:3000;display:flex;gap:12px;">
+    ${hasSequences ? `<button id="seq-view-btn" style="padding:10px 16px;background:#ffffff;color:#1e293b;border:1.5px solid #cbd5e1;border-radius:8px;box-shadow:0 4px 12px rgba(0,0,0,0.15);cursor:pointer;font-weight:600;display:flex;align-items:center;gap:8px;transition:all 0.2s;font-size:13px;"><span style="font-size:16px;">📚</span> Sequences View</button>` : ''}
+    <button id="alt-tools-btn" style="padding:10px 16px;background:#ffffff;color:#1e293b;border:1.5px solid #cbd5e1;border-radius:8px;box-shadow:0 4px 12px rgba(0,0,0,0.15);cursor:pointer;font-weight:600;display:flex;align-items:center;gap:8px;transition:all 0.2s;font-size:13px;"><span style="font-size:16px;">💡</span> Alternative Tools</button>
+  </div>
+  <!-- Alt Tools Modal -->
+  <div id="alt-tools-modal" style="display:none;position:fixed;top:50%;left:50%;transform:translate(-50%,-50%);width:600px;max-height:80vh;background:#fff;z-index:4000;border-radius:12px;box-shadow:0 20px 60px rgba(0,0,0,0.3);overflow:hidden;flex-direction:column;">
+    <div style="display:flex;align-items:center;justify-content:space-between;padding:16px 20px;border-bottom:0.5px solid #e2e8f0;background:#f8fafc;">
+      <span style="font-size:16px;font-weight:600;color:#1e293b;">Alternative Tools Compilation</span>
+      <button id="alt-tools-close" style="background:none;border:none;font-size:18px;color:#64748b;cursor:pointer;">✕</button>
+    </div>
+    <div id="alt-tools-content" style="padding:20px;overflow-y:auto;flex:1;"></div>
+    <div style="display:flex;justify-content:flex-end;padding:12px 20px;border-top:0.5px solid #e2e8f0;background:#f8fafc;">
+      <button id="alt-tools-footer-close" style="padding:6px 16px;font-size:12px;background:#f1f5f9;color:#334155;border:1px solid #cbd5e1;border-radius:6px;font-weight:600;cursor:pointer;">Close</button>
+    </div>
+  </div>
+  <div id="alt-tools-backdrop" style="display:none;position:fixed;top:0;left:0;right:0;bottom:0;background:rgba(0,0,0,0.5);z-index:3999;backdrop-filter:blur(3px);"></div>
+
   <div id="tooltip" class="d3-tooltip"></div>
   <div id="feedback-drawer" class="feedback-drawer">
     <div class="feedback-header">
@@ -2057,7 +2326,7 @@ function buildHtml(workflowData, options) {
         <button id="fb-submit-btn" type="button" class="feedback-btn-primary">Add Comment</button>
       </div>
       <div id="fb-list" class="feedback-list">
-        <div style="text-align:center;color:#94a3b8;font-size:12px;padding:20px 0;">No comments yet. Click any tool lane, architecture box, or link in the diagram to attach a note! Double click a task node or link to add a Reference Note and provide more details.</div>
+        <div style="text-align:center;color:#94a3b8;font-size:12px;padding:20px 0;">No comments yet. Click any tool lane, architecture box, or link in the diagram to attach a note!</div>
       </div>
     </div>
     <div class="feedback-footer">
