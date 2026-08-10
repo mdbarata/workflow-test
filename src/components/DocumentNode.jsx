@@ -47,7 +47,7 @@ const DocumentNode = ({
         onHeightChange(newHeight);
       }
     }
-  }, [doc.name, onHeightChange]);
+  }, [doc.name]); // onHeightChange intentionally excluded: it's an inline fn in the parent and adding it would cause an infinite render loop
 
   const isInput = doc.type === 'input';
   const baseFill = isInput ? '#6b7280' : '#374151';

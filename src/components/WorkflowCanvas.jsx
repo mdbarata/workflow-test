@@ -858,8 +858,10 @@ const WorkflowCanvas = ({
   const [hoveredTaskId, setHoveredTaskId] = useState(null);
   const [hoveredDocId, setHoveredDocId] = useState(null);
   const [tooltipPos, setTooltipPos] = useState({ x: 0, y: 0 });
+  // Treat an empty {} the same as null/undefined — both mean "no positions saved yet".
+  const hasPersistedDocPositions = persistedDocPositions && Object.keys(persistedDocPositions).length > 0;
   const [docPositions, setDocPositions] = useState(() =>
-    persistedDocPositions || buildDefaultPositions(documents, tasks, tools, new Set(), canvasWidth)
+    hasPersistedDocPositions ? persistedDocPositions : buildDefaultPositions(documents, tasks, tools, new Set(), canvasWidth)
   );
   const [docHeights, setDocHeights] = useState({});
   const [dragging, setDragging] = useState(null);
@@ -885,8 +887,9 @@ const WorkflowCanvas = ({
   // When the activity changes, load that activity's persisted layout if we
   // have one, otherwise fall back to the computed default.
   useEffect(() => {
+    const hasPersisted = persistedDocPositions && Object.keys(persistedDocPositions).length > 0;
     setDocPositions(
-      persistedDocPositions || buildDefaultPositions(documents, tasks, tools, collapsedTools, canvasWidth)
+      hasPersisted ? persistedDocPositions : buildDefaultPositions(documents, tasks, tools, collapsedTools, canvasWidth)
     );
     setDocHeights({});
   }, [activity.id]); // eslint-disable-line
