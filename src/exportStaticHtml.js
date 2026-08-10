@@ -127,6 +127,13 @@ const STATIC_CSS = `
   .compact-toggle:hover { border-color: #94a3b8; }
   .compact-toggle input { accent-color: #2563eb; cursor: pointer; margin: 0; }
   .compact-toggle.active { background: #eff6ff; border-color: #2563eb; color: #1e40af; }
+
+  /* Quick tips banner */
+  .tips-banner { display: flex; align-items: center; gap: 12px; padding: 7px 16px; background: #fffbeb; border-bottom: 1px solid #fde68a; font-size: 11px; color: #78350f; flex-shrink: 0; flex-wrap: wrap; }
+  .tips-banner .tip-item { display: flex; align-items: center; gap: 6px; }
+  .tips-banner .tip-sep { width: 1px; height: 16px; background: #fcd34d; }
+  .tips-banner-close { margin-left: auto; background: none; border: none; cursor: pointer; color: #92400e; font-size: 14px; padding: 2px 4px; border-radius: 4px; flex-shrink: 0; }
+  .tips-banner-close:hover { background: #fef3c7; }
 `;
 
 // ── Embedded JS ──────────────────────────────────────────────────────────────
@@ -2121,6 +2128,21 @@ const VIEWER_JS = `
       reRenderActive();
     });
   }
+
+  // Tips banner dismiss
+  var tipsBanner = document.getElementById('tips-banner');
+  var tipsDismiss = document.getElementById('tips-dismiss');
+  if (tipsBanner) {
+    try {
+      if (sessionStorage.getItem('viewer_tips_dismissed') === '1') tipsBanner.style.display = 'none';
+    } catch(e) {}
+    if (tipsDismiss) {
+      tipsDismiss.addEventListener('click', function() {
+        tipsBanner.style.display = 'none';
+        try { sessionStorage.setItem('viewer_tips_dismissed', '1'); } catch(e) {}
+      });
+    }
+  }
 })();
 `;
 
@@ -2280,6 +2302,11 @@ function buildHtml(workflowData, options) {
     </button>
   </div>
   ${showTabBar ? `<div class="tab-bar">${tabBarHtml}${hasSequences ? `<button id="back-to-stages-btn" class="tab-btn" style="display:none;margin-left:auto;color:#64748b;">← Back to Stages</button>` : ''}</div>` : `<div class="tab-bar" style="display:none">${tabBarHtml}</div>`}
+  <div id="tips-banner" class="tips-banner">
+    <span class="tip-item">🖱️ <strong>Hover</strong> over any task to see its details, dependencies, and linked documents.</span>
+    ${hasSequences ? `<span class="tip-sep"></span><span class="tip-item"><svg width="14" height="14" viewBox="0 0 14 14" fill="none" style="flex-shrink:0"><path d="M7,1 L1,4 L7,7 L13,4 Z M1,7 L7,10 L13,7 M1,10 L7,13 L13,10" stroke="#92400e" stroke-width="1.4" stroke-linejoin="round"/></svg> Tasks with a <strong>layers icon</strong> at the bottom-right corner belong to a Sequence — click the icon to jump directly to that sequence view.</span>` : ''}
+    <button id="tips-dismiss" class="tips-banner-close" title="Dismiss">✕</button>
+  </div>
   ${panelsHtml}
   <!-- Floating bottom-left buttons — mirrors App.js position:fixed bottom:24 left:24 group -->
   <div style="position:fixed;bottom:24px;left:24px;z-index:3000;display:flex;gap:12px;">
