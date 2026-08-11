@@ -14,6 +14,14 @@ const RESP_PRESETS = [
   { color: '#fed7aa', borderColor: '#7c2d12', taskColor: '#c2410c' }, // Warm Orange
   { color: '#bfdbfe', borderColor: '#1e3a8a', taskColor: '#1d4ed8' }, // Light Blue
   { color: '#a7f3d0', borderColor: '#064e3b', taskColor: '#047857' }, // Emerald
+  { color: '#ddd6fe', borderColor: '#4c1d95', taskColor: '#6d28d9' }, // Indigo
+  { color: '#fecdd3', borderColor: '#881337', taskColor: '#be123c' }, // Rose
+  { color: '#bae6fd', borderColor: '#0c4a6e', taskColor: '#0369a1' }, // Sky
+  { color: '#d9f99d', borderColor: '#3f6212', taskColor: '#4d7c0f' }, // Lime
+  { color: '#fecaca', borderColor: '#7f1d1d', taskColor: '#b91c1c' }, // Red-orange
+  { color: '#c7d2fe', borderColor: '#312e81', taskColor: '#4338ca' }, // Deep Indigo
+  { color: '#fef9c3', borderColor: '#713f12', taskColor: '#a16207' }, // Dark Yellow
+  { color: '#ccfbf1', borderColor: '#134e4a', taskColor: '#0f766e' }, // Dark Teal
 ];
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
@@ -115,6 +123,7 @@ const rowsToWorkflow = (rows, originalData) => {
 
   rows.forEach((r) => {
     splitList(r.sequences).forEach(seq => sequencesSet.add(seq));
+    splitList(r.opt2Seqs).forEach(seq => sequencesSet.add(seq));
 
     const actId = slugify(r.activity);
     if (!actId) {
@@ -204,10 +213,11 @@ const rowsToWorkflow = (rows, originalData) => {
     isSequenceParent: !!r.isParent,
   };
   
-  if (r.opt2Resp || r.opt2Optional) {
+  if (r.opt2Resp || r.opt2Optional || r.opt2Seqs) {
     task.overrides = { option_2: {} };
     if (r.opt2Resp) task.overrides.option_2.responsible = resolveRespKey(r.opt2Resp);
     if (r.opt2Optional) task.overrides.option_2.optional = true;
+    if (r.opt2Seqs) task.overrides.option_2.sequences = splitList(r.opt2Seqs);
   }
   return task;
 };
@@ -249,7 +259,7 @@ let _uid = 1;
 const emptyRow = (activityName = '', sequenceName = '') => ({
   _key: _uid++, taskId: '', activity: activityName, sequences: sequenceName, isParent: false, label: '', responsible: '', tool: '',
   startTime: '', duration: String(DEFAULT_DURATION), inputs: '', outputs: '',
-  pre: '', preFormats: '', preTypes: 'undefined', preStatuses: 'undefined', notes: '', altTools: '', opt2Resp: '', opt2Optional: false
+  pre: '', preFormats: '', preTypes: 'undefined', preStatuses: 'undefined', notes: '', altTools: '', opt2Resp: '', opt2Optional: false, opt2Seqs: ''
 });
 
 // ── Seed rows from existing workflowData ──────────────────────────────────────
@@ -301,7 +311,8 @@ const workflowToRows = (data) => {
       notes: t.details || '',
       altTools: joinList(t.alternativeTools || []),
       opt2Resp: t.overrides && t.overrides.option_2 ? (responsibles.find((r) => r.key === t.overrides.option_2.responsible)?.name || t.overrides.option_2.responsible || '') : '',
-      opt2Optional: t.overrides && t.overrides.option_2 ? !!t.overrides.option_2.optional : false
+      opt2Optional: t.overrides && t.overrides.option_2 ? !!t.overrides.option_2.optional : false,
+      opt2Seqs: t.overrides && t.overrides.option_2 && t.overrides.option_2.sequences ? joinList(t.overrides.option_2.sequences) : ''
     });
   };
 
@@ -612,6 +623,7 @@ const TaskEditor = ({ workflowData, onSave, onClose }) => {
                 <th style={thStyle}>Task ID</th>
                 <th style={{ ...thStyle, minWidth: 110 }}>Stage</th>
                 <th style={{ ...thStyle, minWidth: 110 }}>Sequences</th>
+                <th style={{ ...thStyle, minWidth: 110 }} title="Option 2 Sequences">Opt 2 Seqs.</th>
                 <th style={{ ...thStyle, minWidth: 70, textAlign: 'center' }} title="Is Parent of Sequence?">Seq. Parent?</th>
                 <th style={{ ...thStyle, minWidth: 110 }}>Label</th>
                 <th style={{ ...thStyle, minWidth: 120 }}>Responsible</th>
@@ -651,6 +663,7 @@ const TaskEditor = ({ workflowData, onSave, onClose }) => {
                   <Cell value={row.taskId} onChange={(v) => updateRow(row._key, 'taskId', v)} placeholder="task1" />
                   <Cell value={row.activity} onChange={(v) => updateRow(row._key, 'activity', v)} placeholder="Stage 1" list="act-list" wide />
                   <Cell value={row.sequences} onChange={(v) => updateRow(row._key, 'sequences', v)} placeholder="seq_1, seq_2" wide />
+                  <Cell value={row.opt2Seqs} onChange={(v) => updateRow(row._key, 'opt2Seqs', v)} placeholder="seq_a, seq_b" wide />
                   <td style={{ padding: '3px 4px', textAlign: 'center' }}>
                     <input type="checkbox" checked={!!row.isParent} onChange={(e) => updateRow(row._key, 'isParent', e.target.checked)} style={{ cursor: 'pointer' }} title="Is this task the parent of the listed sequences?" />
                   </td>

@@ -173,7 +173,10 @@ const VIEWER_JS = `
     
     var seqTasks = [];
     var parentTasks = [];
-    allTasks.forEach(function(t) {
+    allTasks.forEach(function(rawT) {
+      var t = activeVariant === 'option_1' || !rawT.overrides || !rawT.overrides[activeVariant] 
+        ? rawT : Object.assign({}, rawT, rawT.overrides[activeVariant]);
+
       var sList = Array.isArray(t.sequences) ? t.sequences : (t.sequences ? String(t.sequences).split(',') : []);
       sList = sList.map(function(s){return s.trim();}).filter(Boolean);
       if (sList.indexOf(seq.name) >= 0 || sList.indexOf(seq.id) >= 0) {
@@ -2306,7 +2309,7 @@ function buildHtml(workflowData, options) {
 
   // Build data blob
   const exportData = {
-    workflowData: { 
+    workflowData: {
       activities: visibleActivities,
       sequences: workflowData.sequences || [],
       hiddenTasks: workflowData.hiddenTasks || []

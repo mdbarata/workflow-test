@@ -28,8 +28,14 @@ const SequenceCanvas = ({
     // Aggregating all tasks that belong to this sequence
     const sequenceTasks = [];
     const parentTasks = [];
+    const getTaskProps = (task, variant) => {
+      if (variant === 'option_1' || !task.overrides || !task.overrides[variant]) return task;
+      return { ...task, ...task.overrides[variant] };
+    };
+
     (workflowData.activities || []).forEach(act => {
-      (act.tasks || []).forEach(t => {
+      (act.tasks || []).forEach(rawT => {
+        const t = getTaskProps(rawT, activeVariant);
         if ((t.sequences || []).includes(activeSequenceId)) {
           if (t.isSequenceParent) {
             parentTasks.push({ ...t, activityName: act.name });
@@ -39,7 +45,8 @@ const SequenceCanvas = ({
         }
       });
     });
-    (workflowData.hiddenTasks || []).forEach(t => {
+    (workflowData.hiddenTasks || []).forEach(rawT => {
+      const t = getTaskProps(rawT, activeVariant);
       if ((t.sequences || []).includes(activeSequenceId)) {
         if (t.isSequenceParent) {
           parentTasks.push({ ...t, activityName: 'Hidden Tasks' });
