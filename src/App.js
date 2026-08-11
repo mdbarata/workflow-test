@@ -248,8 +248,9 @@ const App = () => {
   const [feedbackItems, setFeedbackItems] = useState(saved?.feedbackItems || []);
   const [showFeedbackModal, setShowFeedbackModal] = useState(false);
   const [pendingImport, setPendingImport] = useState(null);
+  const [activeVariant, setActiveVariant] = useState(saved?.activeVariant || 'option_1');
 
-  useAutoSave({ workflowData, activeActivityIndex, filters, showLinks, toolNotes, docPositions, archPositions, edgeSides, feedbackItems });
+  useAutoSave({ workflowData, activeActivityIndex, filters, showLinks, toolNotes, docPositions, archPositions, edgeSides, feedbackItems, activeVariant });
 
   const activities = workflowData.activities || [];
   const activity = activities[activeActivityIndex];
@@ -731,6 +732,8 @@ const App = () => {
             onSearchChange={setSearchQuery}
             onEditTasks={() => setShowEditor(true)}
             onToolNotes={() => setShowToolNotes(true)}
+            activeVariant={activeVariant}
+            setActiveVariant={setActiveVariant}
           />
         ) : isLinksViewActive ? (
           <ActivityLinksView activities={activities} onEditTasks={() => setShowEditor(true)} />
@@ -757,6 +760,8 @@ const App = () => {
               setShowLinks(false);
               setFilters({ responsibles: [], tools: [], chapters: [] });
             }}
+            activeVariant={activeVariant}
+            setActiveVariant={setActiveVariant}
           />
         )}
       </div>

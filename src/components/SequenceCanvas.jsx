@@ -18,11 +18,13 @@ const SequenceCanvas = ({
   searchQuery,
   onSearchChange,
   onEditTasks,
-  onToolNotes
+  onToolNotes,
+  activeVariant,
+  setActiveVariant
 }) => {
   const sequenceActivity = useMemo(() => {
     if (!activeSequenceId || !workflowData) return null;
-    
+
     // Aggregating all tasks that belong to this sequence
     const sequenceTasks = [];
     const parentTasks = [];
@@ -164,9 +166,9 @@ const SequenceCanvas = ({
         searchQuery={searchQuery}
         onSearchChange={onSearchChange}
         // Exclude chapters for sequences
-        onChapters={() => {}} 
-        onSaveJson={() => {}}
-        onLoadJson={() => {}}
+        onChapters={() => { }}
+        onSaveJson={() => { }}
+        onLoadJson={() => { }}
       />
       {parentCount > 0 && (
         <div style={{ background: '#e0f2fe', borderBottom: assocOpen ? '1px solid #bae6fd' : 'none' }}>
@@ -207,6 +209,8 @@ const SequenceCanvas = ({
         workflowData={workflowData}
         searchQuery={searchQuery}
         isSequenceMode={true}
+        activeVariant={activeVariant}
+        setActiveVariant={setActiveVariant}
       />
     </div>
   );

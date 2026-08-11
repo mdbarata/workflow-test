@@ -27,7 +27,15 @@
         {
           "id": "task2", "name": "Task 2", "tool": "TOOL 2", "responsible": "RESPONSIBLE_A",
           "startTime": 200, "duration": 150, "details": "Processing Document Input 3",
-          "dependencies": [], "inputs": ["doc_in_3"], "outputs": []
+          "dependencies": [], "inputs": ["doc_in_3"], "outputs": [],
+          "overrides": {
+            "option_2": {
+              "optional": true,
+              "responsible": "RESPONSIBLE_B",
+              "sequences": ["seq_1"],
+              "isSequenceParent": true
+            }
+          }
         },
         {
           "id": "task3", "name": "Task 3", "tool": "TOOL 3", "responsible": "RESPONSIBLE_B",

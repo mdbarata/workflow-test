@@ -789,9 +789,16 @@ const WorkflowCanvas = ({
   activeActivityIndex,
   searchQuery,
   isSequenceMode,
-  onNavigateToSequence
+  onNavigateToSequence,
+  activeVariant,
+  setActiveVariant
 }) => {
-  const { tasks, tools, responsibles, documents, name } = activity;
+  const { tools, responsibles, documents, name } = activity;
+  const getTaskProps = (task, variant) => {
+    if (variant === 'option_1' || !task.overrides || !task.overrides[variant]) return task;
+    return { ...task, ...task.overrides[variant] };
+  };
+  const tasks = (activity.tasks || []).map(t => getTaskProps(t, activeVariant));
   const [view, setView] = useState('timeline');
   const [showExportModal, setShowExportModal] = useState(false);
   const canvasWidth = Math.max(...tasks.map((t) => t.startTime + t.duration), 600) + 20;
@@ -1160,6 +1167,10 @@ const WorkflowCanvas = ({
         style={{ position: 'absolute', top: 12, left: 168, zIndex: 100, padding: '8px 14px', background: '#ffffff', color: '#1e40af', border: '1.5px solid #1e40af', borderRadius: 6, cursor: 'pointer', fontSize: 12, fontWeight: 600, boxShadow: '0 2px 8px rgba(0,0,0,0.08)' }}>
         ⬇ Export viewer
       </button>
+      <div style={{ position: 'absolute', top: 12, left: 310, zIndex: 100, display: 'flex', background: '#ffffff', border: '1px solid #cbd5e1', borderRadius: 6, overflow: 'hidden', boxShadow: '0 2px 8px rgba(0,0,0,0.08)' }}>
+        <button onClick={() => setActiveVariant('option_1')} style={{ padding: '8px 14px', border: 'none', background: activeVariant === 'option_1' ? '#1e40af' : '#ffffff', color: activeVariant === 'option_1' ? '#ffffff' : '#475569', fontSize: 12, fontWeight: 600, cursor: 'pointer', transition: 'all 0.15s' }}>Option 1</button>
+        <button onClick={() => setActiveVariant('option_2')} style={{ padding: '8px 14px', border: 'none', background: activeVariant === 'option_2' ? '#1e40af' : '#ffffff', color: activeVariant === 'option_2' ? '#ffffff' : '#475569', fontSize: 12, fontWeight: 600, cursor: 'pointer', transition: 'all 0.15s', borderLeft: '1px solid #cbd5e1' }}>Option 2</button>
+      </div>
       <button onClick={handleResetDocPositions}
         title="Reset document cards back to their default auto-arranged vertical positions"
         style={{ position: 'absolute', top: 12, right: 12, zIndex: 100, padding: '8px 12px', background: '#ffffff', border: '1px solid #e2e8f0', borderRadius: 6, cursor: 'pointer', fontSize: 12, fontWeight: 500, color: '#64748b', boxShadow: '0 2px 8px rgba(0,0,0,0.08)' }}>
@@ -1167,6 +1178,12 @@ const WorkflowCanvas = ({
       </button>
 
       <ZoomControls zoom={zoom} onZoom={handleStepZoom} onFit={handleFit} />
+
+      {tasks.some(t => t.optional) && (
+        <div style={{ position: 'absolute', top: 16, left: '50%', transform: 'translateX(-50%)', zIndex: 100, padding: '8px 16px', background: '#fffbeb', border: '1px solid #f59e0b', borderRadius: 6, color: '#b45309', fontSize: 13, fontWeight: 600, boxShadow: '0 4px 12px rgba(245, 158, 11, 0.15)', display: 'flex', alignItems: 'center', gap: 8, pointerEvents: 'none' }}>
+          <span>⚠️</span> The faded tasks are not mandatory in this variant.
+        </div>
+      )}
 
       <svg ref={svgRef} width={svgWidth} height={svgHeight}
         style={{ background: '#f8f9fb', display: 'block', userSelect: 'none', cursor: isPanning ? 'grabbing' : 'grab', width: '100%', height: '100%' }}
@@ -1304,7 +1321,8 @@ const WorkflowCanvas = ({
                 isDimmed={
                   (!isSearchMatch) ||
                   (!!hoveredTask && !isHovered && !depChain.has(task.id)) ||
-                  (!!hoveredDocId && !isDocRelated)
+                  (!!hoveredDocId && !isDocRelated) ||
+                  (task.optional)
                 }
                 isDepHighlighted={depChain.has(task.id)}
                 onMouseEnter={(e) => { setHoveredTaskId(task.id); setTooltipPos({ x: e.clientX, y: e.clientY }); }}

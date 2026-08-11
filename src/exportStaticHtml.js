@@ -162,6 +162,7 @@ const VIEWER_JS = `
   // Shared state for sequence view — set up in BOOTSTRAP but referenced from timeline interaction handlers
   var isSequenceView = false;
   var enterSequenceView = function() {}; // will be replaced in BOOTSTRAP
+  var activeVariant = 'option_1';
 
   function getSequenceActivity(idx) {
     var seq = sequences[idx];
@@ -397,9 +398,29 @@ const VIEWER_JS = `
   // TIMELINE RENDERER
   // ══════════════════════════════════════════════════════════════════════════
   function renderTimeline(panelEl, activity, collapsedSet, filterState) {
-    var tasks = activity.tasks, tools = activity.tools, responsibles = activity.responsibles, documents = activity.documents || [];
+    var tools = activity.tools, responsibles = activity.responsibles, documents = activity.documents || [];
+    var getTaskProps = function(task, variant) {
+      if (variant === 'option_1' || !task.overrides || !task.overrides[variant]) return task;
+      return Object.assign({}, task, task.overrides[variant]);
+    };
+    var tasks = (activity.tasks || []).map(function(t) { return getTaskProps(t, activeVariant); });
     var respMap = {};
     responsibles.forEach(function(r) { respMap[r.key] = r; });
+
+    var bannerEl = panelEl.querySelector('.variant-banner');
+    var hasOptional = tasks.some(function(t) { return t.optional; });
+    if (hasOptional) {
+      if (!bannerEl) {
+        bannerEl = document.createElement('div');
+        bannerEl.className = 'variant-banner';
+        bannerEl.style = 'position:absolute; top:16px; left:50%; transform:translateX(-50%); z-index:100; padding:8px 16px; background:#fffbeb; border:1px solid #f59e0b; border-radius:6px; color:#b45309; font-size:13px; font-weight:600; box-shadow:0 4px 12px rgba(245,158,11,0.15); display:flex; align-items:center; gap:8px; pointer-events:none;';
+        bannerEl.innerHTML = '<span>⚠️</span> The faded tasks are not mandatory in this variant.';
+        panelEl.querySelector('.canvas-host').parentElement.appendChild(bannerEl);
+      }
+      bannerEl.style.display = 'flex';
+    } else if (bannerEl) {
+      bannerEl.style.display = 'none';
+    }
 
     // Apply filters
     var visibleTasks = tasks.filter(function(t) {
@@ -567,7 +588,7 @@ const VIEWER_JS = `
       var cx = getTaskX(task) + w / 2;
       var firstBaselineY = taskYVal + PAD_Y + LINE_HEIGHT - 2;
 
-      svg += '<g class="task-node" data-id="' + escapeHtml(task.id) + '" data-task-id="' + escapeHtml(task.id) + '" data-tool="' + escapeHtml(task.tool || '') + '" style="cursor:pointer;">';
+      svg += '<g class="task-node' + (task.optional ? ' dimmed' : '') + '" data-id="' + escapeHtml(task.id) + '" data-task-id="' + escapeHtml(task.id) + '" data-tool="' + escapeHtml(task.tool || '') + '" style="cursor:pointer;">';
       svg += '<rect x="' + getTaskX(task) + '" y="' + taskYVal + '" width="' + w + '" height="' + h + '" rx="' + TASK_RADIUS + '" fill="' + fill + '" stroke="rgba(0,0,0,0.25)" stroke-width="1.5" class="task-rect"/>';
       lines.forEach(function(line, i) {
         svg += '<text x="' + cx + '" y="' + (firstBaselineY + i * LINE_HEIGHT) + '" text-anchor="middle" font-size="' + FONT_SIZE + 'px" font-weight="bold" fill="white" pointer-events="none">' + escapeHtml(line) + '</text>';
@@ -1671,6 +1692,30 @@ const VIEWER_JS = `
     });
   });
 
+  // Variant toggles
+  document.addEventListener('click', function(e) {
+    var btn = e.target.closest('.variant-btn');
+    if (!btn) return;
+    var variant = btn.getAttribute('data-variant');
+    if (variant === activeVariant) return;
+    activeVariant = variant;
+    document.querySelectorAll('.variant-btn').forEach(function(b) {
+      if (b.getAttribute('data-variant') === variant) {
+        b.style.background = '#1e40af';
+        b.style.color = '#fff';
+      } else {
+        b.style.background = '#fff';
+        b.style.color = '#475569';
+      }
+    });
+    var activePanel = document.querySelector('.tab-panel.active');
+    if (activePanel) {
+       var tabId = activePanel.id;
+       rendered[tabId] = false;
+       activateTab(tabId);
+    }
+  });
+
   // ── Floating Buttons (bottom-left) — matches App.js layout exactly ──
   var seqViewBtn = document.getElementById('seq-view-btn');
   var altToolsBtn = document.getElementById('alt-tools-btn');
@@ -2271,6 +2316,10 @@ function buildHtml(workflowData, options) {
           <button class="active-view" data-show="${tlId}">← Timeline</button>
           <button class="inactive-view" data-show="${archId}">⬡ Architecture</button>
         </div>
+        <div class="variant-toggle" style="position:absolute; top:12px; left:310px; z-index:100; display:flex; background:#ffffff; border:1px solid #cbd5e1; border-radius:6px; overflow:hidden; box-shadow:0 2px 8px rgba(0,0,0,0.08);">
+          <button class="variant-btn" data-variant="option_1" style="padding:8px 14px; border:none; font-size:12px; font-weight:600; cursor:pointer; transition:all 0.15s; background:#1e40af; color:#fff;">Option 1</button>
+          <button class="variant-btn" data-variant="option_2" style="padding:8px 14px; border:none; font-size:12px; font-weight:600; cursor:pointer; transition:all 0.15s; background:#fff; color:#475569; border-left:1px solid #cbd5e1;">Option 2</button>
+        </div>
         <div class="canvas-host" style="flex:1;overflow:auto;"></div>
         <div class="zoom-controls">
           <button class="zoom-out" title="Zoom out">−</button>
@@ -2311,6 +2360,10 @@ function buildHtml(workflowData, options) {
         <div class="filter-bar"></div>
         <div class="assoc-container"></div>
         <div style="position:relative;flex:1;overflow:hidden;display:flex;flex-direction:column;">
+          <div class="variant-toggle" style="position:absolute; top:12px; left:12px; z-index:100; display:flex; background:#ffffff; border:1px solid #cbd5e1; border-radius:6px; overflow:hidden; box-shadow:0 2px 8px rgba(0,0,0,0.08);">
+            <button class="variant-btn" data-variant="option_1" style="padding:8px 14px; border:none; font-size:12px; font-weight:600; cursor:pointer; transition:all 0.15s; background:#1e40af; color:#fff;">Option 1</button>
+            <button class="variant-btn" data-variant="option_2" style="padding:8px 14px; border:none; font-size:12px; font-weight:600; cursor:pointer; transition:all 0.15s; background:#fff; color:#475569; border-left:1px solid #cbd5e1;">Option 2</button>
+          </div>
           <div class="canvas-host" style="flex:1;overflow:auto;"></div>
           <div class="zoom-controls">
             <button class="zoom-out" title="Zoom out">−</button>

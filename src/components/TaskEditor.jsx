@@ -159,7 +159,8 @@ const rowsToWorkflow = (rows, originalData) => {
     originalData.activities.forEach((a) => { originalActivitiesById[a.id] = a; });
   }
 
-  const rowToTask = (r, startTimes) => ({
+  const rowToTask = (r, startTimes) => {
+    const task = {
     id: r.taskId,
     name: r.label,
     tool: r.tool,
@@ -185,7 +186,15 @@ const rowsToWorkflow = (rows, originalData) => {
     }),
     sequences: splitList(r.sequences),
     isSequenceParent: !!r.isParent,
-  });
+  };
+  
+  if (r.opt2Resp || r.opt2Optional) {
+    task.overrides = { option_2: {} };
+    if (r.opt2Resp) task.overrides.option_2.responsible = resolveRespKey(r.opt2Resp);
+    if (r.opt2Optional) task.overrides.option_2.optional = true;
+  }
+  return task;
+};
 
   const activities = Object.values(activitiesMap).map((act) => {
     const startTimes = computeStartTimes(act.rows);
@@ -224,7 +233,7 @@ let _uid = 1;
 const emptyRow = (activityName = '', sequenceName = '') => ({
   _key: _uid++, taskId: '', activity: activityName, sequences: sequenceName, isParent: false, label: '', responsible: '', tool: '',
   startTime: '', duration: String(DEFAULT_DURATION), inputs: '', outputs: '',
-  pre: '', preFormats: '', preTypes: 'undefined', preStatuses: 'undefined', notes: '', altTools: '',
+  pre: '', preFormats: '', preTypes: 'undefined', preStatuses: 'undefined', notes: '', altTools: '', opt2Resp: '', opt2Optional: false
 });
 
 // ── Seed rows from existing workflowData ──────────────────────────────────────
@@ -275,6 +284,8 @@ const workflowToRows = (data) => {
       preStatuses: joinList(preStatuses),
       notes: t.details || '',
       altTools: joinList(t.alternativeTools || []),
+      opt2Resp: t.overrides && t.overrides.option_2 ? (responsibles.find((r) => r.key === t.overrides.option_2.responsible)?.name || t.overrides.option_2.responsible || '') : '',
+      opt2Optional: t.overrides && t.overrides.option_2 ? !!t.overrides.option_2.optional : false
     });
   };
 
@@ -599,6 +610,8 @@ const TaskEditor = ({ workflowData, onSave, onClose }) => {
                 <th style={{ ...thStyle, minWidth: 50, textAlign: 'center' }} title="Interface Status">Status</th>
                 <th style={{ ...thStyle, minWidth: 160 }}>Notes</th>
                 <th style={{ ...thStyle, minWidth: 140 }}>Alt. tools</th>
+                <th style={{ ...thStyle, minWidth: 120 }} title="Option 2 Responsible">Opt 2 Resp.</th>
+                <th style={{ ...thStyle, minWidth: 70, textAlign: 'center' }} title="Is Optional in Option 2?">Opt 2 Faded</th>
                 <th style={{ ...thStyle, width: 60 }}></th>
               </tr>
             </thead>
@@ -688,6 +701,10 @@ const TaskEditor = ({ workflowData, onSave, onClose }) => {
                   </td>
                   <Cell value={row.notes} onChange={(v) => updateRow(row._key, 'notes', v)} placeholder="Details…" wide />
                   <Cell value={row.altTools} onChange={(v) => updateRow(row._key, 'altTools', v)} placeholder="e.g. Figma, Sketch" wide />
+                  <Cell value={row.opt2Resp} onChange={(v) => updateRow(row._key, 'opt2Resp', v)} placeholder="Opt 2 Resp" list="resp-list" wide />
+                  <td style={{ padding: '3px 4px', textAlign: 'center' }}>
+                    <input type="checkbox" checked={!!row.opt2Optional} onChange={(e) => updateRow(row._key, 'opt2Optional', e.target.checked)} style={{ cursor: 'pointer' }} title="Is this task faded/optional in Option 2?" />
+                  </td>
                   <td style={{ padding: '3px 4px', whiteSpace: 'nowrap' }}>
                     <button title="Duplicate row" onClick={() => duplicateRow(row._key)}
                       style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#64748b', padding: '2px 4px', borderRadius: 3, fontSize: 13 }}>⧉</button>
