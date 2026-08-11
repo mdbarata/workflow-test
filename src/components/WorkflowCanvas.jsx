@@ -799,6 +799,28 @@ const WorkflowCanvas = ({
     return { ...task, ...task.overrides[variant] };
   };
   const tasks = (activity.tasks || []).map(t => getTaskProps(t, activeVariant));
+
+  const globalResponsiblesList = useMemo(() => {
+    const list = [];
+    const seen = new Set();
+    if (workflowData && workflowData.activities) {
+      workflowData.activities.forEach(a => {
+        (a.responsibles || []).forEach(r => {
+          if (!seen.has(r.key)) { seen.add(r.key); list.push(r); }
+        });
+      });
+    }
+    (responsibles || []).forEach(r => {
+      if (!seen.has(r.key)) { seen.add(r.key); list.push(r); }
+    });
+    return list;
+  }, [workflowData, responsibles]);
+
+  const activeResponsibles = useMemo(() => {
+    const usedKeys = new Set(tasks.map(t => t.responsible));
+    return globalResponsiblesList.filter(r => usedKeys.has(r.key));
+  }, [tasks, globalResponsiblesList]);
+
   const [view, setView] = useState('timeline');
   const [showExportModal, setShowExportModal] = useState(false);
   const canvasWidth = Math.max(...tasks.map((t) => t.startTime + t.duration), 600) + 20;
@@ -811,7 +833,7 @@ const WorkflowCanvas = ({
     const docMap = {};
     (documents || []).forEach((d) => { docMap[d.id] = d.name || ''; });
     tasks.forEach((t) => {
-      const resp = responsibles.find((r) => r.key === t.responsible);
+      const resp = activeResponsibles.find((r) => r.key === t.responsible);
       const docNames = [];
       (t.inputs || []).forEach((id) => { if (docMap[id]) docNames.push(docMap[id]); });
       (t.outputs || []).forEach((id) => { if (docMap[id]) docNames.push(docMap[id]); });
@@ -826,7 +848,7 @@ const WorkflowCanvas = ({
       if (hay.includes(sq)) matched.add(t.id);
     });
     return matched;
-  }, [sq, tasks, responsibles, activity.name, documents, toolNotes]);
+  }, [sq, tasks, activeResponsibles, activity.name, documents, toolNotes]);
 
   const searchMatchTools = useMemo(() => {
     if (!sq) return null;
@@ -1117,7 +1139,7 @@ const WorkflowCanvas = ({
     return new Set(tasks.filter((t) => t.inputs?.includes(hoveredDocId) || t.outputs?.includes(hoveredDocId)).map((t) => t.id));
   }, [hoveredDocId, tasks]);
 
-  const respMap = useMemo(() => { const m = {}; responsibles.forEach((r) => { m[r.key] = r; }); return m; }, [responsibles]);
+  const respMap = useMemo(() => { const m = {}; activeResponsibles.forEach((r) => { m[r.key] = r; }); return m; }, [activeResponsibles]);
 
   const getDocLineProps = (docId, isInput) => {
     const isDocHighlighted = highlightedDocs.has(docId);
@@ -1202,14 +1224,14 @@ const WorkflowCanvas = ({
 
         <g transform={`translate(${MARGIN.left}, ${MARGIN.top})`}>
           <g transform={`translate(0, -${MARGIN.top - 16})`}>
-            {responsibles.map((r, i) => (
+            {activeResponsibles.map((r, i) => (
               <g key={r.key} transform={`translate(${i * 280}, 0)`}>
                 <rect width={36} height={26} rx={4} fill={r.color} stroke={r.borderColor} strokeWidth={2} />
                 <rect x={6} y={6} width={24} height={14} rx={3} fill={r.taskColor} />
                 <text x={46} y={18} fontSize="12px" fontWeight="600" fill="#374151">{r.name}</text>
               </g>
             ))}
-            <text x={responsibles.length * 280 + 20} y={18} fontSize="10px" fill="#94a3b8" fontStyle="italic">✥ drag documents to reposition</text>
+            <text x={activeResponsibles.length * 280 + 20} y={18} fontSize="10px" fill="#94a3b8" fontStyle="italic">✥ drag documents to reposition</text>
           </g>
 
           <text x={visibleCanvasWidth / 2} y={-30} textAnchor="middle" fontSize="18px" fontWeight="700" fill="#1e293b">{name}</text>

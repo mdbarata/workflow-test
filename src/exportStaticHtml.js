@@ -404,8 +404,28 @@ const VIEWER_JS = `
       return Object.assign({}, task, task.overrides[variant]);
     };
     var tasks = (activity.tasks || []).map(function(t) { return getTaskProps(t, activeVariant); });
+
+    var activeResponsibles = [];
+    var usedRespKeys = {};
+    tasks.forEach(function(t) { usedRespKeys[t.responsible] = true; });
+    var seenResp = {};
+    activities.forEach(function(act) {
+      (act.responsibles || []).forEach(function(r) {
+        if (usedRespKeys[r.key] && !seenResp[r.key]) {
+          seenResp[r.key] = true;
+          activeResponsibles.push(r);
+        }
+      });
+    });
+    (activity.responsibles || []).forEach(function(r) {
+      if (usedRespKeys[r.key] && !seenResp[r.key]) {
+        seenResp[r.key] = true;
+        activeResponsibles.push(r);
+      }
+    });
+
     var respMap = {};
-    responsibles.forEach(function(r) { respMap[r.key] = r; });
+    activeResponsibles.forEach(function(r) { respMap[r.key] = r; });
 
     var bannerEl = panelEl.querySelector('.variant-banner');
     var hasOptional = tasks.some(function(t) { return t.optional; });
@@ -485,7 +505,7 @@ const VIEWER_JS = `
 
     // Legend
     svg += '<g transform="translate(0,-' + (MARGIN.top - 16) + ')">';
-    responsibles.forEach(function(r, i) {
+    activeResponsibles.forEach(function(r, i) {
       svg += '<g transform="translate(' + (i * 280) + ',0)">';
       svg += '<rect width="36" height="26" rx="4" fill="' + r.color + '" stroke="' + r.borderColor + '" stroke-width="2"/>';
       svg += '<rect x="6" y="6" width="24" height="14" rx="3" fill="' + r.taskColor + '"/>';

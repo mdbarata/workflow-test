@@ -2,12 +2,18 @@ import React, { useState, useMemo, useCallback, useEffect } from 'react';
 
 // ── Responsible palette ───────────────────────────────────────────────────────
 const RESP_PRESETS = [
-  { color: '#c7e9c0', borderColor: '#2d6a2d', taskColor: '#4CAF50' },
-  { color: '#b3d9ff', borderColor: '#003d99', taskColor: '#1a3a99' },
-  { color: '#f0c6ff', borderColor: '#9900cc', taskColor: '#d946ef' },
-  { color: '#ffd6a5', borderColor: '#a05a00', taskColor: '#e07b00' },
-  { color: '#ffb3b3', borderColor: '#990000', taskColor: '#cc2200' },
-  { color: '#b3f0e0', borderColor: '#006644', taskColor: '#00886e' },
+  { color: '#c7e9c0', borderColor: '#2d6a2d', taskColor: '#4CAF50' }, // Green
+  { color: '#b3d9ff', borderColor: '#003d99', taskColor: '#1a3a99' }, // Blue
+  { color: '#f0c6ff', borderColor: '#9900cc', taskColor: '#d946ef' }, // Purple
+  { color: '#ffd6a5', borderColor: '#a05a00', taskColor: '#e07b00' }, // Orange
+  { color: '#ffb3b3', borderColor: '#990000', taskColor: '#cc2200' }, // Red
+  { color: '#b3f0e0', borderColor: '#006644', taskColor: '#00886e' }, // Teal
+  { color: '#fef08a', borderColor: '#854d0e', taskColor: '#ca8a04' }, // Yellow
+  { color: '#e9d5ff', borderColor: '#581c87', taskColor: '#7e22ce' }, // Violet
+  { color: '#fbcfe8', borderColor: '#831843', taskColor: '#be185d' }, // Pink
+  { color: '#fed7aa', borderColor: '#7c2d12', taskColor: '#c2410c' }, // Warm Orange
+  { color: '#bfdbfe', borderColor: '#1e3a8a', taskColor: '#1d4ed8' }, // Light Blue
+  { color: '#a7f3d0', borderColor: '#064e3b', taskColor: '#047857' }, // Emerald
 ];
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
@@ -89,6 +95,10 @@ const rowsToWorkflow = (rows, originalData) => {
     });
   });
 
+  const usedColors = new Set(Object.values(originalRespByKey).map(r => r.color));
+  const availablePresets = RESP_PRESETS.filter(p => !usedColors.has(p.color));
+  const presetsToUse = availablePresets.length > 0 ? availablePresets : RESP_PRESETS;
+
   // Given a display name from the editor row, return the best responsible key to use.
   // Priority: (1) exact name match in original data, (2) exact key match (user typed the key),
   // (3) slugify as a last resort for genuinely new responsibles.
@@ -120,22 +130,28 @@ const rowsToWorkflow = (rows, originalData) => {
     act.rows.push(r);
     if (r.tool) act.toolsSet.add(r.tool);
 
-    const respKey = resolveRespKey(r.responsible);
-    if (!act.responsiblesMap[respKey]) {
-      // Preserve full original responsible object (colours etc.) if available
-      const orig = originalRespByKey[respKey];
-      if (!respColorMap[respKey]) {
-        respColorMap[respKey] = orig
-          ? { color: orig.color, borderColor: orig.borderColor, taskColor: orig.taskColor }
-          : RESP_PRESETS[presetIdx % RESP_PRESETS.length];
-        if (!orig) presetIdx++;
+    const registerResp = (respName) => {
+      if (!respName) return;
+      const key = resolveRespKey(respName);
+      if (!act.responsiblesMap[key]) {
+        // Preserve full original responsible object (colours etc.) if available
+        const orig = originalRespByKey[key];
+        if (!respColorMap[key]) {
+          respColorMap[key] = orig
+            ? { color: orig.color, borderColor: orig.borderColor, taskColor: orig.taskColor }
+            : presetsToUse[presetIdx % presetsToUse.length];
+          if (!orig) presetIdx++;
+        }
+        act.responsiblesMap[key] = {
+          key: key,
+          name: orig?.name || respName.toUpperCase(),
+          ...respColorMap[key],
+        };
       }
-      act.responsiblesMap[respKey] = {
-        key: respKey,
-        name: orig?.name || r.responsible.toUpperCase(),
-        ...respColorMap[respKey],
-      };
-    }
+    };
+
+    registerResp(r.responsible);
+    if (r.opt2Resp) registerResp(r.opt2Resp);
 
     splitList(r.inputs).forEach((name) => {
       // Prefer the existing doc entry (by name, case-insensitive) so we never
