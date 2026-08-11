@@ -36,7 +36,7 @@ const STATIC_CSS = `
   .view-toggle .inactive-view { background: #fff; color: #1e40af; border: 1.5px solid #1e40af; margin-left: 6px; }
 
   /* Filter bar */
-  .filter-bar { display: flex; align-items: center; gap: 6px; padding: 8px 12px; background: #ffffff; border-bottom: 1px solid #e2e8f0; flex-shrink: 0; flex-wrap: wrap; }
+  .filter-bar { background: #ffffff; border-bottom: 1px solid #e2e8f0; flex-shrink: 0; }
   .filter-label { font-size: 9px; font-weight: 700; letter-spacing: .08em; color: #94a3b8; margin-right: 4px; }
   .filter-divider { width: 1px; height: 20px; background: #e2e8f0; margin: 0 4px; }
   .chip { display: inline-flex; align-items: center; gap: 5px; padding: 4px 10px; font-size: 11px; font-weight: 600; border-radius: 14px; border: 1.5px solid #cbd5e1; cursor: pointer; background: #fff; color: #475569; transition: all .15s; user-select: none; }
@@ -128,6 +128,14 @@ const STATIC_CSS = `
   .compact-toggle input { accent-color: #2563eb; cursor: pointer; margin: 0; }
   .compact-toggle.active { background: #eff6ff; border-color: #2563eb; color: #1e40af; }
 
+  /* Associated Tasks Bar */
+  .assoc-toggle-btn { display: flex; align-items: center; gap: 6px; background: none; border: none; cursor: pointer; color: #0369a1; font-size: 13px; font-weight: 600; padding: 0; user-select: none; }
+  .assoc-toggle-btn:hover { color: #0c4a6e; }
+  .assoc-chevron { display: inline-block; transition: transform 0.2s ease; font-style: normal; line-height: 1; font-size: 11px; }
+  .assoc-chevron.open { transform: rotate(90deg); }
+  .assoc-panel { overflow: hidden; transition: max-height 0.25s ease, opacity 0.25s ease; max-height: 0; opacity: 0; }
+  .assoc-panel.open { max-height: 200px; opacity: 1; overflow-y: auto; }
+
   /* Quick tips banner */
   .tips-banner { display: flex; align-items: center; gap: 12px; padding: 7px 16px; background: #fffbeb; border-bottom: 1px solid #fde68a; font-size: 11px; color: #78350f; flex-shrink: 0; flex-wrap: wrap; }
   .tips-banner .tip-item { display: flex; align-items: center; gap: 6px; }
@@ -163,16 +171,27 @@ const VIEWER_JS = `
     allTasks = allTasks.concat(hiddenTasks);
     
     var seqTasks = [];
+    var parentTasks = [];
     allTasks.forEach(function(t) {
       var sList = Array.isArray(t.sequences) ? t.sequences : (t.sequences ? String(t.sequences).split(',') : []);
       sList = sList.map(function(s){return s.trim();}).filter(Boolean);
       if (sList.indexOf(seq.name) >= 0 || sList.indexOf(seq.id) >= 0) {
-        seqTasks.push(JSON.parse(JSON.stringify(t)));
+        if (t.isSequenceParent || t.isParent) {
+          var actName = 'Hidden Tasks';
+          activities.forEach(function(a) {
+             if ((a.tasks || []).find(function(x) { return x.id === t.id; })) actName = a.name;
+          });
+          var pt = JSON.parse(JSON.stringify(t));
+          pt.activityName = actName;
+          parentTasks.push(pt);
+        } else {
+          seqTasks.push(JSON.parse(JSON.stringify(t)));
+        }
       }
     });
     
     var toolsSet = {}, respsSet = {}, docsSet = {};
-    seqTasks.forEach(function(t) {
+    seqTasks.concat(parentTasks).forEach(function(t) {
       if (t.tool) toolsSet[t.tool] = true;
       if (t.responsible) respsSet[t.responsible] = true;
       (t.inputs || []).forEach(function(d) { docsSet[d] = true; });
@@ -192,6 +211,7 @@ const VIEWER_JS = `
       id: 'seq_' + seq.id,
       name: 'Sequence: ' + seq.name,
       tasks: seqTasks,
+      parentTasks: parentTasks,
       tools: Object.keys(toolsSet),
       responsibles: activities[0] ? activities[0].responsibles.filter(function(r) { return respsSet[r.key]; }) : [],
       documents: globalDocs
@@ -555,7 +575,7 @@ const VIEWER_JS = `
       
       var taskSeqs = Array.isArray(task.sequences) ? task.sequences : (task.sequences ? String(task.sequences).split(',') : []);
       taskSeqs = taskSeqs.map(function(s) { return s.trim(); }).filter(Boolean);
-      if (taskSeqs.length > 0) {
+      if (taskSeqs.length > 0 && (task.isSequenceParent || task.isParent)) {
         var seqIconX = getTaskX(task) + w - 24;
         var seqIconY = taskYVal + h - 24;
         svg += '<g class="seq-nav-icon" data-seq-name="' + escapeHtml(taskSeqs[0]) + '" transform="translate(' + seqIconX + ', ' + seqIconY + ')" style="cursor:pointer;pointer-events:all;" title="Open Sequence View">';
@@ -1449,12 +1469,62 @@ const VIEWER_JS = `
   }
 
   // ══════════════════════════════════════════════════════════════════════════
+  // ASSOCIATED TASKS BUILDER
+  // ══════════════════════════════════════════════════════════════════════════
+  function renderAssocBar(panelEl, activity) {
+    var container = panelEl.querySelector('.assoc-container');
+    if (!container) return;
+    var parentTasks = activity.parentTasks || [];
+    if (parentTasks.length === 0) {
+      container.innerHTML = '';
+      return;
+    }
+    var assocOpen = panelEl.__assocOpen || false;
+    var html = '<div style="background: #e0f2fe; border-bottom: ' + (assocOpen ? '1px solid #bae6fd' : 'none') + '">';
+    html += '<div style="padding: 6px 16px; display: flex; align-items: center; gap: 8px; border-bottom: ' + (assocOpen ? '1px solid #bae6fd' : 'none') + '">';
+    html += '<button class="assoc-toggle-btn">';
+    html += '<i class="assoc-chevron' + (assocOpen ? ' open' : '') + '">▶</i>';
+    html += ' Associated to ';
+    html += '<span style="background: #7dd3fc; color: #0c4a6e; border-radius: 10px; padding: 1px 7px; font-size: 11px; font-weight: 700; margin-left: 2px;">' + parentTasks.length + '</span>';
+    html += '</button></div>';
+    
+    html += '<div class="assoc-panel' + (assocOpen ? ' open' : '') + '">';
+    html += '<div style="padding: 8px 16px 10px; display: flex; gap: 8px; flex-wrap: wrap;">';
+    parentTasks.forEach(function(pt) {
+      html += '<span style="background: #fff; padding: 4px 12px; border-radius: 16px; border: 1px solid #7dd3fc; font-size: 13px; color: #0c4a6e; box-shadow: 0 1px 2px rgba(0,0,0,0.05);">';
+      html += '<strong>' + escapeHtml(pt.name) + '</strong> <span style="opacity: 0.7; font-weight: normal;">(in ' + escapeHtml(pt.activityName) + ')</span>';
+      html += '</span>';
+    });
+    html += '</div></div></div>';
+    
+    container.innerHTML = html;
+    container.querySelector('.assoc-toggle-btn').addEventListener('click', function() {
+      panelEl.__assocOpen = !panelEl.__assocOpen;
+      renderAssocBar(panelEl, activity);
+    });
+  }
+
+  // ══════════════════════════════════════════════════════════════════════════
   // FILTER BAR BUILDER
   // ══════════════════════════════════════════════════════════════════════════
   function buildFilterBar(panelEl, activity, filterState, collapsedSet) {
     var barEl = panelEl.querySelector('.filter-bar');
     if (!barEl) return;
-    var html = '';
+    var filterOpen = panelEl.__filterOpen || false;
+    var activeCount = filterState.responsibles.length + filterState.tools.length + (filterState.chapters || []).length;
+    
+    var html = '<div style="padding: 6px 16px; display: flex; align-items: center; gap: 8px; border-bottom: ' + (filterOpen ? '1px solid #e2e8f0' : 'none') + '">';
+    html += '<button class="assoc-toggle-btn" style="color: #475569;">';
+    html += '<i class="assoc-chevron' + (filterOpen ? ' open' : '') + '">▶</i>';
+    html += ' Filters ';
+    if (activeCount > 0) {
+      html += '<span style="background: #2563eb; color: #ffffff; border-radius: 10px; padding: 1px 7px; font-size: 11px; font-weight: 700; margin-left: 2px;">' + activeCount + '</span>';
+    }
+    html += '</button></div>';
+    
+    html += '<div class="assoc-panel' + (filterOpen ? ' open' : '') + '">';
+    html += '<div style="padding: 8px 16px 10px; display: flex; align-items: center; gap: 6px; flex-wrap: wrap;">';
+
     // Chapter chips — only render when chapters exist
     if ((activity.chapters || []).length > 0) {
       html += '<span class="filter-label">CHAPTER</span>';
@@ -1477,10 +1547,17 @@ const VIEWER_JS = `
       var active = filterState.tools.indexOf(tool) >= 0;
       html += '<button class="chip chip-tool' + (active ? ' chip-active' : '') + '" data-type="tools" data-key="' + escapeHtml(tool) + '">' + escapeHtml(tool) + '</button>';
     });
-    if (filterState.responsibles.length > 0 || filterState.tools.length > 0 || (filterState.chapters || []).length > 0) {
+    if (activeCount > 0) {
       html += '<div class="filter-divider"></div><button class="chip chip-clear" data-action="clear">✕ Clear filters</button>';
     }
+    html += '</div></div>';
     barEl.innerHTML = html;
+
+    // Attach toggle handler
+    barEl.querySelector('.assoc-toggle-btn').addEventListener('click', function() {
+      panelEl.__filterOpen = !panelEl.__filterOpen;
+      buildFilterBar(panelEl, activity, filterState, collapsedSet);
+    });
 
     // Attach filter handlers
     barEl.querySelectorAll('.chip[data-type]').forEach(function(btn) {
@@ -1523,6 +1600,7 @@ const VIEWER_JS = `
       var cs = activePanel.__collapsedSet || new Set(initialCollapsed);
       var fs = activePanel.__filterState || { responsibles: [], tools: [], chapters: [] };
       buildFilterBar(activePanel, seqAct, fs, cs);
+      renderAssocBar(activePanel, seqAct);
       renderTimeline(activePanel, seqAct, cs, fs);
     } else if (type === 'arch') {
       renderArchitecture(activePanel, activities[idx]);
@@ -1564,6 +1642,7 @@ const VIEWER_JS = `
         panel.__collapsedSet = cs;
         panel.__filterState = fs;
         buildFilterBar(panel, seqAct, fs, cs);
+        renderAssocBar(panel, seqAct);
         renderTimeline(panel, seqAct, cs, fs);
       } else if (type === 'arch') {
         renderArchitecture(panel, activities[idx]);
@@ -2230,6 +2309,7 @@ function buildHtml(workflowData, options) {
       tabBarHtml += `<button class="tab-btn tab-sequence" style="display:none;" data-tab="${tlId}">${esc(seq.name)}</button>`;
       panelsHtml += `<div class="tab-panel" id="${tlId}" data-type="sequence" data-index="${i}">
         <div class="filter-bar"></div>
+        <div class="assoc-container"></div>
         <div style="position:relative;flex:1;overflow:hidden;display:flex;flex-direction:column;">
           <div class="canvas-host" style="flex:1;overflow:auto;"></div>
           <div class="zoom-controls">
