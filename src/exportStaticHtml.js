@@ -1889,6 +1889,8 @@ const VIEWER_JS = `
     
     if (e.target.closest('#feedback-drawer, #tool-note-modal, .view-toggle, .filter-bar, .topbar, .tab-bar, .zoom-controls, .note-icon, .arch-note-icon')) return;
 
+    if (!drawerEl || !drawerEl.classList.contains('open')) return;
+
     var type = 'general', key = 'General Workflow', actId = null, actName = null;
     var panelEl = targetEl.closest('.tab-panel');
     if (panelEl) {
@@ -1906,7 +1908,6 @@ const VIEWER_JS = `
 
     if (type !== 'general') {
       setFbTarget(type, key, actId, actName, [key]);
-      if (drawerEl && !drawerEl.classList.contains('open')) drawerEl.classList.add('open');
     }
   });
 
@@ -1914,6 +1915,8 @@ const VIEWER_JS = `
     var targetEl = e.target.closest('.task-node, .link-group, .dep-arrow');
     if (!targetEl) return;
     if (e.target.closest('#feedback-drawer, #tool-note-modal, .view-toggle, .filter-bar, .topbar, .tab-bar, .zoom-controls, .note-icon, .arch-note-icon')) return;
+
+    if (!drawerEl || !drawerEl.classList.contains('open')) return;
 
     var type = 'general', key = 'General Workflow', actId = null, actName = null;
     var panelEl = targetEl.closest('.tab-panel');
@@ -1934,7 +1937,6 @@ const VIEWER_JS = `
 
     if (type !== 'general') {
       setFbTarget(type, key, actId, actName, tools);
-      if (drawerEl && !drawerEl.classList.contains('open')) drawerEl.classList.add('open');
       if (window.getSelection) window.getSelection().removeAllRanges();
     }
   });
