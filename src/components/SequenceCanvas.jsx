@@ -20,7 +20,9 @@ const SequenceCanvas = ({
   onEditTasks,
   onToolNotes,
   activeVariant,
-  setActiveVariant
+  setActiveVariant,
+  activeToolSetting,
+  setActiveToolSetting,
 }) => {
   const sequenceActivity = useMemo(() => {
     if (!activeSequenceId || !workflowData) return null;
@@ -29,8 +31,14 @@ const SequenceCanvas = ({
     const sequenceTasks = [];
     const parentTasks = [];
     const getTaskProps = (task, variant) => {
-      if (variant === 'option_1' || !task.overrides || !task.overrides[variant]) return task;
-      return { ...task, ...task.overrides[variant] };
+      let t = { ...task };
+      // Apply tool setting
+      if (activeToolSetting === 'setting_2' && t.alternativeTools && t.alternativeTools.length > 0) {
+        t.tool = t.alternativeTools[0];
+      }
+      // Apply variant overrides
+      if (variant === 'option_1' || !t.overrides || !t.overrides[variant]) return t;
+      return { ...t, ...t.overrides[variant] };
     };
 
     (workflowData.activities || []).forEach(act => {
@@ -123,7 +131,7 @@ const SequenceCanvas = ({
       parentTasks: parentTasks,
       chapters: [] // Chapters don't make sense in sequence view right now
     };
-  }, [activeSequenceId, workflowData]);
+  }, [activeSequenceId, workflowData, activeVariant, activeToolSetting]);
 
   const [assocOpen, setAssocOpen] = useState(false);
 
@@ -218,6 +226,8 @@ const SequenceCanvas = ({
         isSequenceMode={true}
         activeVariant={activeVariant}
         setActiveVariant={setActiveVariant}
+        activeToolSetting={activeToolSetting}
+        setActiveToolSetting={setActiveToolSetting}
       />
     </div>
   );

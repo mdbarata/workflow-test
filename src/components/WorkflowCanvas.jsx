@@ -793,8 +793,17 @@ const WorkflowCanvas = ({
   activeVariant,
   setActiveVariant,
   onVariantNamesChange,
+  activeToolSetting,
+  setActiveToolSetting,
+  onToolSettingNamesChange,
 }) => {
   const { tools, responsibles, documents, name } = activity;
+
+  // Derive display labels for settings and options
+  const toolSettingNames = {
+    setting_1: workflowData?.toolSettingNames?.setting_1 || 'TOOL SETTING 1',
+    setting_2: workflowData?.toolSettingNames?.setting_2 || 'TOOL SETTING 2',
+  };
 
   // Derive option display labels from workflowData, with hard-coded fallbacks
   const variantNames = {
@@ -809,10 +818,22 @@ const WorkflowCanvas = ({
   );
 
   const getTaskProps = (task, variant) => {
-    if (variant === 'option_1' || !task.overrides || !task.overrides[variant]) return task;
-    return { ...task, ...task.overrides[variant] };
+    let t = { ...task };
+    // Apply tool setting
+    if (activeToolSetting === 'setting_2' && t.alternativeTools && t.alternativeTools.length > 0) {
+      t.tool = t.alternativeTools[0];
+    }
+    // Apply variant overrides
+    if (variant === 'option_1' || !t.overrides || !t.overrides[variant]) return t;
+    return { ...t, ...t.overrides[variant] };
   };
   const tasks = (activity.tasks || []).map(t => getTaskProps(t, activeVariant));
+
+  const activeTools = useMemo(() => {
+    const s = new Set();
+    tasks.forEach(t => { if (t.tool) s.add(t.tool); });
+    return Array.from(s);
+  }, [tasks, activity.tools]);
 
   const globalResponsiblesList = useMemo(() => {
     const list = [];
@@ -839,6 +860,8 @@ const WorkflowCanvas = ({
   const [showExportModal, setShowExportModal] = useState(false);
   const [editingVariant, setEditingVariant] = useState(null); // null | 'option_1' | 'option_2'
   const [variantDraft, setVariantDraft] = useState('');
+  const [editingToolSetting, setEditingToolSetting] = useState(null); // null | 'setting_1' | 'setting_2'
+  const [toolSettingDraft, setToolSettingDraft] = useState('');
   const canvasWidth = Math.max(...tasks.map((t) => t.startTime + t.duration), 600) + 20;
 
   // ── Search matching ──────────────────────────────────────────────────────────
@@ -1103,7 +1126,7 @@ const WorkflowCanvas = ({
     );
   }, [visibleTasksByFilter, filters.chapters, activity.chapters]);
 
-  const visibleTools = useMemo(() => { const s = new Set(visibleTasks.map((t) => t.tool)); return tools.filter((tool) => s.has(tool)); }, [tools, visibleTasks]);
+  const visibleTools = useMemo(() => { const s = new Set(visibleTasks.map((t) => t.tool)); return activeTools.filter((tool) => s.has(tool)); }, [activeTools, visibleTasks]);
   const visibleDocIds = useMemo(() => { const s = new Set(); visibleTasks.forEach((t) => { (t.inputs || []).forEach((id) => s.add(id)); (t.outputs || []).forEach((id) => s.add(id)); }); return s; }, [visibleTasks]);
   const visibleDocuments = useMemo(() => documents.filter((d) => visibleDocIds.has(d.id)), [documents, visibleDocIds]);
 
@@ -1178,7 +1201,7 @@ const WorkflowCanvas = ({
           ← Timeline view
         </button>
         <ArchitectureView
-          activity={activity}
+          activity={{ ...activity, tools: activeTools }}
           filters={filters}
           toolNotes={toolNotes}
           onToolNoteChange={onToolNoteChange}
@@ -1205,7 +1228,80 @@ const WorkflowCanvas = ({
         style={{ position: 'absolute', top: 12, left: 168, zIndex: 100, padding: '8px 14px', background: '#ffffff', color: '#1e40af', border: '1.5px solid #1e40af', borderRadius: 6, cursor: 'pointer', fontSize: 12, fontWeight: 600, boxShadow: '0 2px 8px rgba(0,0,0,0.08)' }}>
         ⬇ Export viewer
       </button>
-      <div style={{ position: 'absolute', top: 12, left: 310, zIndex: 100, display: 'flex', alignItems: 'center', background: '#ffffff', border: '1px solid #cbd5e1', borderRadius: 6, overflow: 'hidden', boxShadow: '0 2px 8px rgba(0,0,0,0.08)' }}>
+
+      {/* Toggles Container */}
+      <div style={{ position: 'absolute', top: 12, left: 310, zIndex: 100, display: 'flex', gap: 12 }}>
+        
+        {/* Tool Settings Toggle */}
+        <div style={{ display: 'flex', alignItems: 'center', background: '#ffffff', border: '1px solid #cbd5e1', borderRadius: 6, overflow: 'hidden', boxShadow: '0 2px 8px rgba(0,0,0,0.08)' }}>
+          {editingToolSetting === 'setting_1' ? (
+            <input
+              autoFocus
+              value={toolSettingDraft}
+              onChange={(e) => setToolSettingDraft(e.target.value)}
+              onBlur={() => {
+                if (toolSettingDraft.trim() && onToolSettingNamesChange) onToolSettingNamesChange({ setting_1: toolSettingDraft.trim() });
+                setEditingToolSetting(null);
+              }}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter') {
+                  if (toolSettingDraft.trim() && onToolSettingNamesChange) onToolSettingNamesChange({ setting_1: toolSettingDraft.trim() });
+                  setEditingToolSetting(null);
+                }
+                if (e.key === 'Escape') setEditingToolSetting(null);
+              }}
+              style={{ padding: '6px 8px', border: 'none', borderRight: '1px solid #cbd5e1', fontSize: 12, fontWeight: 600, width: 110, outline: 'none', color: '#1e293b' }}
+            />
+          ) : (
+            <div style={{ display: 'flex', alignItems: 'center' }}>
+              <button onClick={() => { setActiveToolSetting('setting_1'); }} style={{ padding: '8px 10px', border: 'none', background: activeToolSetting === 'setting_1' ? '#1e40af' : '#ffffff', color: activeToolSetting === 'setting_1' ? '#ffffff' : '#475569', fontSize: 12, fontWeight: 600, cursor: 'pointer', transition: 'all 0.15s' }}>{toolSettingNames.setting_1}</button>
+              {onToolSettingNamesChange && (
+                <button
+                  onClick={() => { setToolSettingDraft(toolSettingNames.setting_1); setEditingToolSetting('setting_1'); }}
+                  title="Rename this tool setting"
+                  style={{ padding: '6px 6px', border: 'none', borderLeft: '1px solid #e2e8f0', background: activeToolSetting === 'setting_1' ? '#1e40af' : '#f8fafc', color: activeToolSetting === 'setting_1' ? 'rgba(255,255,255,0.7)' : '#94a3b8', fontSize: 10, cursor: 'pointer', lineHeight: 1 }}
+                  onMouseEnter={(e) => (e.currentTarget.style.color = activeToolSetting === 'setting_1' ? '#fff' : '#2563eb')}
+                  onMouseLeave={(e) => (e.currentTarget.style.color = activeToolSetting === 'setting_1' ? 'rgba(255,255,255,0.7)' : '#94a3b8')}
+                >✎</button>
+              )}
+            </div>
+          )}
+          {editingToolSetting === 'setting_2' ? (
+            <input
+              autoFocus
+              value={toolSettingDraft}
+              onChange={(e) => setToolSettingDraft(e.target.value)}
+              onBlur={() => {
+                if (toolSettingDraft.trim() && onToolSettingNamesChange) onToolSettingNamesChange({ setting_2: toolSettingDraft.trim() });
+                setEditingToolSetting(null);
+              }}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter') {
+                  if (toolSettingDraft.trim() && onToolSettingNamesChange) onToolSettingNamesChange({ setting_2: toolSettingDraft.trim() });
+                  setEditingToolSetting(null);
+                }
+                if (e.key === 'Escape') setEditingToolSetting(null);
+              }}
+              style={{ padding: '6px 8px', border: 'none', borderLeft: '1px solid #cbd5e1', fontSize: 12, fontWeight: 600, width: 110, outline: 'none', color: '#1e293b' }}
+            />
+          ) : (
+            <div style={{ display: 'flex', alignItems: 'center', borderLeft: '1px solid #cbd5e1' }}>
+              <button onClick={() => setActiveToolSetting('setting_2')} style={{ padding: '8px 10px', border: 'none', background: activeToolSetting === 'setting_2' ? '#1e40af' : '#ffffff', color: activeToolSetting === 'setting_2' ? '#ffffff' : '#475569', fontSize: 12, fontWeight: 600, cursor: 'pointer', transition: 'all 0.15s' }}>{toolSettingNames.setting_2}</button>
+              {onToolSettingNamesChange && (
+                <button
+                  onClick={() => { setToolSettingDraft(toolSettingNames.setting_2); setEditingToolSetting('setting_2'); }}
+                  title="Rename this tool setting"
+                  style={{ padding: '6px 6px', border: 'none', borderLeft: '1px solid #e2e8f0', background: activeToolSetting === 'setting_2' ? '#1e40af' : '#f8fafc', color: activeToolSetting === 'setting_2' ? 'rgba(255,255,255,0.7)' : '#94a3b8', fontSize: 10, cursor: 'pointer', lineHeight: 1 }}
+                  onMouseEnter={(e) => (e.currentTarget.style.color = activeToolSetting === 'setting_2' ? '#fff' : '#2563eb')}
+                  onMouseLeave={(e) => (e.currentTarget.style.color = activeToolSetting === 'setting_2' ? 'rgba(255,255,255,0.7)' : '#94a3b8')}
+                >✎</button>
+              )}
+            </div>
+          )}
+        </div>
+
+        {/* Options Toggle */}
+        <div style={{ display: 'flex', alignItems: 'center', background: '#ffffff', border: '1px solid #cbd5e1', borderRadius: 6, overflow: 'hidden', boxShadow: '0 2px 8px rgba(0,0,0,0.08)' }}>
         {/* Option 1 button */}
         {editingVariant === 'option_1' ? (
           <input
@@ -1274,6 +1370,7 @@ const WorkflowCanvas = ({
             </div>
           )
         )}
+        </div>
       </div>
       <button onClick={handleResetDocPositions}
         title="Reset document cards back to their default auto-arranged vertical positions"

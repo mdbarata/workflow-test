@@ -163,6 +163,7 @@ const VIEWER_JS = `
   var isSequenceView = false;
   var enterSequenceView = function() {}; // will be replaced in BOOTSTRAP
   var activeVariant = 'option_1';
+  var activeToolSetting = 'setting_1';
 
   function getSequenceActivity(idx) {
     var seq = sequences[idx];
@@ -175,7 +176,11 @@ const VIEWER_JS = `
     var parentTasks = [];
     allTasks.forEach(function(rawT) {
       var t = activeVariant === 'option_1' || !rawT.overrides || !rawT.overrides[activeVariant] 
-        ? rawT : Object.assign({}, rawT, rawT.overrides[activeVariant]);
+        ? Object.assign({}, rawT) : Object.assign({}, rawT, rawT.overrides[activeVariant]);
+        
+      if (activeToolSetting === 'setting_2' && t.alternativeTools && t.alternativeTools.length > 0) {
+        t.tool = t.alternativeTools[0];
+      }
 
       var sList = Array.isArray(t.sequences) ? t.sequences : (t.sequences ? String(t.sequences).split(',') : []);
       sList = sList.map(function(s){return s.trim();}).filter(Boolean);
@@ -1739,6 +1744,30 @@ const VIEWER_JS = `
     }
   });
 
+  // Tool setting toggles
+  document.addEventListener('click', function(e) {
+    var btn = e.target.closest('.tool-setting-btn');
+    if (!btn) return;
+    var setting = btn.getAttribute('data-setting');
+    if (setting === activeToolSetting) return;
+    activeToolSetting = setting;
+    document.querySelectorAll('.tool-setting-btn').forEach(function(b) {
+      if (b.getAttribute('data-setting') === setting) {
+        b.style.background = '#1e40af';
+        b.style.color = '#fff';
+      } else {
+        b.style.background = '#fff';
+        b.style.color = '#475569';
+      }
+    });
+    var activePanel = document.querySelector('.tab-panel.active');
+    if (activePanel) {
+       var tabId = activePanel.id;
+       rendered[tabId] = false;
+       activateTab(tabId);
+    }
+  });
+
   // ── Floating Buttons (bottom-left) — matches App.js layout exactly ──
   var seqViewBtn = document.getElementById('seq-view-btn');
   var altToolsBtn = document.getElementById('alt-tools-btn');
@@ -2313,6 +2342,11 @@ function buildHtml(workflowData, options) {
     option_2: workflowData.variantNames?.option_2 || 'Option 2',
   };
 
+  const toolSettingNames = {
+    setting_1: workflowData.toolSettingNames?.setting_1 || 'TOOL SETTING 1',
+    setting_2: workflowData.toolSettingNames?.setting_2 || 'TOOL SETTING 2',
+  };
+
   // Helper: does an activity have at least one task with option_2 overrides?
   const activityHasOption2 = (act) =>
     (act.tasks || []).some((t) => t.overrides && t.overrides.option_2);
@@ -2324,6 +2358,7 @@ function buildHtml(workflowData, options) {
       sequences: workflowData.sequences || [],
       hiddenTasks: workflowData.hiddenTasks || [],
       variantNames,
+      toolSettingNames,
     },
     toolNotes: tNotes,
     collapsedTools: collapsedTools,
@@ -2350,9 +2385,15 @@ function buildHtml(workflowData, options) {
           <button class="active-view" data-show="${tlId}">← Timeline</button>
           <button class="inactive-view" data-show="${archId}">⬡ Architecture</button>
         </div>
-        <div class="variant-toggle" style="position:absolute; top:12px; left:310px; z-index:100; display:flex; background:#ffffff; border:1px solid #cbd5e1; border-radius:6px; overflow:hidden; box-shadow:0 2px 8px rgba(0,0,0,0.08);">
-          <button class="variant-btn" data-variant="option_1" style="padding:8px 14px; border:none; font-size:12px; font-weight:600; cursor:pointer; transition:all 0.15s; background:#1e40af; color:#fff;">${esc(variantNames.option_1)}</button>
-          ${activityHasOption2(act) ? `<button class="variant-btn" data-variant="option_2" style="padding:8px 14px; border:none; font-size:12px; font-weight:600; cursor:pointer; transition:all 0.15s; background:#fff; color:#475569; border-left:1px solid #cbd5e1;">${esc(variantNames.option_2)}</button>` : ''}
+        <div style="position:absolute; top:12px; left:310px; z-index:100; display:flex; gap:12px;">
+          <div class="tool-setting-toggle" style="display:flex; background:#ffffff; border:1px solid #cbd5e1; border-radius:6px; overflow:hidden; box-shadow:0 2px 8px rgba(0,0,0,0.08);">
+            <button class="tool-setting-btn" data-setting="setting_1" style="padding:8px 14px; border:none; font-size:12px; font-weight:600; cursor:pointer; transition:all 0.15s; background:#1e40af; color:#fff;">${esc(toolSettingNames.setting_1)}</button>
+            <button class="tool-setting-btn" data-setting="setting_2" style="padding:8px 14px; border:none; font-size:12px; font-weight:600; cursor:pointer; transition:all 0.15s; background:#fff; color:#475569; border-left:1px solid #cbd5e1;">${esc(toolSettingNames.setting_2)}</button>
+          </div>
+          <div class="variant-toggle" style="display:flex; background:#ffffff; border:1px solid #cbd5e1; border-radius:6px; overflow:hidden; box-shadow:0 2px 8px rgba(0,0,0,0.08);">
+            <button class="variant-btn" data-variant="option_1" style="padding:8px 14px; border:none; font-size:12px; font-weight:600; cursor:pointer; transition:all 0.15s; background:#1e40af; color:#fff;">${esc(variantNames.option_1)}</button>
+            ${activityHasOption2(act) ? `<button class="variant-btn" data-variant="option_2" style="padding:8px 14px; border:none; font-size:12px; font-weight:600; cursor:pointer; transition:all 0.15s; background:#fff; color:#475569; border-left:1px solid #cbd5e1;">${esc(variantNames.option_2)}</button>` : ''}
+          </div>
         </div>
         <div class="canvas-host" style="flex:1;overflow:auto;"></div>
         <div class="zoom-controls">
@@ -2402,9 +2443,15 @@ function buildHtml(workflowData, options) {
         <div class="filter-bar"></div>
         <div class="assoc-container"></div>
         <div style="position:relative;flex:1;overflow:hidden;display:flex;flex-direction:column;">
-          <div class="variant-toggle" style="position:absolute; top:12px; left:12px; z-index:100; display:flex; background:#ffffff; border:1px solid #cbd5e1; border-radius:6px; overflow:hidden; box-shadow:0 2px 8px rgba(0,0,0,0.08);">
-            <button class="variant-btn" data-variant="option_1" style="padding:8px 14px; border:none; font-size:12px; font-weight:600; cursor:pointer; transition:all 0.15s; background:#1e40af; color:#fff;">${esc(variantNames.option_1)}</button>
-            ${seqHasOption2 ? `<button class="variant-btn" data-variant="option_2" style="padding:8px 14px; border:none; font-size:12px; font-weight:600; cursor:pointer; transition:all 0.15s; background:#fff; color:#475569; border-left:1px solid #cbd5e1;">${esc(variantNames.option_2)}</button>` : ''}
+          <div style="position:absolute; top:12px; left:12px; z-index:100; display:flex; gap:12px;">
+            <div class="tool-setting-toggle" style="display:flex; background:#ffffff; border:1px solid #cbd5e1; border-radius:6px; overflow:hidden; box-shadow:0 2px 8px rgba(0,0,0,0.08);">
+              <button class="tool-setting-btn" data-setting="setting_1" style="padding:8px 14px; border:none; font-size:12px; font-weight:600; cursor:pointer; transition:all 0.15s; background:#1e40af; color:#fff;">${esc(toolSettingNames.setting_1)}</button>
+              <button class="tool-setting-btn" data-setting="setting_2" style="padding:8px 14px; border:none; font-size:12px; font-weight:600; cursor:pointer; transition:all 0.15s; background:#fff; color:#475569; border-left:1px solid #cbd5e1;">${esc(toolSettingNames.setting_2)}</button>
+            </div>
+            <div class="variant-toggle" style="display:flex; background:#ffffff; border:1px solid #cbd5e1; border-radius:6px; overflow:hidden; box-shadow:0 2px 8px rgba(0,0,0,0.08);">
+              <button class="variant-btn" data-variant="option_1" style="padding:8px 14px; border:none; font-size:12px; font-weight:600; cursor:pointer; transition:all 0.15s; background:#1e40af; color:#fff;">${esc(variantNames.option_1)}</button>
+              ${seqHasOption2 ? `<button class="variant-btn" data-variant="option_2" style="padding:8px 14px; border:none; font-size:12px; font-weight:600; cursor:pointer; transition:all 0.15s; background:#fff; color:#475569; border-left:1px solid #cbd5e1;">${esc(variantNames.option_2)}</button>` : ''}
+            </div>
           </div>
           <div class="canvas-host" style="flex:1;overflow:auto;"></div>
           <div class="zoom-controls">

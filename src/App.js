@@ -249,8 +249,9 @@ const App = () => {
   const [showFeedbackModal, setShowFeedbackModal] = useState(false);
   const [pendingImport, setPendingImport] = useState(null);
   const [activeVariant, setActiveVariant] = useState(saved?.activeVariant || 'option_1');
+  const [activeToolSetting, setActiveToolSetting] = useState(saved?.activeToolSetting || 'setting_1');
 
-  useAutoSave({ workflowData, activeActivityIndex, filters, showLinks, toolNotes, docPositions, archPositions, edgeSides, feedbackItems, activeVariant });
+  useAutoSave({ workflowData, activeActivityIndex, filters, showLinks, toolNotes, docPositions, archPositions, edgeSides, feedbackItems, activeVariant, activeToolSetting });
 
   const activities = workflowData.activities || [];
   const activity = activities[activeActivityIndex];
@@ -290,6 +291,10 @@ const App = () => {
 
   const handleVariantNamesChange = useCallback((names) => {
     setWorkflowData((prev) => ({ ...prev, variantNames: { ...(prev.variantNames || {}), ...names } }));
+  }, []);
+
+  const handleToolSettingNamesChange = useCallback((names) => {
+    setWorkflowData((prev) => ({ ...prev, toolSettingNames: { ...(prev.toolSettingNames || {}), ...names } }));
   }, []);
 
   const handleResetSession = () => {
@@ -711,9 +716,10 @@ const App = () => {
           onToolNotes={() => setShowToolNotes(true)}
           onChapters={() => setShowChapterEditor(true)}
           onSaveJson={handleSaveJson}
-          onLoadJson={handleLoadJson}
           searchQuery={searchQuery}
           onSearchChange={setSearchQuery}
+          activeVariant={activeVariant}
+          activeToolSetting={activeToolSetting}
         />
       )}
 
@@ -738,6 +744,9 @@ const App = () => {
             onToolNotes={() => setShowToolNotes(true)}
             activeVariant={activeVariant}
             setActiveVariant={setActiveVariant}
+            activeToolSetting={activeToolSetting}
+            setActiveToolSetting={setActiveToolSetting}
+            onToolSettingNamesChange={handleToolSettingNamesChange}
           />
         ) : isLinksViewActive ? (
           <ActivityLinksView activities={activities} onEditTasks={() => setShowEditor(true)} />
@@ -767,6 +776,9 @@ const App = () => {
             activeVariant={activeVariant}
             setActiveVariant={setActiveVariant}
             onVariantNamesChange={handleVariantNamesChange}
+            activeToolSetting={activeToolSetting}
+            setActiveToolSetting={setActiveToolSetting}
+            onToolSettingNamesChange={handleToolSettingNamesChange}
           />
         )}
       </div>

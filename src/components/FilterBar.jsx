@@ -1,7 +1,24 @@
 import React, { useState, useEffect } from 'react';
 
-const FilterBar = ({ activity, filters, onChange, onImport, onToolNotes, onChapters, onSaveJson, onLoadJson, searchQuery, onSearchChange }) => {
-  const { responsibles, tools } = activity;
+const FilterBar = ({ activity, filters, onChange, onImport, onToolNotes, onChapters, onSaveJson, onLoadJson, searchQuery, onSearchChange, activeVariant, activeToolSetting }) => {
+  const { responsibles, tools: defaultTools } = activity;
+
+  const activeTools = React.useMemo(() => {
+    if (!activeVariant && !activeToolSetting) return defaultTools || [];
+    const getTaskProps = (task) => {
+      let t = { ...task };
+      if (activeToolSetting === 'setting_2' && t.alternativeTools && t.alternativeTools.length > 0) {
+        t.tool = t.alternativeTools[0];
+      }
+      const v = activeVariant || 'option_1';
+      if (v === 'option_1' || !t.overrides || !t.overrides[v]) return t;
+      return { ...t, ...t.overrides[v] };
+    };
+    const tasks = (activity.tasks || []).map(getTaskProps);
+    const s = new Set();
+    tasks.forEach(t => { if (t.tool) s.add(t.tool); });
+    return Array.from(s);
+  }, [activity.tasks, defaultTools, activeVariant, activeToolSetting]);
 
   // Local state so typing is always instant (no React state round-trip stutter)
   const [localSearch, setLocalSearch] = useState(searchQuery || '');
@@ -107,7 +124,7 @@ const FilterBar = ({ activity, filters, onChange, onImport, onToolNotes, onChapt
       <div className="filter-section">
         <span className="filter-label">TOOL</span>
         <div className="filter-chips">
-          {tools.map((tool) => {
+          {activeTools.map((tool) => {
             const active = filters.tools.includes(tool);
             return (
               <button

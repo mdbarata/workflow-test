@@ -79,8 +79,8 @@ const computeStartTimes = (rows) => {
 // ── Convert flat rows → workflow.json ────────────────────────────────────────
 // Pass originalData to preserve per-activity metadata (chapters, etc.) that
 // TaskEditor does not edit — so they aren't dropped when the user saves.
-// Also pass variantNames so option labels survive the round-trip.
-const rowsToWorkflow = (rows, originalData, variantNames) => {
+// Also pass variantNames and toolSettingNames so display labels survive the round-trip.
+const rowsToWorkflow = (rows, originalData, variantNames, toolSettingNames) => {
   const activitiesMap = {};
   const respColorMap = {};
   let presetIdx = 0;
@@ -249,15 +249,17 @@ const rowsToWorkflow = (rows, originalData, variantNames) => {
     return existing || { id: seqId, name: seqId };
   });
 
-  // Preserve variantNames (option labels) from original data or use the
+  // Preserve variantNames and toolSettingNames from original data or use the
   // caller-supplied override (from the TaskEditor rename UI).
   const resolvedVariantNames = variantNames || originalData?.variantNames;
+  const resolvedToolSettingNames = toolSettingNames || originalData?.toolSettingNames;
 
   return {
     activities,
     hiddenTasks,
     sequences,
     ...(resolvedVariantNames ? { variantNames: resolvedVariantNames } : {}),
+    ...(resolvedToolSettingNames ? { toolSettingNames: resolvedToolSettingNames } : {}),
   };
 };
 
@@ -436,6 +438,13 @@ const TaskEditor = ({ workflowData, onSave, onClose }) => {
   }));
   const [editingVariant, setEditingVariant] = useState(null); // 'option_1' | 'option_2' | null
   const [variantDraft, setVariantDraft] = useState('');
+
+  const [toolSettingNames, setToolSettingNames] = useState(() => ({
+    setting_1: workflowData?.toolSettingNames?.setting_1 || 'TOOL SETTING 1',
+    setting_2: workflowData?.toolSettingNames?.setting_2 || 'TOOL SETTING 2',
+  }));
+  const [editingToolSetting, setEditingToolSetting] = useState(null); // 'setting_1' | 'setting_2' | null
+  const [toolSettingDraft, setToolSettingDraft] = useState('');
   const [rows, setRows] = useState(() => workflowToRows(workflowData));
   const [activeAct, setActiveAct] = useState('__all__');
   const [activeSeq, setActiveSeq] = useState('__all__');
@@ -539,7 +548,7 @@ const TaskEditor = ({ workflowData, onSave, onClose }) => {
 
   const handleExport = () => {
     const withIds = rows.map((r, i) => ({ ...r, taskId: r.taskId.trim() || `task${i + 1}` }));
-    const data = JSON.stringify(rowsToWorkflow(withIds, workflowData, variantNames), null, 2);
+    const data = JSON.stringify(rowsToWorkflow(withIds, workflowData, variantNames, toolSettingNames), null, 2);
     const a = document.createElement('a');
     a.href = 'data:application/json;charset=utf-8,' + encodeURIComponent(data);
     a.download = 'workflow.json';
@@ -551,7 +560,7 @@ const TaskEditor = ({ workflowData, onSave, onClose }) => {
     if (!filled.length) { setError('Add at least one task with a label.'); return; }
     if (filled.some((r) => !r.activity.trim() && !r.sequences.trim())) { setError('Some tasks are missing both a stage name and sequences. Please provide at least one.'); return; }
     const withIds = rows.map((r, i) => ({ ...r, taskId: r.taskId.trim() || `task${i + 1}` }));
-    onSave(rowsToWorkflow(withIds, workflowData, variantNames));
+    onSave(rowsToWorkflow(withIds, workflowData, variantNames, toolSettingNames));
     onClose();
   };
 
@@ -607,6 +616,44 @@ const TaskEditor = ({ workflowData, onSave, onClose }) => {
                     onMouseLeave={(e) => (e.currentTarget.style.background = '#f1f5f9')}
                   >
                     <span>{variantNames[key]}</span>
+                    <span style={{ color: '#94a3b8', fontSize: 10 }}>✎</span>
+                  </button>
+                )
+              )}
+            </div>
+            {/* Tool Setting name editors */}
+            <div style={{ display: 'flex', alignItems: 'center', gap: 6, borderLeft: '1px solid #e2e8f0', paddingLeft: 16 }}>
+              <span style={{ fontSize: 11, color: '#94a3b8', fontWeight: 500, whiteSpace: 'nowrap' }}>Tool settings:</span>
+              {['setting_1', 'setting_2'].map((key) =>
+                editingToolSetting === key ? (
+                  <input
+                    key={key}
+                    autoFocus
+                    value={toolSettingDraft}
+                    onChange={(e) => setToolSettingDraft(e.target.value)}
+                    onBlur={() => {
+                      if (toolSettingDraft.trim()) setToolSettingNames((prev) => ({ ...prev, [key]: toolSettingDraft.trim() }));
+                      setEditingToolSetting(null);
+                    }}
+                    onKeyDown={(e) => {
+                      if (e.key === 'Enter') {
+                        if (toolSettingDraft.trim()) setToolSettingNames((prev) => ({ ...prev, [key]: toolSettingDraft.trim() }));
+                        setEditingToolSetting(null);
+                      }
+                      if (e.key === 'Escape') setEditingToolSetting(null);
+                    }}
+                    style={{ fontSize: 11, padding: '3px 6px', border: '1px solid #2563eb', borderRadius: 4, width: 110 }}
+                  />
+                ) : (
+                  <button
+                    key={key}
+                    onClick={() => { setToolSettingDraft(toolSettingNames[key]); setEditingToolSetting(key); }}
+                    title={`Rename "${toolSettingNames[key]}"`}
+                    style={{ display: 'inline-flex', alignItems: 'center', gap: 4, fontSize: 11, padding: '3px 8px', background: '#f1f5f9', border: '1px solid #e2e8f0', borderRadius: 4, cursor: 'pointer', color: '#475569', whiteSpace: 'nowrap' }}
+                    onMouseEnter={(e) => (e.currentTarget.style.background = '#e2e8f0')}
+                    onMouseLeave={(e) => (e.currentTarget.style.background = '#f1f5f9')}
+                  >
+                    <span>{toolSettingNames[key]}</span>
                     <span style={{ color: '#94a3b8', fontSize: 10 }}>✎</span>
                   </button>
                 )
