@@ -791,9 +791,23 @@ const WorkflowCanvas = ({
   isSequenceMode,
   onNavigateToSequence,
   activeVariant,
-  setActiveVariant
+  setActiveVariant,
+  onVariantNamesChange,
 }) => {
   const { tools, responsibles, documents, name } = activity;
+
+  // Derive option display labels from workflowData, with hard-coded fallbacks
+  const variantNames = {
+    option_1: workflowData?.variantNames?.option_1 || 'Option 1',
+    option_2: workflowData?.variantNames?.option_2 || 'Option 2',
+  };
+
+  // Show the Option 2 button only when at least one raw task in the activity
+  // actually declares overrides.option_2 (so the button is meaningful).
+  const hasOption2 = (activity.tasks || []).some(
+    (t) => t.overrides && t.overrides.option_2
+  );
+
   const getTaskProps = (task, variant) => {
     if (variant === 'option_1' || !task.overrides || !task.overrides[variant]) return task;
     return { ...task, ...task.overrides[variant] };
@@ -823,6 +837,8 @@ const WorkflowCanvas = ({
 
   const [view, setView] = useState('timeline');
   const [showExportModal, setShowExportModal] = useState(false);
+  const [editingVariant, setEditingVariant] = useState(null); // null | 'option_1' | 'option_2'
+  const [variantDraft, setVariantDraft] = useState('');
   const canvasWidth = Math.max(...tasks.map((t) => t.startTime + t.duration), 600) + 20;
 
   // ── Search matching ──────────────────────────────────────────────────────────
@@ -1189,9 +1205,75 @@ const WorkflowCanvas = ({
         style={{ position: 'absolute', top: 12, left: 168, zIndex: 100, padding: '8px 14px', background: '#ffffff', color: '#1e40af', border: '1.5px solid #1e40af', borderRadius: 6, cursor: 'pointer', fontSize: 12, fontWeight: 600, boxShadow: '0 2px 8px rgba(0,0,0,0.08)' }}>
         ⬇ Export viewer
       </button>
-      <div style={{ position: 'absolute', top: 12, left: 310, zIndex: 100, display: 'flex', background: '#ffffff', border: '1px solid #cbd5e1', borderRadius: 6, overflow: 'hidden', boxShadow: '0 2px 8px rgba(0,0,0,0.08)' }}>
-        <button onClick={() => setActiveVariant('option_1')} style={{ padding: '8px 14px', border: 'none', background: activeVariant === 'option_1' ? '#1e40af' : '#ffffff', color: activeVariant === 'option_1' ? '#ffffff' : '#475569', fontSize: 12, fontWeight: 600, cursor: 'pointer', transition: 'all 0.15s' }}>Option 1</button>
-        <button onClick={() => setActiveVariant('option_2')} style={{ padding: '8px 14px', border: 'none', background: activeVariant === 'option_2' ? '#1e40af' : '#ffffff', color: activeVariant === 'option_2' ? '#ffffff' : '#475569', fontSize: 12, fontWeight: 600, cursor: 'pointer', transition: 'all 0.15s', borderLeft: '1px solid #cbd5e1' }}>Option 2</button>
+      <div style={{ position: 'absolute', top: 12, left: 310, zIndex: 100, display: 'flex', alignItems: 'center', background: '#ffffff', border: '1px solid #cbd5e1', borderRadius: 6, overflow: 'hidden', boxShadow: '0 2px 8px rgba(0,0,0,0.08)' }}>
+        {/* Option 1 button */}
+        {editingVariant === 'option_1' ? (
+          <input
+            autoFocus
+            value={variantDraft}
+            onChange={(e) => setVariantDraft(e.target.value)}
+            onBlur={() => {
+              if (variantDraft.trim() && onVariantNamesChange) onVariantNamesChange({ option_1: variantDraft.trim() });
+              setEditingVariant(null);
+            }}
+            onKeyDown={(e) => {
+              if (e.key === 'Enter') {
+                if (variantDraft.trim() && onVariantNamesChange) onVariantNamesChange({ option_1: variantDraft.trim() });
+                setEditingVariant(null);
+              }
+              if (e.key === 'Escape') setEditingVariant(null);
+            }}
+            style={{ padding: '6px 8px', border: 'none', borderRight: '1px solid #cbd5e1', fontSize: 12, fontWeight: 600, width: 90, outline: 'none', color: '#1e293b' }}
+          />
+        ) : (
+          <div style={{ display: 'flex', alignItems: 'center' }}>
+            <button onClick={() => { setActiveVariant('option_1'); }} style={{ padding: '8px 10px', border: 'none', background: activeVariant === 'option_1' ? '#1e40af' : '#ffffff', color: activeVariant === 'option_1' ? '#ffffff' : '#475569', fontSize: 12, fontWeight: 600, cursor: 'pointer', transition: 'all 0.15s' }}>{variantNames.option_1}</button>
+            {onVariantNamesChange && (
+              <button
+                onClick={() => { setVariantDraft(variantNames.option_1); setEditingVariant('option_1'); }}
+                title="Rename this option"
+                style={{ padding: '6px 6px', border: 'none', borderLeft: '1px solid #e2e8f0', background: activeVariant === 'option_1' ? '#1e40af' : '#f8fafc', color: activeVariant === 'option_1' ? 'rgba(255,255,255,0.7)' : '#94a3b8', fontSize: 10, cursor: 'pointer', lineHeight: 1 }}
+                onMouseEnter={(e) => (e.currentTarget.style.color = activeVariant === 'option_1' ? '#fff' : '#2563eb')}
+                onMouseLeave={(e) => (e.currentTarget.style.color = activeVariant === 'option_1' ? 'rgba(255,255,255,0.7)' : '#94a3b8')}
+              >✎</button>
+            )}
+          </div>
+        )}
+        {/* Option 2 button (only when tasks have option_2 overrides) */}
+        {hasOption2 && (
+          editingVariant === 'option_2' ? (
+            <input
+              autoFocus
+              value={variantDraft}
+              onChange={(e) => setVariantDraft(e.target.value)}
+              onBlur={() => {
+                if (variantDraft.trim() && onVariantNamesChange) onVariantNamesChange({ option_2: variantDraft.trim() });
+                setEditingVariant(null);
+              }}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter') {
+                  if (variantDraft.trim() && onVariantNamesChange) onVariantNamesChange({ option_2: variantDraft.trim() });
+                  setEditingVariant(null);
+                }
+                if (e.key === 'Escape') setEditingVariant(null);
+              }}
+              style={{ padding: '6px 8px', border: 'none', borderLeft: '1px solid #cbd5e1', fontSize: 12, fontWeight: 600, width: 90, outline: 'none', color: '#1e293b' }}
+            />
+          ) : (
+            <div style={{ display: 'flex', alignItems: 'center', borderLeft: '1px solid #cbd5e1' }}>
+              <button onClick={() => setActiveVariant('option_2')} style={{ padding: '8px 10px', border: 'none', background: activeVariant === 'option_2' ? '#1e40af' : '#ffffff', color: activeVariant === 'option_2' ? '#ffffff' : '#475569', fontSize: 12, fontWeight: 600, cursor: 'pointer', transition: 'all 0.15s' }}>{variantNames.option_2}</button>
+              {onVariantNamesChange && (
+                <button
+                  onClick={() => { setVariantDraft(variantNames.option_2); setEditingVariant('option_2'); }}
+                  title="Rename this option"
+                  style={{ padding: '6px 6px', border: 'none', borderLeft: '1px solid #e2e8f0', background: activeVariant === 'option_2' ? '#1e40af' : '#f8fafc', color: activeVariant === 'option_2' ? 'rgba(255,255,255,0.7)' : '#94a3b8', fontSize: 10, cursor: 'pointer', lineHeight: 1 }}
+                  onMouseEnter={(e) => (e.currentTarget.style.color = activeVariant === 'option_2' ? '#fff' : '#2563eb')}
+                  onMouseLeave={(e) => (e.currentTarget.style.color = activeVariant === 'option_2' ? 'rgba(255,255,255,0.7)' : '#94a3b8')}
+                >✎</button>
+              )}
+            </div>
+          )
+        )}
       </div>
       <button onClick={handleResetDocPositions}
         title="Reset document cards back to their default auto-arranged vertical positions"

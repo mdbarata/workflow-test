@@ -2307,12 +2307,23 @@ function buildHtml(workflowData, options) {
   const visibleActivities = scope === 'all' ? activities : [activities[activeIdx]];
   const showLinks = scope === 'all' && activities.length > 1;
 
+  // Variant (option) display names
+  const variantNames = {
+    option_1: workflowData.variantNames?.option_1 || 'Option 1',
+    option_2: workflowData.variantNames?.option_2 || 'Option 2',
+  };
+
+  // Helper: does an activity have at least one task with option_2 overrides?
+  const activityHasOption2 = (act) =>
+    (act.tasks || []).some((t) => t.overrides && t.overrides.option_2);
+
   // Build data blob
   const exportData = {
     workflowData: {
       activities: visibleActivities,
       sequences: workflowData.sequences || [],
-      hiddenTasks: workflowData.hiddenTasks || []
+      hiddenTasks: workflowData.hiddenTasks || [],
+      variantNames,
     },
     toolNotes: tNotes,
     collapsedTools: collapsedTools,
@@ -2340,8 +2351,8 @@ function buildHtml(workflowData, options) {
           <button class="inactive-view" data-show="${archId}">⬡ Architecture</button>
         </div>
         <div class="variant-toggle" style="position:absolute; top:12px; left:310px; z-index:100; display:flex; background:#ffffff; border:1px solid #cbd5e1; border-radius:6px; overflow:hidden; box-shadow:0 2px 8px rgba(0,0,0,0.08);">
-          <button class="variant-btn" data-variant="option_1" style="padding:8px 14px; border:none; font-size:12px; font-weight:600; cursor:pointer; transition:all 0.15s; background:#1e40af; color:#fff;">Option 1</button>
-          <button class="variant-btn" data-variant="option_2" style="padding:8px 14px; border:none; font-size:12px; font-weight:600; cursor:pointer; transition:all 0.15s; background:#fff; color:#475569; border-left:1px solid #cbd5e1;">Option 2</button>
+          <button class="variant-btn" data-variant="option_1" style="padding:8px 14px; border:none; font-size:12px; font-weight:600; cursor:pointer; transition:all 0.15s; background:#1e40af; color:#fff;">${esc(variantNames.option_1)}</button>
+          ${activityHasOption2(act) ? `<button class="variant-btn" data-variant="option_2" style="padding:8px 14px; border:none; font-size:12px; font-weight:600; cursor:pointer; transition:all 0.15s; background:#fff; color:#475569; border-left:1px solid #cbd5e1;">${esc(variantNames.option_2)}</button>` : ''}
         </div>
         <div class="canvas-host" style="flex:1;overflow:auto;"></div>
         <div class="zoom-controls">
@@ -2378,14 +2389,22 @@ function buildHtml(workflowData, options) {
   if (scope === 'all' && sequences.length > 0) {
     sequences.forEach((seq, i) => {
       const tlId = 'tab-seq-' + i;
+      // Check if any task in any activity that belongs to this sequence has option_2 overrides
+      const seqHasOption2 = (workflowData.activities || []).some((act) =>
+        (act.tasks || []).some(
+          (t) => (t.sequences || []).includes(seq.id) && t.overrides && t.overrides.option_2
+        )
+      ) || (workflowData.hiddenTasks || []).some(
+        (t) => (t.sequences || []).includes(seq.id) && t.overrides && t.overrides.option_2
+      );
       tabBarHtml += `<button class="tab-btn tab-sequence" style="display:none;" data-tab="${tlId}">${esc(seq.name)}</button>`;
       panelsHtml += `<div class="tab-panel" id="${tlId}" data-type="sequence" data-index="${i}">
         <div class="filter-bar"></div>
         <div class="assoc-container"></div>
         <div style="position:relative;flex:1;overflow:hidden;display:flex;flex-direction:column;">
           <div class="variant-toggle" style="position:absolute; top:12px; left:12px; z-index:100; display:flex; background:#ffffff; border:1px solid #cbd5e1; border-radius:6px; overflow:hidden; box-shadow:0 2px 8px rgba(0,0,0,0.08);">
-            <button class="variant-btn" data-variant="option_1" style="padding:8px 14px; border:none; font-size:12px; font-weight:600; cursor:pointer; transition:all 0.15s; background:#1e40af; color:#fff;">Option 1</button>
-            <button class="variant-btn" data-variant="option_2" style="padding:8px 14px; border:none; font-size:12px; font-weight:600; cursor:pointer; transition:all 0.15s; background:#fff; color:#475569; border-left:1px solid #cbd5e1;">Option 2</button>
+            <button class="variant-btn" data-variant="option_1" style="padding:8px 14px; border:none; font-size:12px; font-weight:600; cursor:pointer; transition:all 0.15s; background:#1e40af; color:#fff;">${esc(variantNames.option_1)}</button>
+            ${seqHasOption2 ? `<button class="variant-btn" data-variant="option_2" style="padding:8px 14px; border:none; font-size:12px; font-weight:600; cursor:pointer; transition:all 0.15s; background:#fff; color:#475569; border-left:1px solid #cbd5e1;">${esc(variantNames.option_2)}</button>` : ''}
           </div>
           <div class="canvas-host" style="flex:1;overflow:auto;"></div>
           <div class="zoom-controls">

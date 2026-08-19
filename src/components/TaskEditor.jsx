@@ -79,7 +79,8 @@ const computeStartTimes = (rows) => {
 // ── Convert flat rows → workflow.json ────────────────────────────────────────
 // Pass originalData to preserve per-activity metadata (chapters, etc.) that
 // TaskEditor does not edit — so they aren't dropped when the user saves.
-const rowsToWorkflow = (rows, originalData) => {
+// Also pass variantNames so option labels survive the round-trip.
+const rowsToWorkflow = (rows, originalData, variantNames) => {
   const activitiesMap = {};
   const respColorMap = {};
   let presetIdx = 0;
@@ -248,7 +249,16 @@ const rowsToWorkflow = (rows, originalData) => {
     return existing || { id: seqId, name: seqId };
   });
 
-  return { activities, hiddenTasks, sequences };
+  // Preserve variantNames (option labels) from original data or use the
+  // caller-supplied override (from the TaskEditor rename UI).
+  const resolvedVariantNames = variantNames || originalData?.variantNames;
+
+  return {
+    activities,
+    hiddenTasks,
+    sequences,
+    ...(resolvedVariantNames ? { variantNames: resolvedVariantNames } : {}),
+  };
 };
 
 const TYPE_ICONS = { file: '📄', plugin: '🔌', undefined: '⚪' };
@@ -419,6 +429,13 @@ const RenameDropdown = ({ label, options, onRename }) => {
 
 // ── Main component ────────────────────────────────────────────────────────────
 const TaskEditor = ({ workflowData, onSave, onClose }) => {
+  // Local state for option display names (renamed independently of row data)
+  const [variantNames, setVariantNames] = useState(() => ({
+    option_1: workflowData?.variantNames?.option_1 || 'Option 1',
+    option_2: workflowData?.variantNames?.option_2 || 'Option 2',
+  }));
+  const [editingVariant, setEditingVariant] = useState(null); // 'option_1' | 'option_2' | null
+  const [variantDraft, setVariantDraft] = useState('');
   const [rows, setRows] = useState(() => workflowToRows(workflowData));
   const [activeAct, setActiveAct] = useState('__all__');
   const [activeSeq, setActiveSeq] = useState('__all__');
@@ -522,7 +539,7 @@ const TaskEditor = ({ workflowData, onSave, onClose }) => {
 
   const handleExport = () => {
     const withIds = rows.map((r, i) => ({ ...r, taskId: r.taskId.trim() || `task${i + 1}` }));
-    const data = JSON.stringify(rowsToWorkflow(withIds, workflowData), null, 2);
+    const data = JSON.stringify(rowsToWorkflow(withIds, workflowData, variantNames), null, 2);
     const a = document.createElement('a');
     a.href = 'data:application/json;charset=utf-8,' + encodeURIComponent(data);
     a.download = 'workflow.json';
@@ -534,7 +551,7 @@ const TaskEditor = ({ workflowData, onSave, onClose }) => {
     if (!filled.length) { setError('Add at least one task with a label.'); return; }
     if (filled.some((r) => !r.activity.trim() && !r.sequences.trim())) { setError('Some tasks are missing both a stage name and sequences. Please provide at least one.'); return; }
     const withIds = rows.map((r, i) => ({ ...r, taskId: r.taskId.trim() || `task${i + 1}` }));
-    onSave(rowsToWorkflow(withIds, workflowData));
+    onSave(rowsToWorkflow(withIds, workflowData, variantNames));
     onClose();
   };
 
@@ -550,11 +567,51 @@ const TaskEditor = ({ workflowData, onSave, onClose }) => {
 
         {/* Header */}
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '14px 20px', borderBottom: '0.5px solid #e2e8f0', background: '#ffffff' }}>
-          <div>
-            <span style={{ fontSize: 15, fontWeight: 500 }}>Edit tasks</span>
-            <span style={{ marginLeft: 10, fontSize: 12, color: '#64748b' }}>
-              Each row is one task. Inputs/outputs and pre/post tasks are comma-separated.
-            </span>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 16, flexWrap: 'wrap' }}>
+            <div>
+              <span style={{ fontSize: 15, fontWeight: 500 }}>Edit tasks</span>
+              <span style={{ marginLeft: 10, fontSize: 12, color: '#64748b' }}>
+                Each row is one task. Inputs/outputs and pre/post tasks are comma-separated.
+              </span>
+            </div>
+            {/* Variant (option) name editors */}
+            <div style={{ display: 'flex', alignItems: 'center', gap: 6, borderLeft: '1px solid #e2e8f0', paddingLeft: 16 }}>
+              <span style={{ fontSize: 11, color: '#94a3b8', fontWeight: 500, whiteSpace: 'nowrap' }}>Option names:</span>
+              {['option_1', 'option_2'].map((key) =>
+                editingVariant === key ? (
+                  <input
+                    key={key}
+                    autoFocus
+                    value={variantDraft}
+                    onChange={(e) => setVariantDraft(e.target.value)}
+                    onBlur={() => {
+                      if (variantDraft.trim()) setVariantNames((prev) => ({ ...prev, [key]: variantDraft.trim() }));
+                      setEditingVariant(null);
+                    }}
+                    onKeyDown={(e) => {
+                      if (e.key === 'Enter') {
+                        if (variantDraft.trim()) setVariantNames((prev) => ({ ...prev, [key]: variantDraft.trim() }));
+                        setEditingVariant(null);
+                      }
+                      if (e.key === 'Escape') setEditingVariant(null);
+                    }}
+                    style={{ fontSize: 11, padding: '3px 6px', border: '1px solid #2563eb', borderRadius: 4, width: 90 }}
+                  />
+                ) : (
+                  <button
+                    key={key}
+                    onClick={() => { setVariantDraft(variantNames[key]); setEditingVariant(key); }}
+                    title={`Rename "${variantNames[key]}"`}
+                    style={{ display: 'inline-flex', alignItems: 'center', gap: 4, fontSize: 11, padding: '3px 8px', background: '#f1f5f9', border: '1px solid #e2e8f0', borderRadius: 4, cursor: 'pointer', color: '#475569', whiteSpace: 'nowrap' }}
+                    onMouseEnter={(e) => (e.currentTarget.style.background = '#e2e8f0')}
+                    onMouseLeave={(e) => (e.currentTarget.style.background = '#f1f5f9')}
+                  >
+                    <span>{variantNames[key]}</span>
+                    <span style={{ color: '#94a3b8', fontSize: 10 }}>✎</span>
+                  </button>
+                )
+              )}
+            </div>
           </div>
           <button onClick={onClose} style={{ background: 'none', border: 'none', fontSize: 18, color: '#64748b', cursor: 'pointer', padding: '2px 6px', borderRadius: 4 }}>✕</button>
         </div>

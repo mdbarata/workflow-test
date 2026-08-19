@@ -288,6 +288,10 @@ const App = () => {
     });
   }, []);
 
+  const handleVariantNamesChange = useCallback((names) => {
+    setWorkflowData((prev) => ({ ...prev, variantNames: { ...(prev.variantNames || {}), ...names } }));
+  }, []);
+
   const handleResetSession = () => {
     if (!window.confirm('Clear saved layout, notes, and loaded data? This cannot be undone.')) return;
     clearAppState();
@@ -762,6 +766,7 @@ const App = () => {
             }}
             activeVariant={activeVariant}
             setActiveVariant={setActiveVariant}
+            onVariantNamesChange={handleVariantNamesChange}
           />
         )}
       </div>
