@@ -35,7 +35,7 @@ const ExportModal = ({ onExport, onClose }) => {
   );
 };
 
-const MARGIN = { top: 110, right: 180, bottom: 60, left: 200 };
+const MARGIN = { top: 150, right: 180, bottom: 60, left: 200 };
 const TOOL_HEIGHT = 160;
 const COLLAPSED_HEIGHT = 34;
 const TASK_GAP = 18;
@@ -1402,7 +1402,7 @@ const WorkflowCanvas = ({
         </defs>
 
         <g transform={`translate(${MARGIN.left}, ${MARGIN.top})`}>
-          <g transform={`translate(0, -${MARGIN.top - 16})`}>
+          <g transform={`translate(0, -${MARGIN.top - 56})`}>
             {activeResponsibles.map((r, i) => (
               <g key={r.key} transform={`translate(${i * 280}, 0)`}>
                 <rect width={36} height={26} rx={4} fill={r.color} stroke={r.borderColor} strokeWidth={2} />

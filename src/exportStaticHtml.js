@@ -228,7 +228,7 @@ const VIEWER_JS = `
   }
 
   // ── Constants (mirror the app) ──
-  var MARGIN = { top: 110, right: 180, bottom: 60, left: 200 };
+  var MARGIN = { top: 150, right: 180, bottom: 60, left: 200 };
   var TOOL_HEIGHT = 160, COLLAPSED_HEIGHT = 34, TASK_GAP = 18, LANE_GAP = 12;
   var DOC_LEFT_X = 20, DOC_RIGHT_OFFSET = 30, ELBOW_STUB = 28;
   var FONT_SIZE = 11, LINE_HEIGHT = 14, PAD_X = 8, PAD_Y = 8, TASK_RADIUS = 6;
@@ -512,7 +512,7 @@ const VIEWER_JS = `
     svg += '<g transform="translate(' + MARGIN.left + ',' + MARGIN.top + ')">';
 
     // Legend
-    svg += '<g transform="translate(0,-' + (MARGIN.top - 16) + ')">';
+    svg += '<g transform="translate(0,-' + (MARGIN.top - 56) + ')">';
     activeResponsibles.forEach(function(r, i) {
       svg += '<g transform="translate(' + (i * 280) + ',0)">';
       svg += '<rect width="36" height="26" rx="4" fill="' + r.color + '" stroke="' + r.borderColor + '" stroke-width="2"/>';
