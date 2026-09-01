@@ -264,7 +264,11 @@ const App = () => {
   const currentFilters = perTabFilters[currentTabKey] || { responsibles: [], tools: [], chapters: [] };
 
   const handleFiltersChange = useCallback((newFilters) => {
-    setPerTabFilters((prev) => ({ ...prev, [currentTabKey]: newFilters }));
+    setPerTabFilters((prev) => {
+      const prevTabFilters = prev[currentTabKey] || { responsibles: [], tools: [], chapters: [] };
+      const resolved = typeof newFilters === 'function' ? newFilters(prevTabFilters) : newFilters;
+      return { ...prev, [currentTabKey]: resolved || { responsibles: [], tools: [], chapters: [] } };
+    });
   }, [currentTabKey]);
 
   useAutoSave({ workflowData, activeActivityIndex, perTabFilters, showLinks, toolNotes, docPositions, archPositions, edgeSides, feedbackItems, activeVariant, activeToolSetting });

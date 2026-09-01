@@ -3,6 +3,13 @@ import React, { useState, useEffect } from 'react';
 const FilterBar = ({ activity, filters, onChange, onImport, onToolNotes, onChapters, onSaveJson, onLoadJson, searchQuery, onSearchChange, activeVariant, activeToolSetting }) => {
   const { responsibles, tools: defaultTools } = activity;
 
+  const safeFilters = {
+    responsibles: [],
+    tools: [],
+    chapters: [],
+    ...(typeof filters === 'object' && filters !== null ? filters : {})
+  };
+
   const activeTools = React.useMemo(() => {
     if (!activeVariant && !activeToolSetting) return defaultTools || [];
     const getTaskProps = (task) => {
@@ -34,17 +41,17 @@ const FilterBar = ({ activity, filters, onChange, onImport, onToolNotes, onChapt
   };
 
   const toggle = (type, key) => {
-    const current = filters[type] || [];
+    const current = safeFilters[type] || [];
     const next = current.includes(key)
       ? current.filter((k) => k !== key)
       : [...current, key];
-    onChange({ ...filters, [type]: next });
+    onChange({ ...safeFilters, [type]: next });
   };
 
   const clearAll = () =>
     onChange({ responsibles: [], tools: [], chapters: [] });
 
-  const hasFilters = filters.responsibles.length > 0 || filters.tools.length > 0 || (filters.chapters || []).length > 0;
+  const hasFilters = (safeFilters.responsibles || []).length > 0 || (safeFilters.tools || []).length > 0 || (safeFilters.chapters || []).length > 0;
 
   return (
     <div className="filter-bar">
@@ -96,7 +103,7 @@ const FilterBar = ({ activity, filters, onChange, onImport, onToolNotes, onChapt
         <span className="filter-label">RESPONSIBLE</span>
         <div className="filter-chips">
           {responsibles.map((r) => {
-            const active = filters.responsibles.includes(r.key);
+            const active = (safeFilters.responsibles || []).includes(r.key);
             return (
               <button
                 key={r.key}
@@ -125,7 +132,7 @@ const FilterBar = ({ activity, filters, onChange, onImport, onToolNotes, onChapt
         <span className="filter-label">TOOL</span>
         <div className="filter-chips">
           {activeTools.map((tool) => {
-            const active = filters.tools.includes(tool);
+            const active = (safeFilters.tools || []).includes(tool);
             return (
               <button
                 key={tool}
