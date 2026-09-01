@@ -483,7 +483,7 @@ const App = () => {
     setArchPositions(newArchPos);
     setEdgeSides(newEdgeSides);
     setActiveActivityIndex(firstNewIndex);
-    setFilters({ responsibles: [], tools: [], chapters: [] });
+    setPerTabFilters({});
     setPendingImport(null);
   };
 
@@ -554,7 +554,7 @@ const App = () => {
     setArchPositions(combinedArchPos);
     setEdgeSides(combinedEdgeSides);
     setActiveActivityIndex(0);
-    setFilters({ responsibles: [], tools: [], chapters: [] });
+    setPerTabFilters({});
     setPendingImport(null);
   };
 
@@ -612,8 +612,7 @@ const App = () => {
         setActiveSequenceId(newData.sequences?.[0]?.id || null);
       }
     }
-    setActiveActivityIndex(0);
-    setFilters({ responsibles: [], tools: [], chapters: [] });
+    setActiveActivityIndex((prev) => Math.min(prev, Math.max(0, (newData.activities || []).length - 1)));
   };
 
   const handleToolNoteChange = (tool, text) => {
