@@ -215,24 +215,36 @@ const computeToolEdgeFormats = (tasks) => {
   const map = {};
   tasks.forEach((task) => {
     task.dependencies.forEach((dep) => {
-      const fromTool = tasks.find((t) => t.id === depId(dep))?.tool;
+      const fromTask = tasks.find((t) => t.id === depId(dep));
+      const fromTool = fromTask?.tool;
       if (fromTool && fromTool !== task.tool) {
         const key = `${fromTool}→${task.tool}`;
         if (!map[key]) map[key] = { formats: new Set(), types: new Set(), statuses: new Set() };
         const fmt = typeof dep === 'object' ? dep.format : '';
         const type = typeof dep === 'object' ? dep.type || 'file' : 'file';
-        const status = typeof dep === 'object' ? dep.status || 'impl' : 'impl';
+        const status = typeof dep === 'object' ? dep.status || 'undefined' : 'undefined';
         if (fmt) map[key].formats.add(fmt);
         map[key].types.add(type);
         map[key].statuses.add(status);
+        // If the source task was created from an alternative tool with metadata,
+        // pull that metadata in as well (stored in _altMeta by getTaskProps).
+        if (fromTask?._altMeta) {
+          const am = fromTask._altMeta;
+          if (am.format) map[key].formats.add(am.format);
+          if (am.type && am.type !== 'undefined') map[key].types.add(am.type);
+          if (am.status && am.status !== 'undefined') map[key].statuses.add(am.status);
+        }
       }
     });
   });
   return map;
 };
 
-const ArchitectureView = ({ activity, filters, toolNotes, onToolNoteChange, onToolClick, onFilterChange, searchMatchTools, archPositions, onArchPositionsChange, edgeSides: propEdgeSides, onEdgeSidesChange }) => {
-  const { tasks, tools, responsibles } = activity;
+const ArchitectureView = ({ activity, tasks: tasksProp, filters, toolNotes, onToolNoteChange, onToolClick, onFilterChange, searchMatchTools, archPositions, onArchPositionsChange, edgeSides: propEdgeSides, onEdgeSidesChange }) => {
+  const { tools, responsibles } = activity;
+  // Use explicitly passed tasks (already transformed by getTaskProps) if available,
+  // otherwise fall back to activity.tasks (static HTML viewer compat).
+  const tasks = tasksProp || activity.tasks || [];
   const [openNoteTool, setOpenNoteTool] = useState(null);
   const [hoveredTool, setHoveredTool] = useState(null);
   const [zoom, setZoom] = useState(1);
@@ -519,10 +531,37 @@ const ArchitectureView = ({ activity, filters, toolNotes, onToolNoteChange, onTo
     const revEdgeData = isBidi ? edgeFormats[revKey] : null;
     const revFmts = revEdgeData && revEdgeData.formats ? [...revEdgeData.formats].join(', ') : '';
 
-    const isPlanned = edgeData && edgeData.statuses ? edgeData.statuses.has('plan') : false;
-    const isPlugin = edgeData && edgeData.types ? edgeData.types.has('plugin') : false;
+    // ── Line style based on priority: visualization > impl > plan > undefined ──
     const isHov = hoveredTool === from || hoveredTool === to || selectedEdge === key || hoveredEdge === key;
-    const color = isHov ? '#2563eb' : isPlanned ? '#d97706' : '#64748b';
+    const isVisualization = edgeData?.types?.has('visualization');
+    const isImpl = edgeData?.statuses?.has('impl');
+    const isPlanned = edgeData?.statuses?.has('plan');
+    const isPlugin = edgeData?.types?.has('plugin');
+
+    let lineColor, lineDash, markerId;
+    if (isHov) {
+      lineColor = '#2563eb'; lineDash = undefined; markerId = 'arch-arr-blue';
+    } else if (isVisualization) {
+      lineColor = '#1e293b'; lineDash = '4,4'; markerId = 'arch-arr-black';
+    } else if (isImpl) {
+      lineColor = '#16a34a'; lineDash = undefined; markerId = 'arch-arr-green';
+    } else if (isPlanned) {
+      lineColor = '#d97706'; lineDash = '6,4'; markerId = 'arch-arr-orange';
+    } else {
+      // undefined / missing status
+      lineColor = '#64748b'; lineDash = undefined; markerId = 'arch-arr-gray';
+    }
+
+    let labelTxt = fmts;
+    if (!labelTxt && isPlugin) labelTxt = 'Plug-in';
+    if (!labelTxt && isVisualization) labelTxt = 'Visual.';
+    const badgeW = labelTxt ? labelTxt.length * 6.5 + 12 : 0;
+    const revBadgeW = revFmts ? revFmts.length * 6.5 + 12 : 0;
+
+    const badgeFill = isVisualization ? '#f0f9ff' : isPlugin ? '#faf5ff' : isPlanned ? '#fffbeb' : isImpl ? '#f0fdf4' : isHov ? '#eff6ff' : '#f1f5f9';
+    const badgeStroke = isVisualization ? '#1e293b' : isPlugin ? '#9333ea' : isPlanned ? '#d97706' : isImpl ? '#16a34a' : lineColor;
+    const badgeTextFill = isVisualization ? '#1e293b' : isPlugin ? '#6b21a8' : isPlanned ? '#b45309' : isImpl ? '#15803d' : isHov ? '#1d4ed8' : '#475569';
+    const lineOpacity = hoveredTool ? (isHov ? 1 : 0.12) : 0.75;
 
     const port = edgePorts[key] || {};
     const lx1 = port.lx1 !== undefined ? port.lx1 : f.x + ARCH_BOX_W;
@@ -564,18 +603,6 @@ const ArchitectureView = ({ activity, filters, toolNotes, onToolNoteChange, onTo
     const revX = Math.pow(1 - tRev, 3) * lx1 + 3 * Math.pow(1 - tRev, 2) * tRev * (cx1 + dx) + 3 * (1 - tRev) * tRev * tRev * (cx2 + dx) + tRev * tRev * tRev * lx2;
     const revY = Math.pow(1 - tRev, 3) * ly1 + 3 * Math.pow(1 - tRev, 2) * tRev * (cy1 + dy) + 3 * (1 - tRev) * tRev * tRev * (cy2 + dy) + tRev * tRev * tRev * ly2;
 
-    const markerId = isHov ? 'arch-arr-blue' : isPlanned ? 'arch-arr-orange' : 'arch-arr-gray';
-
-    let labelTxt = fmts;
-    if (!labelTxt && isPlugin) labelTxt = 'Plug-in';
-    const badgeW = labelTxt ? labelTxt.length * 6.5 + 12 : 0;
-    const revBadgeW = revFmts ? revFmts.length * 6.5 + 12 : 0;
-
-    const badgeFill = isPlugin ? '#faf5ff' : isPlanned ? '#fffbeb' : isHov ? '#eff6ff' : '#f1f5f9';
-    const badgeStroke = isPlugin ? '#9333ea' : isPlanned ? '#d97706' : color;
-    const badgeTextFill = isPlugin ? '#6b21a8' : isPlanned ? '#b45309' : isHov ? '#1d4ed8' : '#475569';
-    const lineOpacity = hoveredTool ? (isHov ? 1 : 0.12) : 0.65;
-
     return (
       <g key={key}
         onMouseEnter={() => setHoveredEdge(key)}
@@ -587,8 +614,8 @@ const ArchitectureView = ({ activity, filters, toolNotes, onToolNoteChange, onTo
           style={{ cursor: 'pointer' }} />
 
         <path d={pathD}
-          fill="none" stroke={color} strokeWidth={isHov ? 2.8 : 1.8}
-          strokeDasharray={isPlanned ? '6,4' : undefined}
+          fill="none" stroke={lineColor} strokeWidth={isHov ? 2.8 : 1.8}
+          strokeDasharray={lineDash}
           strokeOpacity={lineOpacity}
           markerEnd={`url(#${markerId})`}
           markerStart={isBidi ? `url(#${markerId})` : undefined}
@@ -600,7 +627,7 @@ const ArchitectureView = ({ activity, filters, toolNotes, onToolNoteChange, onTo
           onClick={(e) => { e.stopPropagation(); togglePortSide(key, 'from', fromSide); }}
           title={`Click to switch source port side (currently ${fromSide})`}>
           <circle cx={lx1} cy={ly1} r={16} fill="transparent" stroke="none" />
-          <circle cx={lx1} cy={ly1} r={isHov ? 6 : 4} fill={color} stroke="#ffffff" strokeWidth={1.5}
+          <circle cx={lx1} cy={ly1} r={isHov ? 6 : 4} fill={lineColor} stroke="#ffffff" strokeWidth={1.5}
             style={{ transition: 'r 0.15s ease' }} />
         </g>
 
@@ -610,7 +637,7 @@ const ArchitectureView = ({ activity, filters, toolNotes, onToolNoteChange, onTo
           onClick={(e) => { e.stopPropagation(); togglePortSide(key, 'to', toSide); }}
           title={`Click to switch target port side (currently ${toSide})`}>
           <circle cx={lx2} cy={ly2} r={16} fill="transparent" stroke="none" />
-          <circle cx={lx2} cy={ly2} r={isHov ? 6 : 4} fill={color} stroke="#ffffff" strokeWidth={1.5}
+          <circle cx={lx2} cy={ly2} r={isHov ? 6 : 4} fill={lineColor} stroke="#ffffff" strokeWidth={1.5}
             style={{ transition: 'r 0.15s ease' }} />
         </g>
 
@@ -687,6 +714,28 @@ const ArchitectureView = ({ activity, filters, toolNotes, onToolNoteChange, onTo
 
       <ZoomControls zoom={zoom} onZoom={handleStepZoom} onFit={handleFit} />
 
+      {/* Line style legend */}
+      <div style={{ position: 'absolute', bottom: 54, left: 12, zIndex: 100, background: 'rgba(255,255,255,0.92)', border: '1px solid #e2e8f0', borderRadius: 8, padding: '8px 12px', fontSize: 11, color: '#475569', boxShadow: '0 2px 8px rgba(0,0,0,0.06)', pointerEvents: 'none' }}>
+        <div style={{ fontWeight: 700, marginBottom: 6, color: '#1e293b' }}>Interface link styles</div>
+        {[{ dash: '4,4', color: '#1e293b', label: 'Visualization', bold: false },
+          { dash: '', color: '#16a34a', label: 'Implemented', bold: false },
+          { dash: '6,4', color: '#d97706', label: 'Planned', bold: false },
+          { dash: '', color: '#64748b', label: 'Undefined', bold: false }].map(({ dash, color, label }) => (
+          <div key={label} style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 4 }}>
+            <svg width={36} height={12} style={{ flexShrink: 0 }}>
+              <defs>
+                <marker id={`leg-arr-${label}`} markerWidth="4" markerHeight="4" refX="2" refY="2" orient="auto">
+                  <polygon points="0 0, 4 2, 0 4" fill={color} />
+                </marker>
+              </defs>
+              <line x1={2} y1={6} x2={30} y2={6} stroke={color} strokeWidth={1.8}
+                strokeDasharray={dash || undefined} markerEnd={`url(#leg-arr-${label})`} />
+            </svg>
+            <span>{label}</span>
+          </div>
+        ))}
+      </div>
+
       <svg ref={svgRef} width={maxX} height={maxY}
         style={{ display: 'block', userSelect: 'none', cursor: draggingTool ? 'grabbing' : isPanning ? 'grabbing' : 'grab', width: '100%', height: '100%' }}
         viewBox={`${-pan.x / (zoom && !isNaN(zoom) && zoom > 0 ? zoom : 1)} ${-pan.y / (zoom && !isNaN(zoom) && zoom > 0 ? zoom : 1)} ${maxX / (zoom && !isNaN(zoom) && zoom > 0 ? zoom : 1)} ${maxY / (zoom && !isNaN(zoom) && zoom > 0 ? zoom : 1)}`}
@@ -702,6 +751,12 @@ const ArchitectureView = ({ activity, filters, toolNotes, onToolNoteChange, onTo
           </marker>
           <marker id="arch-arr-orange" markerWidth="6" markerHeight="6" refX="3" refY="3" orient="auto">
             <polygon points="0 0, 6 3, 0 6" fill="#d97706" />
+          </marker>
+          <marker id="arch-arr-green" markerWidth="6" markerHeight="6" refX="3" refY="3" orient="auto">
+            <polygon points="0 0, 6 3, 0 6" fill="#16a34a" />
+          </marker>
+          <marker id="arch-arr-black" markerWidth="6" markerHeight="6" refX="3" refY="3" orient="auto">
+            <polygon points="0 0, 6 3, 0 6" fill="#1e293b" />
           </marker>
         </defs>
 
@@ -819,9 +874,20 @@ const WorkflowCanvas = ({
 
   const getTaskProps = (task, variant) => {
     let t = { ...task };
-    // Apply tool setting
+    // Apply tool setting — when Setting 2 is active, swap in the alternative tool
+    // and, if the alt tool carries metadata (format/type/status), attach that info
+    // to the task so the architecture view can render the correct edge style.
     if (activeToolSetting === 'setting_2' && t.alternativeTools && t.alternativeTools.length > 0) {
-      t.tool = t.alternativeTools[0];
+      const firstAlt = t.alternativeTools[0];
+      if (typeof firstAlt === 'object' && firstAlt !== null) {
+        t.tool = firstAlt.tool;
+        // Annotate the task with alt-tool interface metadata so arch view edge-format
+        // aggregation picks it up via the dependencies of downstream tasks.
+        // We store it on a helper property; computeToolEdgeFormats reads dep objects.
+        t._altMeta = { format: firstAlt.format || '', type: firstAlt.type || 'undefined', status: firstAlt.status || 'undefined' };
+      } else {
+        t.tool = firstAlt;
+      }
     }
     // Apply variant overrides
     if (variant === 'option_1' || !t.overrides || !t.overrides[variant]) return t;
@@ -1202,6 +1268,7 @@ const WorkflowCanvas = ({
         </button>
         <ArchitectureView
           activity={{ ...activity, tools: activeTools }}
+          tasks={tasks}
           filters={filters}
           toolNotes={toolNotes}
           onToolNoteChange={onToolNoteChange}

@@ -194,7 +194,13 @@ const rowsToWorkflow = (rows, originalData, variantNames, toolSettingNames) => {
     startTime: startTimes[r.taskId] || DEFAULT_START,
     duration: parseInt(r.duration, 10) || DEFAULT_DURATION,
     details: r.notes || '',
-    alternativeTools: splitList(r.altTools),
+    // Alternative tools — first alt tool carries format/type/status; others are bare strings
+    alternativeTools: splitList(r.altTools).map((toolName, i) => {
+      if (i === 0 && (r.altFormat || r.altType !== 'undefined' || r.altStatus !== 'undefined')) {
+        return { tool: toolName, format: r.altFormat || '', type: r.altType || 'undefined', status: r.altStatus || 'undefined' };
+      }
+      return toolName;
+    }),
     // Zip pre-task IDs with interface formats → [{id, format?, type?, status?}, ...]
     dependencies: splitList(r.pre).map((id, i) => {
       const fmt = splitList(r.preFormats)[i] || '';
@@ -263,7 +269,7 @@ const rowsToWorkflow = (rows, originalData, variantNames, toolSettingNames) => {
   };
 };
 
-const TYPE_ICONS = { file: '📄', plugin: '🔌', undefined: '⚪' };
+const TYPE_ICONS = { file: '📄', plugin: '🔌', visualization: '🖥️', undefined: '⚪' };
 const STATUS_ICONS = { impl: '🟢', plan: '🟡', undefined: '⚪' };
 
 // ── Empty row factory ─────────────────────────────────────────────────────────
@@ -271,7 +277,9 @@ let _uid = 1;
 const emptyRow = (activityName = '', sequenceName = '') => ({
   _key: _uid++, taskId: '', activity: activityName, sequences: sequenceName, isParent: false, label: '', responsible: '', tool: '',
   startTime: '', duration: String(DEFAULT_DURATION), inputs: '', outputs: '',
-  pre: '', preFormats: '', preTypes: 'undefined', preStatuses: 'undefined', notes: '', altTools: '', opt2Resp: '', opt2Optional: false, opt2Seqs: ''
+  pre: '', preFormats: '', preTypes: 'undefined', preStatuses: 'undefined', notes: '',
+  altTools: '', altFormat: '', altType: 'undefined', altStatus: 'undefined',
+  opt2Resp: '', opt2Optional: false, opt2Seqs: ''
 });
 
 // ── Seed rows from existing workflowData ──────────────────────────────────────
@@ -301,6 +309,13 @@ const workflowToRows = (data) => {
     const preFmts = deps.map((d) => (typeof d === 'object' ? d.format || '' : ''));
     const preTypes = deps.map((d) => (typeof d === 'object' ? d.type || 'undefined' : 'undefined'));
     const preStatuses = deps.map((d) => (typeof d === 'object' ? d.status || 'undefined' : 'undefined'));
+
+    // Deserialise alternativeTools — first element may be an object with metadata
+    const altToolsRaw = t.alternativeTools || [];
+    const firstAlt = altToolsRaw[0];
+    const firstAltIsObj = firstAlt && typeof firstAlt === 'object';
+    const altToolNames = altToolsRaw.map((a) => (typeof a === 'object' ? a.tool : a));
+
     rows.push({
       _key: _uid++,
       taskId: t.id,
@@ -321,7 +336,10 @@ const workflowToRows = (data) => {
       preTypes: joinList(preTypes),
       preStatuses: joinList(preStatuses),
       notes: t.details || '',
-      altTools: joinList(t.alternativeTools || []),
+      altTools: joinList(altToolNames),
+      altFormat: firstAltIsObj ? (firstAlt.format || '') : '',
+      altType: firstAltIsObj ? (firstAlt.type || 'undefined') : 'undefined',
+      altStatus: firstAltIsObj ? (firstAlt.status || 'undefined') : 'undefined',
       opt2Resp: t.overrides && t.overrides.option_2 ? (responsibles.find((r) => r.key === t.overrides.option_2.responsible)?.name || t.overrides.option_2.responsible || '') : '',
       opt2Optional: t.overrides && t.overrides.option_2 ? !!t.overrides.option_2.optional : false,
       opt2Seqs: t.overrides && t.overrides.option_2 && t.overrides.option_2.sequences ? joinList(t.overrides.option_2.sequences) : ''
@@ -742,6 +760,9 @@ const TaskEditor = ({ workflowData, onSave, onClose }) => {
                 <th style={{ ...thStyle, minWidth: 50, textAlign: 'center' }} title="Interface Status">Status</th>
                 <th style={{ ...thStyle, minWidth: 160 }}>Notes</th>
                 <th style={{ ...thStyle, minWidth: 140 }}>Alt. tools</th>
+                <th style={{ ...thStyle, minWidth: 130 }}>Alt. format</th>
+                <th style={{ ...thStyle, minWidth: 50, textAlign: 'center' }} title="Alt. tool type">Alt. type</th>
+                <th style={{ ...thStyle, minWidth: 50, textAlign: 'center' }} title="Alt. tool status">Alt. status</th>
                 <th style={{ ...thStyle, minWidth: 120 }} title="Option 2 Responsible">Opt 2 Resp.</th>
                 <th style={{ ...thStyle, minWidth: 70, textAlign: 'center' }} title="Is Optional in Option 2?">Opt 2 Faded</th>
                 <th style={{ ...thStyle, width: 60 }}></th>
@@ -800,6 +821,7 @@ const TaskEditor = ({ workflowData, onSave, onClose }) => {
                               <option value="undefined">⚪ Undefined</option>
                               <option value="file">📄 File format</option>
                               <option value="plugin">🔌 Plug-in / Native</option>
+                              <option value="visualization">🖥️ Visualization</option>
                             </select>
                           </div>
                         );
@@ -834,6 +856,42 @@ const TaskEditor = ({ workflowData, onSave, onClose }) => {
                   </td>
                   <Cell value={row.notes} onChange={(v) => updateRow(row._key, 'notes', v)} placeholder="Details…" wide />
                   <Cell value={row.altTools} onChange={(v) => updateRow(row._key, 'altTools', v)} placeholder="e.g. Figma, Sketch" wide />
+                  <Cell value={row.altFormat} onChange={(v) => updateRow(row._key, 'altFormat', v)} placeholder="SVG, REST…" wide />
+                  {/* Alt. type picker */}
+                  <td style={{ padding: '3px 4px', textAlign: 'center', verticalAlign: 'middle' }}>
+                    {splitList(row.altTools).length === 0
+                      ? <span style={{ color: '#cbd5e1', fontSize: 12, padding: 4 }}>-</span>
+                      : <div style={{ position: 'relative', width: 34, height: 26, margin: '0 auto', display: 'flex', alignItems: 'center', justifyContent: 'center', background: '#f8fafc', border: '1px solid #cbd5e1', borderRadius: 4, cursor: 'pointer' }} title="Type for alt. tool interface">
+                          <span style={{ fontSize: 14, pointerEvents: 'none', userSelect: 'none' }}>
+                            {TYPE_ICONS[row.altType || 'undefined'] || TYPE_ICONS.undefined}
+                          </span>
+                          <select value={row.altType || 'undefined'} onChange={(e) => updateRow(row._key, 'altType', e.target.value)}
+                            style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', opacity: 0, cursor: 'pointer' }}>
+                            <option value="undefined">⚪ Undefined</option>
+                            <option value="file">📄 File format</option>
+                            <option value="plugin">🔌 Plug-in / Native</option>
+                            <option value="visualization">🖥️ Visualization</option>
+                          </select>
+                        </div>
+                    }
+                  </td>
+                  {/* Alt. status picker */}
+                  <td style={{ padding: '3px 4px', textAlign: 'center', verticalAlign: 'middle' }}>
+                    {splitList(row.altTools).length === 0
+                      ? <span style={{ color: '#cbd5e1', fontSize: 12, padding: 4 }}>-</span>
+                      : <div style={{ position: 'relative', width: 34, height: 26, margin: '0 auto', display: 'flex', alignItems: 'center', justifyContent: 'center', background: '#f8fafc', border: '1px solid #cbd5e1', borderRadius: 4, cursor: 'pointer' }} title="Status for alt. tool interface">
+                          <span style={{ fontSize: 14, pointerEvents: 'none', userSelect: 'none' }}>
+                            {STATUS_ICONS[row.altStatus || 'undefined'] || STATUS_ICONS.undefined}
+                          </span>
+                          <select value={row.altStatus || 'undefined'} onChange={(e) => updateRow(row._key, 'altStatus', e.target.value)}
+                            style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', opacity: 0, cursor: 'pointer' }}>
+                            <option value="undefined">⚪ Undefined</option>
+                            <option value="impl">🟢 Implemented</option>
+                            <option value="plan">🟡 Planned / Wip</option>
+                          </select>
+                        </div>
+                    }
+                  </td>
                   <Cell value={row.opt2Resp} onChange={(v) => updateRow(row._key, 'opt2Resp', v)} placeholder="Opt 2 Resp" list="resp-list" wide />
                   <td style={{ padding: '3px 4px', textAlign: 'center' }}>
                     <input type="checkbox" checked={!!row.opt2Optional} onChange={(e) => updateRow(row._key, 'opt2Optional', e.target.checked)} style={{ cursor: 'pointer' }} title="Is this task faded/optional in Option 2?" />

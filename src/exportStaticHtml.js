@@ -179,7 +179,13 @@ const VIEWER_JS = `
         ? Object.assign({}, rawT) : Object.assign({}, rawT, rawT.overrides[activeVariant]);
         
       if (activeToolSetting === 'setting_2' && t.alternativeTools && t.alternativeTools.length > 0) {
-        t.tool = t.alternativeTools[0];
+        var firstAlt0 = t.alternativeTools[0];
+        if (typeof firstAlt0 === 'object' && firstAlt0 !== null) {
+          t.tool = firstAlt0.tool;
+          t._altMeta = { format: firstAlt0.format || '', type: firstAlt0.type || 'undefined', status: firstAlt0.status || 'undefined' };
+        } else {
+          t.tool = firstAlt0;
+        }
       }
 
       var sList = Array.isArray(t.sequences) ? t.sequences : (t.sequences ? String(t.sequences).split(',') : []);
@@ -408,8 +414,18 @@ const VIEWER_JS = `
   function renderTimeline(panelEl, activity, collapsedSet, filterState) {
     var tools = activity.tools, responsibles = activity.responsibles, documents = activity.documents || [];
     var getTaskProps = function(task, variant) {
-      if (variant === 'option_1' || !task.overrides || !task.overrides[variant]) return task;
-      return Object.assign({}, task, task.overrides[variant]);
+      var t = variant === 'option_1' || !task.overrides || !task.overrides[variant]
+        ? Object.assign({}, task) : Object.assign({}, task, task.overrides[variant]);
+      if (activeToolSetting === 'setting_2' && t.alternativeTools && t.alternativeTools.length > 0) {
+        var firstAlt = t.alternativeTools[0];
+        if (typeof firstAlt === 'object' && firstAlt !== null) {
+          t.tool = firstAlt.tool;
+          t._altMeta = { format: firstAlt.format || '', type: firstAlt.type || 'undefined', status: firstAlt.status || 'undefined' };
+        } else {
+          t.tool = firstAlt;
+        }
+      }
+      return t;
     };
     var tasks = (activity.tasks || []).map(function(t) { return getTaskProps(t, activeVariant); });
 
@@ -930,10 +946,17 @@ const VIEWER_JS = `
           if (!map[key]) map[key] = { formats: new Set(), types: new Set(), statuses: new Set() };
           var fmt = typeof dep === 'object' ? dep.format : '';
           var type = typeof dep === 'object' ? dep.type || 'file' : 'file';
-          var status = typeof dep === 'object' ? dep.status || 'impl' : 'impl';
+          var status = typeof dep === 'object' ? dep.status || 'undefined' : 'undefined';
           if (fmt) map[key].formats.add(fmt);
           map[key].types.add(type);
           map[key].statuses.add(status);
+          // Pull in alt-tool metadata from the source task if present
+          if (fromTask && fromTask._altMeta) {
+            var am = fromTask._altMeta;
+            if (am.format) map[key].formats.add(am.format);
+            if (am.type && am.type !== 'undefined') map[key].types.add(am.type);
+            if (am.status && am.status !== 'undefined') map[key].statuses.add(am.status);
+          }
         }
       });
     });
@@ -941,7 +964,27 @@ const VIEWER_JS = `
   }
 
   function renderArchitecture(panelEl, activity) {
-    var tasks = activity.tasks, tools = activity.tools, responsibles = activity.responsibles;
+    // Build transformed tasks (apply tool setting) so alternative tools appear in arch view
+    var rawTasks = activity.tasks || [];
+    var tasks = rawTasks.map(function(rawT) {
+      var t = Object.assign({}, rawT);
+      if (activeToolSetting === 'setting_2' && t.alternativeTools && t.alternativeTools.length > 0) {
+        var firstAlt = t.alternativeTools[0];
+        if (typeof firstAlt === 'object' && firstAlt !== null) {
+          t.tool = firstAlt.tool;
+          t._altMeta = { format: firstAlt.format || '', type: firstAlt.type || 'undefined', status: firstAlt.status || 'undefined' };
+        } else {
+          t.tool = firstAlt;
+        }
+      }
+      return t;
+    });
+    // Rebuild the active tool list from transformed tasks
+    var toolSet = new Set(tasks.map(function(t) { return t.tool; }).filter(Boolean));
+    var tools = activity.tools.filter(function(t) { return toolSet.has(t); });
+    // Also add any new alt tools not in the original list
+    tasks.forEach(function(t) { if (t.tool && !tools.includes(t.tool)) tools.push(t.tool); });
+    var responsibles = activity.responsibles;
     var respMap = {};
     responsibles.forEach(function(r) { respMap[r.key] = r; });
 
@@ -986,6 +1029,8 @@ const VIEWER_JS = `
     svg += '<marker id="arch-arr-gray" markerWidth="6" markerHeight="6" refX="3" refY="3" orient="auto"><polygon points="0 0, 6 3, 0 6" fill="#64748b"/></marker>';
     svg += '<marker id="arch-arr-blue" markerWidth="6" markerHeight="6" refX="3" refY="3" orient="auto"><polygon points="0 0, 6 3, 0 6" fill="#2563eb"/></marker>';
     svg += '<marker id="arch-arr-orange" markerWidth="6" markerHeight="6" refX="3" refY="3" orient="auto"><polygon points="0 0, 6 3, 0 6" fill="#d97706"/></marker>';
+    svg += '<marker id="arch-arr-green" markerWidth="6" markerHeight="6" refX="3" refY="3" orient="auto"><polygon points="0 0, 6 3, 0 6" fill="#16a34a"/></marker>';
+    svg += '<marker id="arch-arr-black" markerWidth="6" markerHeight="6" refX="3" refY="3" orient="auto"><polygon points="0 0, 6 3, 0 6" fill="#1e293b"/></marker>';
     svg += '</defs>';
 
     // Edges
@@ -1082,20 +1127,30 @@ const VIEWER_JS = `
         var revEdgeData = isBidi ? edgeFormats[revKey] : null;
         var revFmts = revEdgeData && revEdgeData.formats ? Array.from(revEdgeData.formats).join(', ') : '';
 
+        var isVisualization = edgeData && edgeData.types ? edgeData.types.has('visualization') : false;
+        var isImpl = edgeData && edgeData.statuses ? edgeData.statuses.has('impl') : false;
         var isPlanned = edgeData && edgeData.statuses ? edgeData.statuses.has('plan') : false;
         var isPlugin = edgeData && edgeData.types ? edgeData.types.has('plugin') : false;
-        var strokeColor = isPlanned ? '#d97706' : '#64748b';
-        var markerId = isPlanned ? 'arch-arr-orange' : 'arch-arr-gray';
-        var dashAttr = isPlanned ? ' stroke-dasharray="6,4"' : '';
+        var strokeColor, markerId, dashAttr;
+        if (isVisualization) {
+          strokeColor = '#1e293b'; markerId = 'arch-arr-black'; dashAttr = ' stroke-dasharray="4,4"';
+        } else if (isImpl) {
+          strokeColor = '#16a34a'; markerId = 'arch-arr-green'; dashAttr = '';
+        } else if (isPlanned) {
+          strokeColor = '#d97706'; markerId = 'arch-arr-orange'; dashAttr = ' stroke-dasharray="6,4"';
+        } else {
+          strokeColor = '#64748b'; markerId = 'arch-arr-gray'; dashAttr = '';
+        }
 
         var labelTxt = fmts;
         if (!labelTxt && isPlugin) labelTxt = 'Plug-in';
+        if (!labelTxt && isVisualization) labelTxt = 'Visual.';
         var badgeW = labelTxt ? labelTxt.length * 6.5 + 12 : 0;
         var revBadgeW = revFmts ? revFmts.length * 6.5 + 12 : 0;
 
-        var badgeFill = isPlugin ? '#faf5ff' : isPlanned ? '#fffbeb' : '#f1f5f9';
-        var badgeStroke = isPlugin ? '#9333ea' : isPlanned ? '#d97706' : '#64748b';
-        var badgeTextFill = isPlugin ? '#6b21a8' : isPlanned ? '#b45309' : '#475569';
+        var badgeFill = isVisualization ? '#f0f9ff' : isPlugin ? '#faf5ff' : isPlanned ? '#fffbeb' : isImpl ? '#f0fdf4' : '#f1f5f9';
+        var badgeStroke = isVisualization ? '#1e293b' : isPlugin ? '#9333ea' : isPlanned ? '#d97706' : isImpl ? '#16a34a' : '#64748b';
+        var badgeTextFill = isVisualization ? '#1e293b' : isPlugin ? '#6b21a8' : isPlanned ? '#b45309' : isImpl ? '#15803d' : '#475569';
 
         var port = edgePorts[key] || {};
         var lx1 = port.lx1 !== undefined ? port.lx1 : f.x + ARCH_BOX_W;
@@ -1864,7 +1919,7 @@ const VIEWER_JS = `
             html += '</div>';
             html += '<div style="font-size:13px;color:#475569;display:flex;align-items:flex-start;gap:8px;">';
             html += '<span style="font-weight:600;color:#059669;flex-shrink:0;">Alternatives:</span>';
-            html += '<span style="line-height:1.4;">' + escapeHtml(item.task.alternativeTools.join(', ')) + '</span>';
+            html += '<span style="line-height:1.4;">' + escapeHtml(item.task.alternativeTools.map(function(a) { return typeof a === 'object' && a !== null ? a.tool : a; }).join(', ')) + '</span>';
             html += '</div></div>';
           });
           html += '</div></div>';
