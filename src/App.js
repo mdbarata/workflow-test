@@ -584,6 +584,13 @@ const App = () => {
       });
     }
     setWorkflowData(newData);
+    // If activeSequenceId is set, ensure it still exists in the saved sequences
+    if (activeSequenceId) {
+      const stillExists = (newData.sequences || []).some(s => s.id === activeSequenceId || s.name === activeSequenceId);
+      if (!stillExists) {
+        setActiveSequenceId(newData.sequences?.[0]?.id || null);
+      }
+    }
     setActiveActivityIndex(0);
     setFilters({ responsibles: [], tools: [], chapters: [] });
   };
@@ -716,6 +723,7 @@ const App = () => {
           onToolNotes={() => setShowToolNotes(true)}
           onChapters={() => setShowChapterEditor(true)}
           onSaveJson={handleSaveJson}
+          onLoadJson={handleLoadJson}
           searchQuery={searchQuery}
           onSearchChange={setSearchQuery}
           activeVariant={activeVariant}
@@ -747,6 +755,8 @@ const App = () => {
             activeToolSetting={activeToolSetting}
             setActiveToolSetting={setActiveToolSetting}
             onToolSettingNamesChange={handleToolSettingNamesChange}
+            onSaveJson={handleSaveJson}
+            onLoadJson={handleLoadJson}
           />
         ) : isLinksViewActive ? (
           <ActivityLinksView activities={activities} onEditTasks={() => setShowEditor(true)} />
@@ -788,6 +798,8 @@ const App = () => {
           workflowData={workflowData}
           onSave={handleSave}
           onClose={() => setShowEditor(false)}
+          initialTabMode={activeSequenceId ? 'sequences' : 'stages'}
+          initialSequenceId={activeSequenceId}
         />
       )}
 

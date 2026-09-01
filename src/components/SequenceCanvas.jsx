@@ -23,6 +23,8 @@ const SequenceCanvas = ({
   setActiveVariant,
   activeToolSetting,
   setActiveToolSetting,
+  onSaveJson,
+  onLoadJson,
 }) => {
   const sequenceActivity = useMemo(() => {
     if (!activeSequenceId || !workflowData) return null;
@@ -78,14 +80,20 @@ const SequenceCanvas = ({
     });
     const allDocIds = new Set([...inputDocIds, ...outputDocIds]);
 
-    // Build a global document map from all activities AND hiddenTasks
+    // Build a global document map from all activities, hiddenDocuments, and root documents
     const globalDocMap = {};
     (workflowData.activities || []).forEach(act => {
       (act.documents || []).forEach(d => {
         if (!globalDocMap[d.id]) globalDocMap[d.id] = d;
       });
     });
-    // hiddenTasks don't have a documents array — reconstruct entries from task data
+    (workflowData.hiddenDocuments || []).forEach(d => {
+      if (!globalDocMap[d.id]) globalDocMap[d.id] = d;
+    });
+    (workflowData.documents || []).forEach(d => {
+      if (!globalDocMap[d.id]) globalDocMap[d.id] = d;
+    });
+    // Fallback: hiddenTasks don't have a documents array — reconstruct entries from task data if missing
     (workflowData.hiddenTasks || []).forEach(t => {
       (t.inputs || []).forEach(id => {
         if (!globalDocMap[id]) globalDocMap[id] = { id, name: id, type: 'input' };
@@ -182,8 +190,8 @@ const SequenceCanvas = ({
         onSearchChange={onSearchChange}
         // Exclude chapters for sequences
         onChapters={() => { }}
-        onSaveJson={() => { }}
-        onLoadJson={() => { }}
+        onSaveJson={onSaveJson}
+        onLoadJson={onLoadJson}
       />
       {parentCount > 0 && (
         <div style={{ background: '#e0f2fe', borderBottom: assocOpen ? '1px solid #bae6fd' : 'none' }}>

@@ -214,12 +214,15 @@ const VIEWER_JS = `
     });
     
     var globalDocs = [];
-    activities.forEach(function(act) {
-      (act.documents || []).forEach(function(d) {
-        if (docsSet[d.id] && !globalDocs.find(function(gd) { return gd.id === d.id; })) {
-          globalDocs.push(d);
-        }
-      });
+    var allDocSources = [];
+    activities.forEach(function(act) { allDocSources = allDocSources.concat(act.documents || []); });
+    if (D.workflowData && D.workflowData.hiddenDocuments) allDocSources = allDocSources.concat(D.workflowData.hiddenDocuments);
+    if (D.workflowData && D.workflowData.documents) allDocSources = allDocSources.concat(D.workflowData.documents);
+
+    allDocSources.forEach(function(d) {
+      if (docsSet[d.id] && !globalDocs.find(function(gd) { return gd.id === d.id; })) {
+        globalDocs.push(d);
+      }
     });
     
     return {

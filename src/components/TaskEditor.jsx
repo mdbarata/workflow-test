@@ -87,26 +87,50 @@ const rowsToWorkflow = (rows, originalData, variantNames, toolSettingNames) => {
   const sequencesSet = new Set();
   const hiddenRows = [];
 
-  // Build lookups of all existing responsibles and documents (across ALL activities)
-  // so that keys/ids are preserved instead of re-derived via slugify on every round-trip.
+  // Build lookups of all existing responsibles and documents (across ALL activities,
+  // hiddenDocuments, and root documents) so that keys/ids and display names are preserved
+  // instead of re-derived via slugify on every round-trip.
   const originalRespByName = {};
   const originalRespByKey = {};
   const originalDocByName = {};
+  const originalDocById = {};
+
+  const registerOriginalDoc = (d) => {
+    if (!d) return;
+    if (d.id) {
+      originalDocById[d.id] = d;
+      originalDocByName[d.id.toLowerCase()] = d;
+    }
+    if (d.name) {
+      originalDocByName[d.name.toLowerCase()] = d;
+    }
+  };
+
   (originalData?.activities || []).forEach((act) => {
     (act.responsibles || []).forEach((r) => {
       if (r.key) originalRespByKey[r.key] = r;
       if (r.name) originalRespByName[r.name.toLowerCase()] = r;
     });
-    (act.documents || []).forEach((d) => {
-      // Index by both the stored display name AND the id so either can be looked up.
-      if (d.name) originalDocByName[d.name.toLowerCase()] = d;
-      if (d.id) originalDocByName[d.id.toLowerCase()] = d;
-    });
+    (act.documents || []).forEach(registerOriginalDoc);
   });
+  (originalData?.hiddenDocuments || []).forEach(registerOriginalDoc);
+  (originalData?.documents || []).forEach(registerOriginalDoc);
 
   const usedColors = new Set(Object.values(originalRespByKey).map(r => r.color));
   const availablePresets = RESP_PRESETS.filter(p => !usedColors.has(p.color));
   const presetsToUse = availablePresets.length > 0 ? availablePresets : RESP_PRESETS;
+
+  // Helper to resolve a document name to { id, name, type } preserving existing display name and id
+  const resolveDoc = (rawName, type = 'input') => {
+    if (!rawName) return null;
+    const trimmed = rawName.trim();
+    if (!trimmed) return null;
+    const lower = trimmed.toLowerCase();
+    const existing = originalDocByName[lower] || originalDocById[trimmed];
+    const id = existing ? existing.id : slugify(trimmed);
+    const displayName = existing ? existing.name : trimmed;
+    return { id, name: displayName, type };
+  };
 
   // Given a display name from the editor row, return the best responsible key to use.
   // Priority: (1) exact name match in original data, (2) exact key match (user typed the key),
@@ -122,6 +146,8 @@ const rowsToWorkflow = (rows, originalData, variantNames, toolSettingNames) => {
     return slugify(displayName) || 'responsible_a';
   };
 
+  const hiddenDocsSet = {};
+
   rows.forEach((r) => {
     splitList(r.sequences).forEach(seq => sequencesSet.add(seq));
     splitList(r.opt2Seqs).forEach(seq => sequencesSet.add(seq));
@@ -129,6 +155,15 @@ const rowsToWorkflow = (rows, originalData, variantNames, toolSettingNames) => {
     const actId = slugify(r.activity);
     if (!actId) {
       hiddenRows.push(r);
+      // Process input/output documents for hidden rows so their display names and IDs are preserved!
+      splitList(r.inputs).forEach((name) => {
+        const doc = resolveDoc(name, 'input');
+        if (doc && !hiddenDocsSet[doc.id]) hiddenDocsSet[doc.id] = doc;
+      });
+      splitList(r.outputs).forEach((name) => {
+        const doc = resolveDoc(name, 'output');
+        if (doc && !hiddenDocsSet[doc.id]) hiddenDocsSet[doc.id] = doc;
+      });
       return;
     }
     
@@ -164,18 +199,12 @@ const rowsToWorkflow = (rows, originalData, variantNames, toolSettingNames) => {
     if (r.opt2Resp) registerResp(r.opt2Resp);
 
     splitList(r.inputs).forEach((name) => {
-      // Prefer the existing doc entry (by name, case-insensitive) so we never
-      // change a stored id after a round-trip through the editor.
-      const existing = originalDocByName[name.toLowerCase()];
-      const id = existing ? existing.id : slugify(name);
-      const displayName = existing ? existing.name : name;
-      if (!act.docsSet[id]) act.docsSet[id] = { id, name: displayName, type: 'input' };
+      const doc = resolveDoc(name, 'input');
+      if (doc && !act.docsSet[doc.id]) act.docsSet[doc.id] = doc;
     });
     splitList(r.outputs).forEach((name) => {
-      const existing = originalDocByName[name.toLowerCase()];
-      const id = existing ? existing.id : slugify(name);
-      const displayName = existing ? existing.name : name;
-      if (!act.docsSet[id]) act.docsSet[id] = { id, name: displayName, type: 'output' };
+      const doc = resolveDoc(name, 'output');
+      if (doc && !act.docsSet[doc.id]) act.docsSet[doc.id] = doc;
     });
   });
 
@@ -209,12 +238,12 @@ const rowsToWorkflow = (rows, originalData, variantNames, toolSettingNames) => {
       return { id, format: fmt, type, status };
     }),
     inputs: splitList(r.inputs).map((name) => {
-      const existing = originalDocByName[name.toLowerCase()];
-      return existing ? existing.id : slugify(name);
+      const doc = resolveDoc(name, 'input');
+      return doc ? doc.id : slugify(name);
     }),
     outputs: splitList(r.outputs).map((name) => {
-      const existing = originalDocByName[name.toLowerCase()];
-      return existing ? existing.id : slugify(name);
+      const doc = resolveDoc(name, 'output');
+      return doc ? doc.id : slugify(name);
     }),
     sequences: splitList(r.sequences),
     isSequenceParent: !!r.isParent,
@@ -251,7 +280,7 @@ const rowsToWorkflow = (rows, originalData, variantNames, toolSettingNames) => {
   // Merge existing sequences with new ones to preserve properties like name
   const originalSequences = originalData?.sequences || [];
   const sequences = Array.from(sequencesSet).map(seqId => {
-    const existing = originalSequences.find(s => s.id === seqId);
+    const existing = originalSequences.find(s => s.id === seqId || s.name === seqId);
     return existing || { id: seqId, name: seqId };
   });
 
@@ -260,9 +289,12 @@ const rowsToWorkflow = (rows, originalData, variantNames, toolSettingNames) => {
   const resolvedVariantNames = variantNames || originalData?.variantNames;
   const resolvedToolSettingNames = toolSettingNames || originalData?.toolSettingNames;
 
+  const hiddenDocuments = Object.values(hiddenDocsSet);
+
   return {
     activities,
     hiddenTasks,
+    hiddenDocuments,
     sequences,
     ...(resolvedVariantNames ? { variantNames: resolvedVariantNames } : {}),
     ...(resolvedToolSettingNames ? { toolSettingNames: resolvedToolSettingNames } : {}),
@@ -286,22 +318,27 @@ const emptyRow = (activityName = '', sequenceName = '') => ({
 const workflowToRows = (data) => {
   const rows = [];
 
-  // Build global lookups across ALL activities so cross-activity references
-  // (e.g. a task in activity A referencing a document defined in activity B)
-  // are always resolved to their display names rather than falling back to
-  // the raw slugified id.
+  // Build global lookups across ALL activities, hiddenDocuments, and root documents
+  // so cross-activity or sequence-only doc refs are always resolved to their display names.
   const allDocuments = [];
   const seenDocIds = new Set();
+  const addDoc = (d) => {
+    if (d && d.id && !seenDocIds.has(d.id)) {
+      seenDocIds.add(d.id);
+      allDocuments.push(d);
+    }
+  };
+
   const allResponsibles = [];
   const seenRespKeys = new Set();
   (data.activities || []).forEach((act) => {
-    (act.documents || []).forEach((d) => {
-      if (!seenDocIds.has(d.id)) { seenDocIds.add(d.id); allDocuments.push(d); }
-    });
+    (act.documents || []).forEach(addDoc);
     (act.responsibles || []).forEach((r) => {
       if (!seenRespKeys.has(r.key)) { seenRespKeys.add(r.key); allResponsibles.push(r); }
     });
   });
+  (data.hiddenDocuments || []).forEach(addDoc);
+  (data.documents || []).forEach(addDoc);
 
   const addRow = (t, activityName, responsibles) => {
     const deps = (t.dependencies || []);
@@ -448,7 +485,7 @@ const RenameDropdown = ({ label, options, onRename }) => {
 };
 
 // ── Main component ────────────────────────────────────────────────────────────
-const TaskEditor = ({ workflowData, onSave, onClose }) => {
+const TaskEditor = ({ workflowData, onSave, onClose, initialTabMode = 'stages', initialSequenceId = null }) => {
   // Local state for option display names (renamed independently of row data)
   const [variantNames, setVariantNames] = useState(() => ({
     option_1: workflowData?.variantNames?.option_1 || 'Option 1',
@@ -465,8 +502,8 @@ const TaskEditor = ({ workflowData, onSave, onClose }) => {
   const [toolSettingDraft, setToolSettingDraft] = useState('');
   const [rows, setRows] = useState(() => workflowToRows(workflowData));
   const [activeAct, setActiveAct] = useState('__all__');
-  const [activeSeq, setActiveSeq] = useState('__all__');
-  const [tabMode, setTabMode] = useState('stages');
+  const [activeSeq, setActiveSeq] = useState(() => initialSequenceId || '__all__');
+  const [tabMode, setTabMode] = useState(initialTabMode);
   const [error, setError] = useState(null);
   const [dragKey, setDragKey] = useState(null);
   const [dragOverKey, setDragOverKey] = useState(null);
@@ -718,12 +755,18 @@ const TaskEditor = ({ workflowData, onSave, onClose }) => {
               onRename={(newVal) => {
                 if (!newVal || !newVal.trim() || newVal === activeSeq) return;
                 setRows((prev) => prev.map((r) => {
+                  let updated = { ...r };
                   let seqs = splitList(r.sequences);
                   if (seqs.includes(activeSeq)) {
                     seqs = seqs.map(s => s === activeSeq ? newVal : s);
-                    return { ...r, sequences: seqs.join(', ') };
+                    updated.sequences = seqs.join(', ');
                   }
-                  return r;
+                  let opt2Seqs = splitList(r.opt2Seqs);
+                  if (opt2Seqs.includes(activeSeq)) {
+                    opt2Seqs = opt2Seqs.map(s => s === activeSeq ? newVal : s);
+                    updated.opt2Seqs = opt2Seqs.join(', ');
+                  }
+                  return updated;
                 }));
                 setActiveSeq(newVal);
                 setError(null);
