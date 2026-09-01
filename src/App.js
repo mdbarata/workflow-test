@@ -228,7 +228,7 @@ const App = () => {
 
   const [workflowData, setWorkflowData] = useState(saved?.workflowData || defaultData);
   const [activeActivityIndex, setActiveActivityIndex] = useState(saved?.activeActivityIndex || 0);
-  const [filters, setFilters] = useState(saved?.filters || { responsibles: [], tools: [], chapters: [] });
+  const [perTabFilters, setPerTabFilters] = useState(saved?.perTabFilters || {});
   const [searchQuery, setSearchQuery] = useState('');
   const [showEditor, setShowEditor] = useState(false);
   const [showChapterEditor, setShowChapterEditor] = useState(false);
@@ -251,10 +251,23 @@ const App = () => {
   const [activeVariant, setActiveVariant] = useState(saved?.activeVariant || 'option_1');
   const [activeToolSetting, setActiveToolSetting] = useState(saved?.activeToolSetting || 'setting_1');
 
-  useAutoSave({ workflowData, activeActivityIndex, filters, showLinks, toolNotes, docPositions, archPositions, edgeSides, feedbackItems, activeVariant, activeToolSetting });
+  // Drag and drop state for reordering tabs
+  const [draggedActivityIdx, setDraggedActivityIdx] = useState(null);
+  const [dragOverActivityIdx, setDragOverActivityIdx] = useState(null);
+  const [draggedSeqIdx, setDraggedSeqIdx] = useState(null);
+  const [dragOverSeqIdx, setDragOverSeqIdx] = useState(null);
 
   const activities = workflowData.activities || [];
   const activity = activities[activeActivityIndex];
+
+  const currentTabKey = activeSequenceId ? `seq_${activeSequenceId}` : (activity ? `act_${activity.id}` : 'act_0');
+  const currentFilters = perTabFilters[currentTabKey] || { responsibles: [], tools: [], chapters: [] };
+
+  const handleFiltersChange = useCallback((newFilters) => {
+    setPerTabFilters((prev) => ({ ...prev, [currentTabKey]: newFilters }));
+  }, [currentTabKey]);
+
+  useAutoSave({ workflowData, activeActivityIndex, perTabFilters, showLinks, toolNotes, docPositions, archPositions, edgeSides, feedbackItems, activeVariant, activeToolSetting });
 
   const handleDocPositionsChange = useCallback((activityId, positions) => {
     setDocPositions((prev) => {
@@ -300,9 +313,17 @@ const App = () => {
   const handleResetSession = () => {
     if (!window.confirm('Clear saved layout, notes, and loaded data? This cannot be undone.')) return;
     clearAppState();
+    // Clear all per-activity zoom/pan and collapsed tool keys
+    try {
+      Object.keys(localStorage).forEach((k) => {
+        if (k.startsWith('workflow_collapsed_tools_') || k.startsWith('workflow_zoom_pan_')) {
+          localStorage.removeItem(k);
+        }
+      });
+    } catch { /* ignore */ }
     setWorkflowData(defaultData);
     setActiveActivityIndex(0);
-    setFilters({ responsibles: [], tools: [], chapters: [] });
+    setPerTabFilters({});
     setShowLinks(false);
     setToolNotes({});
     setDocPositions({});
@@ -319,8 +340,8 @@ const App = () => {
         i === activeActivityIndex ? { ...act, chapters } : act
       ),
     }));
-    // Reset chapter filter so user sees full diagram first
-    setFilters((f) => ({ ...f, chapters: [] }));
+    // Reset chapter filter for this tab
+    handleFiltersChange({ ...currentFilters, chapters: [] });
   };
 
   const handleSaveJson = () => {
@@ -611,6 +632,81 @@ const App = () => {
 
   const isLinksViewActive = showLinks && activities.length > 1;
 
+  // Tab reordering handlers for activities
+  const handleActivityDragStart = (e, index) => {
+    e.dataTransfer.setData('text/plain', String(index));
+    e.dataTransfer.effectAllowed = 'move';
+    setDraggedActivityIdx(index);
+  };
+
+  const handleActivityDragOver = (e, index) => {
+    e.preventDefault();
+    e.dataTransfer.dropEffect = 'move';
+    if (dragOverActivityIdx !== index) {
+      setDragOverActivityIdx(index);
+    }
+  };
+
+  const handleActivityDrop = (e, dropIndex) => {
+    e.preventDefault();
+    if (draggedActivityIdx === null || draggedActivityIdx === dropIndex) {
+      setDraggedActivityIdx(null);
+      setDragOverActivityIdx(null);
+      return;
+    }
+
+    const newActivities = [...activities];
+    const [movedAct] = newActivities.splice(draggedActivityIdx, 1);
+    newActivities.splice(dropIndex, 0, movedAct);
+
+    // Keep active activity pointed to the same activity even after reorder
+    let newActiveIdx = activeActivityIndex;
+    if (activeActivityIndex === draggedActivityIdx) {
+      newActiveIdx = dropIndex;
+    } else if (draggedActivityIdx < activeActivityIndex && dropIndex >= activeActivityIndex) {
+      newActiveIdx = activeActivityIndex - 1;
+    } else if (draggedActivityIdx > activeActivityIndex && dropIndex <= activeActivityIndex) {
+      newActiveIdx = activeActivityIndex + 1;
+    }
+
+    setWorkflowData((prev) => ({ ...prev, activities: newActivities }));
+    setActiveActivityIndex(newActiveIdx);
+    setDraggedActivityIdx(null);
+    setDragOverActivityIdx(null);
+  };
+
+  // Tab reordering handlers for sequences
+  const handleSeqDragStart = (e, index) => {
+    e.dataTransfer.setData('text/plain', String(index));
+    e.dataTransfer.effectAllowed = 'move';
+    setDraggedSeqIdx(index);
+  };
+
+  const handleSeqDragOver = (e, index) => {
+    e.preventDefault();
+    e.dataTransfer.dropEffect = 'move';
+    if (dragOverSeqIdx !== index) {
+      setDragOverSeqIdx(index);
+    }
+  };
+
+  const handleSeqDrop = (e, dropIndex) => {
+    e.preventDefault();
+    if (draggedSeqIdx === null || draggedSeqIdx === dropIndex) {
+      setDraggedSeqIdx(null);
+      setDragOverSeqIdx(null);
+      return;
+    }
+
+    const newSeqs = [...(workflowData.sequences || [])];
+    const [movedSeq] = newSeqs.splice(draggedSeqIdx, 1);
+    newSeqs.splice(dropIndex, 0, movedSeq);
+
+    setWorkflowData((prev) => ({ ...prev, sequences: newSeqs }));
+    setDraggedSeqIdx(null);
+    setDragOverSeqIdx(null);
+  };
+
   return (
     <div className="workflow-d3-container">
       {/* Floating Buttons Group (Bottom Left) */}
@@ -623,7 +719,6 @@ const App = () => {
               } else {
                 setActiveSequenceId(workflowData.sequences[0].id);
                 setShowLinks(false);
-                setFilters({ responsibles: [], tools: [], chapters: [] });
               }
             }}
             style={{
@@ -659,15 +754,33 @@ const App = () => {
       <div className="activity-tabs">
         {activeSequenceId ? (
           <>
-            {(workflowData.sequences || []).map((seq) => (
-              <button
-                key={seq.id}
-                className={`activity-tab ${seq.id === activeSequenceId ? 'active' : ''}`}
-                onClick={() => setActiveSequenceId(seq.id)}
-              >
-                {seq.name}
-              </button>
-            ))}
+            {(workflowData.sequences || []).map((seq, idx) => {
+              const isDragging = draggedSeqIdx === idx;
+              const isDragOver = dragOverSeqIdx === idx;
+              return (
+                <button
+                  key={seq.id}
+                  draggable={true}
+                  onDragStart={(e) => handleSeqDragStart(e, idx)}
+                  onDragOver={(e) => handleSeqDragOver(e, idx)}
+                  onDrop={(e) => handleSeqDrop(e, idx)}
+                  onDragEnd={() => { setDraggedSeqIdx(null); setDragOverSeqIdx(null); }}
+                  className={`activity-tab ${seq.id === activeSequenceId ? 'active' : ''}`}
+                  onClick={() => setActiveSequenceId(seq.id)}
+                  title="Click to view sequence, or drag to reorder"
+                  style={{
+                    cursor: 'grab',
+                    opacity: isDragging ? 0.4 : 1,
+                    borderLeft: isDragOver ? '3px solid #2563eb' : undefined,
+                    transition: 'opacity 0.15s, border-color 0.15s',
+                    userSelect: 'none'
+                  }}
+                >
+                  <span style={{ opacity: 0.5, marginRight: 4, fontSize: 10 }}>⋮⋮</span>
+                  {seq.name}
+                </button>
+              );
+            })}
             <button
               className="activity-tab"
               onClick={() => setActiveSequenceId(null)}
@@ -678,15 +791,33 @@ const App = () => {
           </>
         ) : (
           <>
-            {activities.length > 1 && activities.map((act, i) => (
-              <button
-                key={act.id}
-                className={`activity-tab ${!isLinksViewActive && i === activeActivityIndex ? 'active' : ''}`}
-                onClick={() => { setActiveActivityIndex(i); setFilters({ responsibles: [], tools: [] }); setShowLinks(false); setSearchQuery(''); }}
-              >
-                {act.name}
-              </button>
-            ))}
+            {activities.length > 1 && activities.map((act, i) => {
+              const isDragging = draggedActivityIdx === i;
+              const isDragOver = dragOverActivityIdx === i;
+              return (
+                <button
+                  key={act.id}
+                  draggable={true}
+                  onDragStart={(e) => handleActivityDragStart(e, i)}
+                  onDragOver={(e) => handleActivityDragOver(e, i)}
+                  onDrop={(e) => handleActivityDrop(e, i)}
+                  onDragEnd={() => { setDraggedActivityIdx(null); setDragOverActivityIdx(null); }}
+                  className={`activity-tab ${!isLinksViewActive && i === activeActivityIndex ? 'active' : ''}`}
+                  onClick={() => { setActiveActivityIndex(i); setShowLinks(false); }}
+                  title="Click to view stage, or drag to reorder"
+                  style={{
+                    cursor: 'grab',
+                    opacity: isDragging ? 0.4 : 1,
+                    borderLeft: isDragOver ? '3px solid #2563eb' : undefined,
+                    transition: 'opacity 0.15s, border-color 0.15s',
+                    userSelect: 'none'
+                  }}
+                >
+                  <span style={{ opacity: 0.5, marginRight: 4, fontSize: 10 }}>⋮⋮</span>
+                  {act.name}
+                </button>
+              );
+            })}
             {activities.length > 1 && (
               <button
                 className={`activity-tab ${isLinksViewActive ? 'active' : ''}`}
@@ -717,8 +848,8 @@ const App = () => {
       {!isLinksViewActive && !activeSequenceId && (
         <FilterBar
           activity={activity}
-          filters={filters}
-          onChange={setFilters}
+          filters={currentFilters}
+          onChange={handleFiltersChange}
           onImport={() => setShowEditor(true)}
           onToolNotes={() => setShowToolNotes(true)}
           onChapters={() => setShowChapterEditor(true)}
@@ -736,10 +867,10 @@ const App = () => {
           <SequenceCanvas
             activeSequenceId={activeSequenceId}
             workflowData={workflowData}
-            filters={filters}
+            filters={currentFilters}
             toolNotes={toolNotes}
             onToolNoteChange={handleToolNoteChange}
-            onFilterChange={setFilters}
+            onFilterChange={handleFiltersChange}
             docPositions={docPositions[`seq_${activeSequenceId}`] || {}}
             onDocPositionsChange={(pos) => handleDocPositionsChange(`seq_${activeSequenceId}`, pos)}
             archPositions={archPositions[`seq_${activeSequenceId}`] || {}}
@@ -763,10 +894,10 @@ const App = () => {
         ) : (
           <WorkflowCanvas
             activity={activity}
-            filters={filters}
+            filters={currentFilters}
             toolNotes={toolNotes}
             onToolNoteChange={handleToolNoteChange}
-            onFilterChange={setFilters}
+            onFilterChange={handleFiltersChange}
             docPositions={docPositions[activity.id]}
             onDocPositionsChange={(positions) => handleDocPositionsChange(activity.id, positions)}
             archPositions={archPositions[activity.id]}
@@ -781,7 +912,6 @@ const App = () => {
             onNavigateToSequence={(seqId) => {
               setActiveSequenceId(seqId);
               setShowLinks(false);
-              setFilters({ responsibles: [], tools: [], chapters: [] });
             }}
             activeVariant={activeVariant}
             setActiveVariant={setActiveVariant}

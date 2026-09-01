@@ -46,13 +46,33 @@ const ELBOW_STUB = 28;
 const MIN_ZOOM = 0.2;
 const MAX_ZOOM = 3;
 const ZOOM_STEP = 0.15;
-const STORAGE_KEY = 'workflow_collapsed_tools';
 
-const getCollapsedTools = () => {
-  try { return new Set(JSON.parse(localStorage.getItem(STORAGE_KEY) || '[]')); }
+const getCollapsedTools = (activityId) => {
+  try { return new Set(JSON.parse(localStorage.getItem(`workflow_collapsed_tools_${activityId}`) || '[]')); }
   catch { return new Set(); }
 };
-const saveCollapsedTools = (set) => localStorage.setItem(STORAGE_KEY, JSON.stringify([...set]));
+const saveCollapsedTools = (activityId, set) => {
+  try { localStorage.setItem(`workflow_collapsed_tools_${activityId}`, JSON.stringify([...set])); }
+  catch { /* ignore */ }
+};
+
+const getSavedZoomPan = (activityId) => {
+  try {
+    const raw = localStorage.getItem(`workflow_zoom_pan_${activityId}`);
+    if (!raw) return null;
+    const parsed = JSON.parse(raw);
+    if (parsed && typeof parsed.zoom === 'number' && parsed.pan) return parsed;
+    return null;
+  } catch {
+    return null;
+  }
+};
+const saveZoomPan = (activityId, zoom, pan) => {
+  try {
+    localStorage.setItem(`workflow_zoom_pan_${activityId}`, JSON.stringify({ zoom, pan }));
+  } catch { /* ignore */ }
+};
+
 const getToolHeight = (tool, collapsedTools, tasks) => {
   if (collapsedTools.has(tool)) return COLLAPSED_HEIGHT;
   const count = tasks ? tasks.filter((t) => t.tool === tool).length : 1;
@@ -1000,9 +1020,10 @@ const WorkflowCanvas = ({
   const [docHeights, setDocHeights] = useState({});
   const [dragging, setDragging] = useState(null);
   const [openNoteTool, setOpenNoteTool] = useState(null);
-  const [collapsedTools, setCollapsedTools] = useState(() => getCollapsedTools());
-  const [zoom, setZoom] = useState(1);
-  const [pan, setPan] = useState({ x: 0, y: 0 });
+  const [collapsedTools, setCollapsedTools] = useState(() => getCollapsedTools(activity.id));
+  const savedZoomPan = useMemo(() => getSavedZoomPan(activity.id), [activity.id]);
+  const [zoom, setZoom] = useState(() => savedZoomPan?.zoom || 1);
+  const [pan, setPan] = useState(() => savedZoomPan?.pan || { x: 0, y: 0 });
   const [isPanning, setIsPanning] = useState(false);
   const [panStart, setPanStart] = useState({ x: 0, y: 0 });
 
@@ -1019,13 +1040,22 @@ const WorkflowCanvas = ({
   }, []);
 
   // When the activity changes, load that activity's persisted layout if we
-  // have one, otherwise fall back to the computed default.
+  // have one, otherwise fall back to the computed default. Also restore zoom, pan, and collapsed tools.
   useEffect(() => {
     const hasPersisted = persistedDocPositions && Object.keys(persistedDocPositions).length > 0;
     setDocPositions(
       hasPersisted ? persistedDocPositions : buildDefaultPositions(documents, tasks, tools, collapsedTools, canvasWidth)
     );
     setDocHeights({});
+    setCollapsedTools(getCollapsedTools(activity.id));
+
+    const zp = getSavedZoomPan(activity.id);
+    if (zp) {
+      setZoom(zp.zoom);
+      setPan(zp.pan);
+      zoomRef.current = zp.zoom;
+      panRef.current = zp.pan;
+    }
   }, [activity.id]); // eslint-disable-line
 
   // Backfill positions for any document missing one (e.g. newly added via
@@ -1045,8 +1075,13 @@ const WorkflowCanvas = ({
   }, [docPositions, dragging]); // eslint-disable-line
 
   const toggleToolCollapse = useCallback((tool) => {
-    setCollapsedTools((prev) => { const next = new Set(prev); next.has(tool) ? next.delete(tool) : next.add(tool); saveCollapsedTools(next); return next; });
-  }, []);
+    setCollapsedTools((prev) => {
+      const next = new Set(prev);
+      next.has(tool) ? next.delete(tool) : next.add(tool);
+      saveCollapsedTools(activity.id, next);
+      return next;
+    });
+  }, [activity.id]);
 
   // handleResetDocPositions is defined later, after visibleTasks/visibleTools/visibleCanvasWidth are available
 
@@ -1063,6 +1098,7 @@ const WorkflowCanvas = ({
           const nextPan = { x: mx - (mx - prev.x) * r, y: my - (my - prev.y) * r };
           panRef.current = nextPan;
           zoomRef.current = newZoom;
+          saveZoomPan(activity.id, newZoom, nextPan);
           if (svgRef.current) {
             const sw = parseFloat(svgRef.current.getAttribute('width') || '1000');
             const sh = parseFloat(svgRef.current.getAttribute('height') || '800');
@@ -1073,7 +1109,7 @@ const WorkflowCanvas = ({
       }
       return newZoom;
     });
-  }, []);
+  }, [activity.id]);
 
   useEffect(() => {
     const el = svgRef.current;
@@ -1092,9 +1128,14 @@ const WorkflowCanvas = ({
     panRef.current = { x: 0, y: 0 };
     setZoom(newZoom);
     setPan({ x: 0, y: 0 });
-  }, []);
+    saveZoomPan(activity.id, newZoom, { x: 0, y: 0 });
+  }, [activity.id]);
 
-  useEffect(() => { handleFit(); }, [canvasWidth, tools.length]); // eslint-disable-line
+  useEffect(() => {
+    if (!getSavedZoomPan(activity.id)) {
+      handleFit();
+    }
+  }, [canvasWidth, tools.length, activity.id]); // eslint-disable-line
 
   const handleStepZoom = useCallback((dir) => {
     setZoom((prev) => {
@@ -1107,12 +1148,13 @@ const WorkflowCanvas = ({
           const np = { x: cx - (cx - p.x) * r, y: cy - (cy - p.y) * r };
           panRef.current = np;
           zoomRef.current = nz;
+          saveZoomPan(activity.id, nz, np);
           return np;
         });
       }
       return nz;
     });
-  }, []);
+  }, [activity.id]);
 
   const handleSvgMouseDown = useCallback((e) => {
     if (e.button !== 0) return;

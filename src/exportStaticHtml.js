@@ -1241,8 +1241,36 @@ const VIEWER_JS = `
 
     svg += '</svg>';
 
+    var legendHtml = '<div style="position:absolute; bottom:54px; left:12px; z-index:100; background:rgba(255,255,255,0.92); border:1px solid #e2e8f0; border-radius:8px; padding:8px 12px; font-size:11px; color:#475569; box-shadow:0 2px 8px rgba(0,0,0,0.06); pointer-events:none;">' +
+      '<div style="font-weight:700; margin-bottom:6px; color:#1e293b;">Interface link styles</div>' +
+      '<div style="display:flex; flex-direction:column; gap:4px;">' +
+        '<div style="display:flex; align-items:center; gap:8px;">' +
+          '<svg width="28" height="10"><line x1="0" y1="5" x2="28" y2="5" stroke="#1e293b" stroke-width="2" stroke-dasharray="4,4"/></svg>' +
+          '<span>Visualization</span>' +
+        '</div>' +
+        '<div style="display:flex; align-items:center; gap:8px;">' +
+          '<svg width="28" height="10"><line x1="0" y1="5" x2="28" y2="5" stroke="#16a34a" stroke-width="2"/></svg>' +
+          '<span>Implemented</span>' +
+        '</div>' +
+        '<div style="display:flex; align-items:center; gap:8px;">' +
+          '<svg width="28" height="10"><line x1="0" y1="5" x2="28" y2="5" stroke="#d97706" stroke-width="2" stroke-dasharray="6,4"/></svg>' +
+          '<span>Planned</span>' +
+        '</div>' +
+        '<div style="display:flex; align-items:center; gap:8px;">' +
+          '<svg width="28" height="10"><line x1="0" y1="5" x2="28" y2="5" stroke="#64748b" stroke-width="2"/></svg>' +
+          '<span>Undefined</span>' +
+        '</div>' +
+      '</div>' +
+    '</div>';
+
     var hostEl = panelEl.querySelector('.canvas-host');
     hostEl.innerHTML = svg;
+    var existingLegend = panelEl.querySelector('.arch-legend-overlay');
+    if (existingLegend) existingLegend.remove();
+    var legWrap = document.createElement('div');
+    legWrap.className = 'arch-legend-overlay';
+    legWrap.innerHTML = legendHtml;
+    panelEl.querySelector('.canvas-host').parentElement.appendChild(legWrap.firstChild);
     attachArchInteraction(hostEl, panelEl, tools, edges, activity, pos);
   }
 
@@ -1835,9 +1863,12 @@ const VIEWER_JS = `
   var altToolsBackdrop = document.getElementById('alt-tools-backdrop');
   var altToolsContent = document.getElementById('alt-tools-content');
   var backToStagesBtn = document.getElementById('back-to-stages-btn');
+  var lastActiveTab = null;
 
   function enterSequenceViewImpl() {
     isSequenceView = true;
+    var currentActive = document.querySelector('.tab-btn.tab-activity.active');
+    if (currentActive) lastActiveTab = currentActive.getAttribute('data-tab');
     if (seqViewBtn) {
       seqViewBtn.innerHTML = '<span style="font-size:16px;">📚</span> Exit Sequences';
       seqViewBtn.style.background = '#2563eb';
@@ -1864,8 +1895,12 @@ const VIEWER_JS = `
     document.querySelectorAll('.tab-activity').forEach(function(b) { b.style.display = ''; });
     document.querySelectorAll('.tab-sequence').forEach(function(b) { b.style.display = 'none'; });
     if (backToStagesBtn) backToStagesBtn.style.display = 'none';
-    var firstActTab = document.querySelector('.tab-activity');
-    if (firstActTab) activateTab(firstActTab.getAttribute('data-tab'));
+    if (lastActiveTab) {
+      activateTab(lastActiveTab);
+    } else {
+      var firstActTab = document.querySelector('.tab-activity');
+      if (firstActTab) activateTab(firstActTab.getAttribute('data-tab'));
+    }
   }
 
   if (seqViewBtn) {
@@ -2415,6 +2450,8 @@ function buildHtml(workflowData, options) {
       activities: visibleActivities,
       sequences: workflowData.sequences || [],
       hiddenTasks: workflowData.hiddenTasks || [],
+      hiddenDocuments: workflowData.hiddenDocuments || [],
+      documents: workflowData.documents || [],
       variantNames,
       toolSettingNames,
     },
@@ -2470,6 +2507,12 @@ function buildHtml(workflowData, options) {
         <div class="view-toggle">
           <button class="inactive-view" data-show="${tlId}">← Timeline</button>
           <button class="active-view" data-show="${archId}">⬡ Architecture</button>
+        </div>
+        <div style="position:absolute; top:12px; left:310px; z-index:100; display:flex; gap:12px;">
+          <div class="tool-setting-toggle" style="display:flex; background:#ffffff; border:1px solid #cbd5e1; border-radius:6px; overflow:hidden; box-shadow:0 2px 8px rgba(0,0,0,0.08);">
+            <button class="tool-setting-btn" data-setting="setting_1" style="padding:8px 14px; border:none; font-size:12px; font-weight:600; cursor:pointer; transition:all 0.15s; background:#1e40af; color:#fff;">${esc(toolSettingNames.setting_1)}</button>
+            <button class="tool-setting-btn" data-setting="setting_2" style="padding:8px 14px; border:none; font-size:12px; font-weight:600; cursor:pointer; transition:all 0.15s; background:#fff; color:#475569; border-left:1px solid #cbd5e1;">${esc(toolSettingNames.setting_2)}</button>
+          </div>
         </div>
         <div class="canvas-host" style="flex:1;overflow:auto;"></div>
         <div class="zoom-controls">
