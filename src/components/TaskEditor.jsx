@@ -529,8 +529,21 @@ const TaskEditor = ({ workflowData, onSave, onClose, initialTabMode = 'stages', 
   };
 
   const activities = useMemo(() => [...new Set(rows.map((r) => r.activity).filter(Boolean))], [rows]);
-  const tools = useMemo(() => [...new Set(rows.map((r) => r.tool).filter(Boolean))], [rows]);
-  const responsibles = useMemo(() => [...new Set(rows.map((r) => r.responsible).filter(Boolean))], [rows]);
+  const tools = useMemo(() => [...new Set([...rows.map((r) => r.tool), ...rows.flatMap((r) => splitList(r.altTools))].filter(Boolean))], [rows]);
+  const responsibles = useMemo(() => {
+    const s = new Set();
+    (workflowData?.activities || []).forEach((act) => {
+      (act.responsibles || []).forEach((r) => {
+        if (r.name && r.name.trim()) s.add(r.name.trim());
+        else if (r.key && r.key.trim()) s.add(r.key.trim());
+      });
+    });
+    rows.forEach((r) => {
+      if (r.responsible && r.responsible.trim()) s.add(r.responsible.trim());
+      if (r.opt2Resp && r.opt2Resp.trim()) s.add(r.opt2Resp.trim());
+    });
+    return Array.from(s).filter(Boolean);
+  }, [rows, workflowData]);
   const taskIds = useMemo(() => rows.map((r) => r.taskId).filter(Boolean), [rows]);
   const sequencesList = useMemo(() => [...new Set(rows.flatMap((r) => splitList(r.sequences)).filter(Boolean))], [rows]);
 
@@ -588,7 +601,12 @@ const TaskEditor = ({ workflowData, onSave, onClose, initialTabMode = 'stages', 
   // Used to rename a stage/tool/responsible everywhere at once.
   const renameValue = useCallback((field, oldVal, newVal) => {
     if (!newVal || !newVal.trim() || newVal === oldVal) return;
-    setRows((prev) => prev.map((r) => (r[field] === oldVal ? { ...r, [field]: newVal } : r)));
+    setRows((prev) => prev.map((r) => {
+      let updated = { ...r };
+      if (r[field] === oldVal) updated[field] = newVal;
+      if (field === 'responsible' && r.opt2Resp === oldVal) updated.opt2Resp = newVal;
+      return updated;
+    }));
     if (field === 'activity' && activeAct === oldVal) setActiveAct(newVal);
     setError(null);
   }, [activeAct]);
