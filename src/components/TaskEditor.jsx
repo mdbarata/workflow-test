@@ -1,4 +1,4 @@
-import React, { useState, useMemo, useCallback, useEffect } from 'react';
+import React, { useState, useMemo, useCallback, useEffect, useRef } from 'react';
 
 // ── Responsible palette ───────────────────────────────────────────────────────
 const RESP_PRESETS = [
@@ -508,6 +508,26 @@ const TaskEditor = ({ workflowData, onSave, onClose, initialTabMode = 'stages', 
   const [dragKey, setDragKey] = useState(null);
   const [dragOverKey, setDragOverKey] = useState(null);
 
+  const tabsContainerRef = useRef(null);
+  const [canScrollLeft, setCanScrollLeft] = useState(false);
+  const [canScrollRight, setCanScrollRight] = useState(false);
+
+  const checkScrollButtons = useCallback(() => {
+    const el = tabsContainerRef.current;
+    if (!el) return;
+    const hasLeft = el.scrollLeft > 2;
+    const hasRight = el.scrollLeft < (el.scrollWidth - el.clientWidth - 2);
+    setCanScrollLeft(hasLeft);
+    setCanScrollRight(hasRight);
+  }, []);
+
+  const slideTabs = (direction) => {
+    const el = tabsContainerRef.current;
+    if (!el) return;
+    const amount = direction === 'left' ? -220 : 220;
+    el.scrollBy({ left: amount, behavior: 'smooth' });
+  };
+
   const activities = useMemo(() => [...new Set(rows.map((r) => r.activity).filter(Boolean))], [rows]);
   const tools = useMemo(() => [...new Set(rows.map((r) => r.tool).filter(Boolean))], [rows]);
   const responsibles = useMemo(() => [...new Set(rows.map((r) => r.responsible).filter(Boolean))], [rows]);
@@ -530,6 +550,28 @@ const TaskEditor = ({ workflowData, onSave, onClose, initialTabMode = 'stages', 
       setPinnedKeys(new Set(rows.filter((r) => splitList(r.sequences).includes(activeSeq)).map((r) => r._key)));
     }
   }, [tabMode, activeAct, activeSeq, rowKeySignature]);
+
+  useEffect(() => {
+    const el = tabsContainerRef.current;
+    if (!el) return;
+    checkScrollButtons();
+    el.addEventListener('scroll', checkScrollButtons, { passive: true });
+    window.addEventListener('resize', checkScrollButtons);
+    return () => {
+      el.removeEventListener('scroll', checkScrollButtons);
+      window.removeEventListener('resize', checkScrollButtons);
+    };
+  }, [checkScrollButtons, tabMode, rows]);
+
+  useEffect(() => {
+    const el = tabsContainerRef.current;
+    if (!el) return;
+    const activeBtn = el.querySelector('.task-editor-tab-btn.active');
+    if (activeBtn) {
+      activeBtn.scrollIntoView({ behavior: 'smooth', block: 'nearest', inline: 'nearest' });
+    }
+    checkScrollButtons();
+  }, [activeAct, activeSeq, tabMode, checkScrollButtons]);
 
   const visibleRows = useMemo(() => {
     const isAll = (tabMode === 'stages' && activeAct === '__all__') || (tabMode === 'sequences' && activeSeq === '__all__');
@@ -719,63 +761,129 @@ const TaskEditor = ({ workflowData, onSave, onClose, initialTabMode = 'stages', 
         </div>
 
         {/* Stage / Sequence tabs */}
-        <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '8px 20px 0', borderBottom: '0.5px solid #e2e8f0', background: '#f8fafc' }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '8px 20px 0', borderBottom: '0.5px solid #e2e8f0', background: '#f8fafc', minWidth: 0 }}>
           
-          <div style={{ display: 'flex', background: '#e2e8f0', padding: 2, borderRadius: 6, marginRight: 8 }}>
+          <div style={{ display: 'flex', background: '#e2e8f0', padding: 2, borderRadius: 6, flexShrink: 0 }}>
             <button onClick={() => setTabMode('stages')} style={{ padding: '4px 12px', fontSize: 12, borderRadius: 4, border: 'none', cursor: 'pointer', background: tabMode === 'stages' ? '#fff' : 'transparent', color: tabMode === 'stages' ? '#1e293b' : '#64748b', fontWeight: tabMode === 'stages' ? 500 : 400, boxShadow: tabMode === 'stages' ? '0 1px 3px rgba(0,0,0,0.1)' : 'none' }}>Stages</button>
             <button onClick={() => setTabMode('sequences')} style={{ padding: '4px 12px', fontSize: 12, borderRadius: 4, border: 'none', cursor: 'pointer', background: tabMode === 'sequences' ? '#fff' : 'transparent', color: tabMode === 'sequences' ? '#1e293b' : '#64748b', fontWeight: tabMode === 'sequences' ? 500 : 400, boxShadow: tabMode === 'sequences' ? '0 1px 3px rgba(0,0,0,0.1)' : 'none' }}>Sequences</button>
           </div>
 
-          {['__all__', ...(tabMode === 'stages' ? activities : sequencesList)].map((item) => {
-            const isActive = tabMode === 'stages' ? activeAct === item : activeSeq === item;
-            return (
-              <button key={item} onClick={() => tabMode === 'stages' ? setActiveAct(item) : setActiveSeq(item)} style={{
-                padding: '4px 14px', fontSize: 12, cursor: 'pointer', borderRadius: '6px 6px 0 0',
-                border: '0.5px solid', borderColor: isActive ? '#e2e8f0' : 'transparent',
-                borderBottom: 'none', background: isActive ? '#ffffff' : 'transparent',
-                color: isActive ? '#1e293b' : '#64748b',
-                fontWeight: isActive ? 500 : 400, marginBottom: -1,
-              }}>
-                {item === '__all__' ? 'All' : item}
+          {/* Scrollable track with sliding buttons */}
+          <div style={{ display: 'flex', alignItems: 'center', minWidth: 0, flex: 1, position: 'relative', overflow: 'hidden' }}>
+            {canScrollLeft && (
+              <button
+                type="button"
+                onClick={() => slideTabs('left')}
+                title="Slide left"
+                style={{
+                  position: 'absolute', left: 0, zIndex: 10,
+                  height: '100%', width: 26, display: 'flex', alignItems: 'center', justifyContent: 'center',
+                  background: 'linear-gradient(to right, #f8fafc 70%, rgba(248, 250, 252, 0))',
+                  border: 'none', cursor: 'pointer', color: '#2563eb', fontSize: 12, fontWeight: 700, padding: 0
+                }}
+              >
+                ◀
               </button>
-            );
-          })}
-          
-          {tabMode === 'stages' && activeAct !== '__all__' && (
-            <RenameButton
-              label="Rename stage"
-              currentValue={activeAct}
-              onRename={(newVal) => renameValue('activity', activeAct, newVal)}
-            />
-          )}
-          {tabMode === 'sequences' && activeSeq !== '__all__' && (
-            <RenameButton
-              label="Rename sequence (in tasks)"
-              currentValue={activeSeq}
-              onRename={(newVal) => {
-                if (!newVal || !newVal.trim() || newVal === activeSeq) return;
-                setRows((prev) => prev.map((r) => {
-                  let updated = { ...r };
-                  let seqs = splitList(r.sequences);
-                  if (seqs.includes(activeSeq)) {
-                    seqs = seqs.map(s => s === activeSeq ? newVal : s);
-                    updated.sequences = seqs.join(', ');
-                  }
-                  let opt2Seqs = splitList(r.opt2Seqs);
-                  if (opt2Seqs.includes(activeSeq)) {
-                    opt2Seqs = opt2Seqs.map(s => s === activeSeq ? newVal : s);
-                    updated.opt2Seqs = opt2Seqs.join(', ');
-                  }
-                  return updated;
-                }));
-                setActiveSeq(newVal);
-                setError(null);
+            )}
+
+            <div
+              ref={tabsContainerRef}
+              onWheel={(e) => {
+                if (e.deltaY) {
+                  tabsContainerRef.current.scrollLeft += e.deltaY;
+                }
               }}
-            />
-          )}
-          <div style={{ flex: 1 }} />
-          <RenameDropdown label="Rename tool…" options={tools} onRename={(oldVal, newVal) => renameValue('tool', oldVal, newVal)} />
-          <RenameDropdown label="Rename responsible…" options={responsibles} onRename={(oldVal, newVal) => renameValue('responsible', oldVal, newVal)} />
+              style={{
+                display: 'flex',
+                alignItems: 'center',
+                gap: 4,
+                overflowX: 'auto',
+                overflowY: 'hidden',
+                whiteSpace: 'nowrap',
+                scrollbarWidth: 'none',
+                msOverflowStyle: 'none',
+                paddingLeft: canScrollLeft ? 24 : 0,
+                paddingRight: canScrollRight ? 24 : 0,
+                minWidth: 0,
+                flex: 1,
+                scrollBehavior: 'smooth'
+              }}
+            >
+              {['__all__', ...(tabMode === 'stages' ? activities : sequencesList)].map((item) => {
+                const isActive = tabMode === 'stages' ? activeAct === item : activeSeq === item;
+                return (
+                  <button
+                    key={item}
+                    className={`task-editor-tab-btn ${isActive ? 'active' : ''}`}
+                    onClick={() => tabMode === 'stages' ? setActiveAct(item) : setActiveSeq(item)}
+                    style={{
+                      padding: '5px 14px', fontSize: 12, cursor: 'pointer', borderRadius: '6px 6px 0 0',
+                      border: '0.5px solid', borderColor: isActive ? '#e2e8f0' : 'transparent',
+                      borderBottom: 'none', background: isActive ? '#ffffff' : 'transparent',
+                      color: isActive ? '#1e293b' : '#64748b',
+                      fontWeight: isActive ? 600 : 400, marginBottom: -1,
+                      whiteSpace: 'nowrap', flexShrink: 0
+                    }}
+                  >
+                    {item === '__all__' ? 'All' : item}
+                  </button>
+                );
+              })}
+            </div>
+
+            {canScrollRight && (
+              <button
+                type="button"
+                onClick={() => slideTabs('right')}
+                title="Slide right"
+                style={{
+                  position: 'absolute', right: 0, zIndex: 10,
+                  height: '100%', width: 26, display: 'flex', alignItems: 'center', justifyContent: 'center',
+                  background: 'linear-gradient(to left, #f8fafc 70%, rgba(248, 250, 252, 0))',
+                  border: 'none', cursor: 'pointer', color: '#2563eb', fontSize: 12, fontWeight: 700, padding: 0
+                }}
+              >
+                ▶
+              </button>
+            )}
+          </div>
+          
+          <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexShrink: 0 }}>
+            {tabMode === 'stages' && activeAct !== '__all__' && (
+              <RenameButton
+                label="Rename stage"
+                currentValue={activeAct}
+                onRename={(newVal) => renameValue('activity', activeAct, newVal)}
+              />
+            )}
+            {tabMode === 'sequences' && activeSeq !== '__all__' && (
+              <RenameButton
+                label="Rename sequence (in tasks)"
+                currentValue={activeSeq}
+                onRename={(newVal) => {
+                  if (!newVal || !newVal.trim() || newVal === activeSeq) return;
+                  setRows((prev) => prev.map((r) => {
+                    let updated = { ...r };
+                    let seqs = splitList(r.sequences);
+                    if (seqs.includes(activeSeq)) {
+                      seqs = seqs.map(s => s === activeSeq ? newVal : s);
+                      updated.sequences = seqs.join(', ');
+                    }
+                    let opt2Seqs = splitList(r.opt2Seqs);
+                    if (opt2Seqs.includes(activeSeq)) {
+                      opt2Seqs = opt2Seqs.map(s => s === activeSeq ? newVal : s);
+                      updated.opt2Seqs = opt2Seqs.join(', ');
+                    }
+                    return updated;
+                  }));
+                  setActiveSeq(newVal);
+                  setError(null);
+                }}
+              />
+            )}
+            <RenameDropdown label="Rename tool…" options={tools} onRename={(oldVal, newVal) => renameValue('tool', oldVal, newVal)} />
+            <RenameDropdown label="Rename responsible…" options={responsibles} onRename={(oldVal, newVal) => renameValue('responsible', oldVal, newVal)} />
+          </div>
         </div>
 
         {/* Table */}
