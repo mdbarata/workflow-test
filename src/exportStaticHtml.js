@@ -1862,7 +1862,6 @@ const VIEWER_JS = `
   var altToolsFooterClose = document.getElementById('alt-tools-footer-close');
   var altToolsBackdrop = document.getElementById('alt-tools-backdrop');
   var altToolsContent = document.getElementById('alt-tools-content');
-  var backToStagesBtn = document.getElementById('back-to-stages-btn');
   var lastActiveTab = null;
 
   function enterSequenceViewImpl() {
@@ -1877,7 +1876,6 @@ const VIEWER_JS = `
     }
     document.querySelectorAll('.tab-activity').forEach(function(b) { b.style.display = 'none'; });
     document.querySelectorAll('.tab-sequence').forEach(function(b) { b.style.display = ''; });
-    if (backToStagesBtn) backToStagesBtn.style.display = '';
     var firstSeqTab = document.querySelector('.tab-sequence');
     if (firstSeqTab) activateTab(firstSeqTab.getAttribute('data-tab'));
   }
@@ -1894,7 +1892,6 @@ const VIEWER_JS = `
     }
     document.querySelectorAll('.tab-activity').forEach(function(b) { b.style.display = ''; });
     document.querySelectorAll('.tab-sequence').forEach(function(b) { b.style.display = 'none'; });
-    if (backToStagesBtn) backToStagesBtn.style.display = 'none';
     if (lastActiveTab) {
       activateTab(lastActiveTab);
     } else {
@@ -1907,9 +1904,6 @@ const VIEWER_JS = `
     seqViewBtn.addEventListener('click', function() {
       if (isSequenceView) exitSequenceView(); else enterSequenceView();
     });
-  }
-  if (backToStagesBtn) {
-    backToStagesBtn.addEventListener('click', exitSequenceView);
   }
 
   // Alternative Tools Modal — matches AltToolsModal in App.js (grouped by tool)
@@ -2626,7 +2620,7 @@ function buildHtml(workflowData, options) {
       💬 Leave Feedback <span id="feedback-count" class="feedback-count-badge" style="display:none;">0</span>
     </button>
   </div>
-  ${showTabBar ? `<div class="tab-bar">${tabBarHtml}${hasSequences ? `<button id="back-to-stages-btn" class="tab-btn" style="display:none;margin-left:auto;color:#64748b;">← Back to Stages</button>` : ''}</div>` : `<div class="tab-bar" style="display:none">${tabBarHtml}</div>`}
+  ${showTabBar ? `<div class="tab-bar">${tabBarHtml}</div>` : `<div class="tab-bar" style="display:none">${tabBarHtml}</div>`}
   <div id="tips-banner" class="tips-banner">
     <span class="tip-item">🖱️ <strong>Hover</strong> over any task to see its details, dependencies, and linked documents.</span>
     ${hasSequences ? `<span class="tip-sep"></span><span class="tip-item"><svg width="14" height="14" viewBox="0 0 14 14" fill="none" style="flex-shrink:0"><path d="M7,1 L1,4 L7,7 L13,4 Z M1,7 L7,10 L13,7 M1,10 L7,13 L13,10" stroke="#92400e" stroke-width="1.4" stroke-linejoin="round"/></svg> Tasks with a <strong>layers icon</strong> at the bottom-right corner belong to a Sequence — click the icon to jump directly to that sequence view.</span>` : ''}

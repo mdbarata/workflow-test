@@ -1,4 +1,4 @@
-import React, { useState, useCallback } from 'react';
+import React, { useState, useCallback, useMemo } from 'react';
 import './App.css';
 import defaultData from './data/workflow.json';
 import WorkflowCanvas from './components/WorkflowCanvas';
@@ -11,15 +11,89 @@ import { loadAppState, clearAppState, useAutoSave } from './useWorkflowPersisten
 import FeedbackViewerModal from './components/FeedbackViewerModal';
 
 // ── Bulk tool notes editor modal ──────────────────────────────────────────────
-const ToolNotesEditor = ({ tools, toolNotes, onChange, onClose }) => {
+const ToolNotesEditor = ({ workflowData, activeActivityIndex, activeSequenceId, toolNotes, onChange, onClose }) => {
   const [draft, setDraft] = useState({ ...toolNotes });
+
+  const activities = workflowData?.activities || [];
+  const sequences = workflowData?.sequences || [];
+  const currentActivity = activities[activeActivityIndex] || activities[0];
+
+  const initialScope = activeSequenceId
+    ? `seq_${activeSequenceId}`
+    : (currentActivity ? `stage_${currentActivity.id}` : 'all');
+
+  const [selectedScope, setSelectedScope] = useState(initialScope);
+
+  const getAltToolName = (alt) => {
+    if (!alt) return null;
+    if (typeof alt === 'object' && alt.tool) return String(alt.tool).trim();
+    if (typeof alt === 'string') return alt.trim();
+    return null;
+  };
+
+  const { standardTools, altTools } = useMemo(() => {
+    const stdSet = new Set();
+    const altSet = new Set();
+
+    if (selectedScope === 'all') {
+      activities.forEach((act) => {
+        (act.tools || []).forEach((t) => { if (t && t.trim()) stdSet.add(t.trim()); });
+        (act.tasks || []).forEach((task) => {
+          if (task.tool && task.tool.trim()) stdSet.add(task.tool.trim());
+          (task.alternativeTools || []).forEach((a) => {
+            const name = getAltToolName(a);
+            if (name) altSet.add(name);
+          });
+        });
+      });
+      (workflowData?.hiddenTasks || []).forEach((task) => {
+        if (task.tool && task.tool.trim()) stdSet.add(task.tool.trim());
+        (task.alternativeTools || []).forEach((a) => {
+          const name = getAltToolName(a);
+          if (name) altSet.add(name);
+        });
+      });
+    } else if (selectedScope.startsWith('stage_')) {
+      const stageId = selectedScope.replace('stage_', '');
+      const act = activities.find((a) => a.id === stageId) || currentActivity;
+      if (act) {
+        (act.tools || []).forEach((t) => { if (t && t.trim()) stdSet.add(t.trim()); });
+        (act.tasks || []).forEach((task) => {
+          if (task.tool && task.tool.trim()) stdSet.add(task.tool.trim());
+          (task.alternativeTools || []).forEach((a) => {
+            const name = getAltToolName(a);
+            if (name) altSet.add(name);
+          });
+        });
+      }
+    } else if (selectedScope.startsWith('seq_')) {
+      const seqId = selectedScope.replace('seq_', '');
+      const collectTasks = (tasks) => {
+        (tasks || []).forEach((task) => {
+          if ((task.sequences || []).includes(seqId)) {
+            if (task.tool && task.tool.trim()) stdSet.add(task.tool.trim());
+            (task.alternativeTools || []).forEach((a) => {
+              const name = getAltToolName(a);
+              if (name) altSet.add(name);
+            });
+          }
+        });
+      };
+      activities.forEach((act) => collectTasks(act.tasks));
+      collectTasks(workflowData?.hiddenTasks);
+    }
+
+    const finalAltList = Array.from(altSet).filter((t) => !stdSet.has(t)).sort((a, b) => a.localeCompare(b));
+    const finalStdList = Array.from(stdSet).sort((a, b) => a.localeCompare(b));
+
+    return { standardTools: finalStdList, altTools: finalAltList };
+  }, [selectedScope, activities, workflowData, currentActivity]);
 
   const handleImport = (e) => {
     const file = e.target.files[0];
     if (!file) return;
     const reader = new FileReader();
     reader.onload = (ev) => {
-      // Normalize line endings to avoid issues with CRLF vs LF
       const textContent = ev.target.result.replace(/\r\n/g, '\n');
       const sections = textContent.split(/\n---\n/);
       const parsed = {};
@@ -48,13 +122,21 @@ const ToolNotesEditor = ({ tools, toolNotes, onChange, onClose }) => {
   };
 
   const handleExport = () => {
-    const lines = tools.map((t) => `## ${t}\n\n${draft[t] || '(no notes)'}\n`).join('\n---\n\n');
+    const allVisibleTools = [...standardTools, ...altTools];
+    if (allVisibleTools.length === 0) {
+      alert('No tools to export in the current scope.');
+      return;
+    }
+    const lines = allVisibleTools.map((t) => `## ${t}\n\n${draft[t] || '(no notes)'}\n`).join('\n---\n\n');
     const blob = new Blob([lines], { type: 'text/markdown' });
     const a = document.createElement('a');
     a.href = URL.createObjectURL(blob);
-    a.download = 'tool-notes.md';
+    const scopeSuffix = selectedScope === 'all' ? 'all' : selectedScope;
+    a.download = `tool-notes-${scopeSuffix}.md`;
     a.click();
   };
+
+  const hasAnyTools = standardTools.length > 0 || altTools.length > 0;
 
   return (
     <div style={{
@@ -63,34 +145,119 @@ const ToolNotesEditor = ({ tools, toolNotes, onChange, onClose }) => {
       zIndex: 2000, backdropFilter: 'blur(3px)',
     }} onClick={onClose}>
       <div style={{
-        background: '#ffffff', borderRadius: 12, width: 640,
-        maxHeight: '85vh', display: 'flex', flexDirection: 'column',
+        background: '#ffffff', borderRadius: 12, width: 680,
+        maxHeight: '88vh', display: 'flex', flexDirection: 'column',
         boxShadow: '0 20px 60px rgba(0,0,0,0.3)', overflow: 'hidden',
       }} onClick={(e) => e.stopPropagation()}>
-        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '14px 20px', borderBottom: '0.5px solid #e2e8f0', background: '#ffffff' }}>
-          <span style={{ fontSize: 15, fontWeight: 500 }}>Tool notes</span>
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '14px 20px', borderBottom: '0.5px solid #e2e8f0', background: '#f8fafc' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 14 }}>
+            <span style={{ fontSize: 16, fontWeight: 600, color: '#1e293b' }}>Tool notes</span>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+              <label style={{ fontSize: 12, fontWeight: 600, color: '#64748b' }}>Scope:</label>
+              <select
+                value={selectedScope}
+                onChange={(e) => setSelectedScope(e.target.value)}
+                style={{
+                  fontSize: 12, fontWeight: 500, padding: '4px 8px', borderRadius: 6,
+                  border: '1px solid #cbd5e1', background: '#ffffff', color: '#1e293b',
+                  cursor: 'pointer', outline: 'none'
+                }}
+              >
+                <option value="all">🌐 All tools (Entire workflow)</option>
+                {activities.length > 0 && (
+                  <optgroup label="Stages">
+                    {activities.map((act) => (
+                      <option key={act.id} value={`stage_${act.id}`}>Stage: {act.name}</option>
+                    ))}
+                  </optgroup>
+                )}
+                {sequences.length > 0 && (
+                  <optgroup label="Sequences">
+                    {sequences.map((seq) => (
+                      <option key={seq.id} value={`seq_${seq.id}`}>Sequence: {seq.name}</option>
+                    ))}
+                  </optgroup>
+                )}
+              </select>
+            </div>
+          </div>
           <button onClick={onClose} style={{ background: 'none', border: 'none', fontSize: 18, color: '#64748b', cursor: 'pointer' }}>✕</button>
         </div>
+
         <div style={{ flex: 1, overflowY: 'auto', padding: '16px 20px', display: 'flex', flexDirection: 'column', gap: 16, background: '#ffffff' }}>
-          {tools.map((tool) => (
-            <div key={tool}>
-              <label style={{ display: 'block', fontSize: 12, fontWeight: 600, color: '#1d4ed8', marginBottom: 6 }}>{tool}</label>
-              <textarea
-                value={draft[tool] || ''}
-                onChange={(e) => setDraft((prev) => ({ ...prev, [tool]: e.target.value }))}
-                placeholder={`Notes about ${tool}…`}
-                style={{
-                  width: '100%', height: 80, fontSize: 12, padding: '8px 10px',
-                  border: '1px solid #e2e8f0', borderRadius: 6, resize: 'vertical',
-                  fontFamily: 'system-ui, sans-serif', color: '#1e293b', background: '#f8fafc',
-                }}
-              />
-            </div>
-          ))}
+          {!hasAnyTools ? (
+            <p style={{ fontSize: 13, color: '#64748b', textAlign: 'center', margin: '40px 0' }}>No tools found in this scope.</p>
+          ) : (
+            <>
+              {standardTools.length > 0 && (
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 6, paddingBottom: 4, borderBottom: '1.5px solid #dbeafe' }}>
+                    <span style={{ fontSize: 12, fontWeight: 700, color: '#1e40af', textTransform: 'uppercase', letterSpacing: '0.5px' }}>
+                      Standard Tools ({standardTools.length})
+                    </span>
+                  </div>
+                  {standardTools.map((tool) => (
+                    <div key={tool}>
+                      <label style={{ display: 'block', fontSize: 12, fontWeight: 600, color: '#1d4ed8', marginBottom: 6 }}>{tool}</label>
+                      <textarea
+                        value={draft[tool] || ''}
+                        onChange={(e) => setDraft((prev) => ({ ...prev, [tool]: e.target.value }))}
+                        placeholder={`Notes about ${tool}…`}
+                        style={{
+                          width: '100%', height: 75, fontSize: 12, padding: '8px 10px',
+                          border: '1px solid #e2e8f0', borderRadius: 6, resize: 'vertical',
+                          fontFamily: 'system-ui, sans-serif', color: '#1e293b', background: '#f8fafc',
+                        }}
+                      />
+                    </div>
+                  ))}
+                </div>
+              )}
+
+              {altTools.length > 0 && (
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 14, marginTop: standardTools.length > 0 ? 8 : 0 }}>
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: 2, paddingBottom: 6, borderBottom: '1.5px solid #d1fae5', paddingTop: standardTools.length > 0 ? 10 : 0 }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                      <span style={{ fontSize: 14 }}>💡</span>
+                      <span style={{ fontSize: 12, fontWeight: 700, color: '#065f46', textTransform: 'uppercase', letterSpacing: '0.5px' }}>
+                        Alternative Tools ({altTools.length})
+                      </span>
+                    </div>
+                    <span style={{ fontSize: 11, color: '#64748b' }}>
+                      Notes for alternative tools proposed in tasks
+                    </span>
+                  </div>
+                  {altTools.map((tool) => (
+                    <div key={tool}>
+                      <label style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 12, fontWeight: 600, color: '#059669', marginBottom: 6 }}>
+                        <span>{tool}</span>
+                        <span style={{ fontSize: 10, fontWeight: 500, background: '#d1fae5', color: '#065f46', padding: '1px 6px', borderRadius: 4 }}>
+                          Alternative
+                        </span>
+                      </label>
+                      <textarea
+                        value={draft[tool] || ''}
+                        onChange={(e) => setDraft((prev) => ({ ...prev, [tool]: e.target.value }))}
+                        placeholder={`Notes about alternative tool ${tool}…`}
+                        style={{
+                          width: '100%', height: 75, fontSize: 12, padding: '8px 10px',
+                          border: '1px solid #a7f3d0', borderRadius: 6, resize: 'vertical',
+                          fontFamily: 'system-ui, sans-serif', color: '#1e293b', background: '#f0fdf4',
+                        }}
+                      />
+                    </div>
+                  ))}
+                </div>
+              )}
+            </>
+          )}
         </div>
+
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '12px 20px', borderTop: '0.5px solid #e2e8f0', background: '#ffffff' }}>
           <div style={{ display: 'flex', gap: 8 }}>
-            <button className="btn-secondary" onClick={handleExport}>↓ Export as Markdown</button>
+            <button className="btn-secondary" onClick={handleExport} title="Export notes of currently listed tools as Markdown">
+              ↓ Export as Markdown
+            </button>
             <label className="btn-secondary" style={{ cursor: 'pointer', display: 'inline-flex', alignItems: 'center' }}>
               ↑ Import Markdown
               <input type="file" accept=".md,.txt" onChange={handleImport} style={{ display: 'none' }} />
@@ -784,13 +951,6 @@ const App = () => {
                 </button>
               );
             })}
-            <button
-              className="activity-tab"
-              onClick={() => setActiveSequenceId(null)}
-              style={{ marginLeft: 'auto', color: '#64748b' }}
-            >
-              ← Back to Stages
-            </button>
           </>
         ) : (
           <>
@@ -946,7 +1106,9 @@ const App = () => {
 
       {showToolNotes && (
         <ToolNotesEditor
-          tools={activity.tools}
+          workflowData={workflowData}
+          activeActivityIndex={activeActivityIndex}
+          activeSequenceId={activeSequenceId}
           toolNotes={toolNotes}
           onChange={setToolNotes}
           onClose={() => setShowToolNotes(false)}
