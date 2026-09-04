@@ -7,7 +7,7 @@ import TaskEditor from './components/TaskEditor';
 import ChapterEditor from './components/ChapterEditor';
 import ActivityLinksView from './components/ActivityLinksView';
 import SequenceCanvas from './components/SequenceCanvas';
-import { loadAppState, clearAppState, useAutoSave } from './useWorkflowPersistence';
+import { loadAppState, saveAppState, clearAppState, useAutoSave } from './useWorkflowPersistence';
 import FeedbackViewerModal from './components/FeedbackViewerModal';
 
 // ── Bulk tool notes editor modal ──────────────────────────────────────────────
@@ -839,10 +839,24 @@ const App = () => {
       newActiveIdx = activeActivityIndex + 1;
     }
 
-    setWorkflowData((prev) => ({ ...prev, activities: newActivities }));
+    const nextWorkflowData = { ...workflowData, activities: newActivities };
+    setWorkflowData(nextWorkflowData);
     setActiveActivityIndex(newActiveIdx);
     setDraggedActivityIdx(null);
     setDragOverActivityIdx(null);
+    saveAppState({
+      workflowData: nextWorkflowData,
+      activeActivityIndex: newActiveIdx,
+      perTabFilters,
+      showLinks,
+      toolNotes,
+      docPositions,
+      archPositions,
+      edgeSides,
+      feedbackItems,
+      activeVariant,
+      activeToolSetting,
+    });
   };
 
   // Tab reordering handlers for sequences
@@ -872,9 +886,23 @@ const App = () => {
     const [movedSeq] = newSeqs.splice(draggedSeqIdx, 1);
     newSeqs.splice(dropIndex, 0, movedSeq);
 
-    setWorkflowData((prev) => ({ ...prev, sequences: newSeqs }));
+    const nextWorkflowData = { ...workflowData, sequences: newSeqs };
+    setWorkflowData(nextWorkflowData);
     setDraggedSeqIdx(null);
     setDragOverSeqIdx(null);
+    saveAppState({
+      workflowData: nextWorkflowData,
+      activeActivityIndex,
+      perTabFilters,
+      showLinks,
+      toolNotes,
+      docPositions,
+      archPositions,
+      edgeSides,
+      feedbackItems,
+      activeVariant,
+      activeToolSetting,
+    });
   };
 
   return (

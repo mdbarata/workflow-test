@@ -16,6 +16,14 @@ export const loadAppState = () => {
   }
 };
 
+export const saveAppState = (state) => {
+  try {
+    localStorage.setItem(STATE_KEY, JSON.stringify(state));
+  } catch {
+    // localStorage full or unavailable — fail silently
+  }
+};
+
 export const clearAppState = () => {
   try { localStorage.removeItem(STATE_KEY); } catch { /* ignore */ }
 };
@@ -24,15 +32,25 @@ export const clearAppState = () => {
 // Saves silently in the background, no UI feedback by design.
 export const useAutoSave = (state) => {
   const timerRef = useRef(null);
+  const stateRef = useRef(state);
+  stateRef.current = state;
+
+  useEffect(() => {
+    const handleBeforeUnload = () => {
+      saveAppState(stateRef.current);
+    };
+    window.addEventListener('beforeunload', handleBeforeUnload);
+    return () => {
+      window.removeEventListener('beforeunload', handleBeforeUnload);
+      // Flush latest state upon unmount
+      saveAppState(stateRef.current);
+    };
+  }, []);
 
   useEffect(() => {
     if (timerRef.current) clearTimeout(timerRef.current);
     timerRef.current = setTimeout(() => {
-      try {
-        localStorage.setItem(STATE_KEY, JSON.stringify(state));
-      } catch {
-        // localStorage full or unavailable (e.g. private mode quota) — fail silently
-      }
+      saveAppState(state);
     }, SAVE_DEBOUNCE_MS);
     return () => clearTimeout(timerRef.current);
   }, [state]);
