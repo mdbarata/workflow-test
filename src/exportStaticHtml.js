@@ -249,13 +249,6 @@ const VIEWER_JS = `
   var DEFAULT_PAD_X = 8, DEFAULT_PAD_Y = 8, DEFAULT_TASK_GAP = 18, DEFAULT_LANE_GAP = 12;
   var COMPACT_PAD_X = 4, COMPACT_PAD_Y = 4, COMPACT_TASK_GAP = 8, COMPACT_LANE_GAP = 6;
   var isCompact = false;
-  var stretchFactor = 1.0;
-
-  // Load saved stretch factor
-  try {
-    var savedStretch = parseFloat(localStorage.getItem('viewer_stretch_factor'));
-    if (savedStretch && savedStretch >= 0.5 && savedStretch <= 4.0) stretchFactor = savedStretch;
-  } catch(e) {}
 
   // Load saved display preferences
   try {
@@ -276,7 +269,6 @@ const VIEWER_JS = `
   function saveDisplayPrefs() {
     try {
       localStorage.setItem('viewer_display_prefs', JSON.stringify({ fontSize: FONT_SIZE, compact: isCompact }));
-      localStorage.setItem('viewer_stretch_factor', String(stretchFactor));
     } catch(e) {}
   }
 
@@ -308,9 +300,10 @@ const VIEWER_JS = `
     return lines;
   }
 
-  var currTimeScale = 1;
+  // TASK_HEIGHT: fixed single-line default, matching editor (PAD_Y + LINE_HEIGHT + PAD_Y)
+  var TASK_HEIGHT = PAD_Y + LINE_HEIGHT + PAD_Y;
   var currTimeOffset = 0; // pixel offset to subtract from all task X coords when chapter/filter is active
-  function getTaskW(task) { return Math.max(40, (task.duration || 0) * currTimeScale); }
+  function getTaskW(task) { return task.duration || 0; }
 
   function getTaskHeight(taskName, taskWidth) {
     var textAreaWidth = Math.max(20, taskWidth - PAD_X * 2);
@@ -320,11 +313,8 @@ const VIEWER_JS = `
 
   function getToolHeight(tool, tasks, collapsedSet) {
     if (collapsedSet.has(tool)) return COLLAPSED_HEIGHT;
-    var toolTasks = tasks.filter(function(t) { return t.tool === tool; });
-    if (toolTasks.length === 0) return TOOL_HEIGHT;
-    var maxTaskH = Math.max.apply(null, toolTasks.map(function(t) { return getTaskHeight(t.name, getTaskW(t)); }));
-    var count = toolTasks.length;
-    var needed = 50 + count * (maxTaskH + TASK_GAP) + 10;
+    var count = tasks ? tasks.filter(function(t) { return t.tool === tool; }).length : 1;
+    var needed = 50 + count * (TASK_HEIGHT + TASK_GAP) + 10;
     return Math.max(TOOL_HEIGHT, needed);
   }
 
@@ -339,12 +329,11 @@ const VIEWER_JS = `
     var slotIndex = toolTasks.indexOf(task);
     var baseY = 50;
     for (var i = 0; i < toolIndex; i++) baseY += getToolHeight(tools[i], tasks, collapsedSet) + LANE_GAP;
-    var maxTaskH = Math.max.apply(null, toolTasks.map(function(t) { return getTaskHeight(t.name, getTaskW(t)); }).concat([getTaskHeight(task.name, getTaskW(task))]));
-    var offset = slotIndex * (maxTaskH + TASK_GAP);
+    var offset = slotIndex * (TASK_HEIGHT + TASK_GAP);
     return baseY + offset;
   }
 
-  function getTaskX(task) { return (task.startTime || 0) * currTimeScale - currTimeOffset; }
+  function getTaskX(task) { return (task.startTime || 0) - currTimeOffset; }
 
   function curvedPath(x1, y1, x2, y2) { var m = (x1 + x2) / 2; return 'M ' + x1 + ' ' + y1 + ' C ' + m + ' ' + y1 + ', ' + m + ' ' + y2 + ', ' + x2 + ' ' + y2; }
   function elbowPath(x1, y1, x2, y2, isInput) {
@@ -487,24 +476,16 @@ const VIEWER_JS = `
     visibleTasks.forEach(function(t) { (t.inputs || []).forEach(function(id) { visibleDocIds.add(id); }); (t.outputs || []).forEach(function(id) { visibleDocIds.add(id); }); });
     var visibleDocuments = documents.filter(function(d) { return visibleDocIds.has(d.id); });
 
-    var hostEl = panelEl ? panelEl.querySelector('.canvas-host') : null;
-    var hostW = (hostEl && hostEl.clientWidth > 100) ? hostEl.clientWidth : (window.innerWidth || 1400);
-    var availW = Math.max(800, hostW - MARGIN.left - MARGIN.right);
-    var maxEnd = Math.max.apply(null, tasks.map(function(t) { return (t.startTime || 0) + (t.duration || 0); }).concat([100]));
-    currTimeScale = Math.max(1.15, (availW * stretchFactor) / maxEnd);
-
-    var canvasWidth = Math.max(maxEnd * currTimeScale, availW);
-    // visibleCanvasWidth: width from visible (filtered) tasks only — mirrors editor visibleCanvasWidth
-    var visibleMaxEnd = visibleTasks.length > 0
-      ? Math.max.apply(null, visibleTasks.map(function(t) { return (t.startTime || 0) + (t.duration || 0); }))
-      : maxEnd;
-    // visibleMinStart: shift filtered view so the first visible task starts at x=0
-    // Only apply offset when filtering is active (visibleTasks is a strict subset of tasks)
+    // Canvas sizing — raw coordinates matching the editor (no pre-scaling)
+    var canvasWidth = Math.max.apply(null, tasks.map(function(t) { return (t.startTime || 0) + (t.duration || 0); }).concat([600])) + 20;
+    // visibleCanvasWidth: horizontal extent of only the visible (filtered) tasks
     var visibleMinStart = (visibleTasks.length > 0 && visibleTasks.length < tasks.length)
       ? Math.min.apply(null, visibleTasks.map(function(t) { return t.startTime || 0; }))
       : 0;
-    currTimeOffset = visibleMinStart * currTimeScale;
-    var visibleCanvasWidth = Math.max((visibleMaxEnd - visibleMinStart) * currTimeScale, 200) + 20;
+    currTimeOffset = visibleMinStart;
+    var visibleCanvasWidth = visibleTasks.length > 0
+      ? Math.max.apply(null, visibleTasks.map(function(t) { return (t.startTime || 0) + (t.duration || 0); }).concat([600])) + 20 - visibleMinStart
+      : 620;
     var canvasHeight = visibleTools.reduce(function(sum, tool) { return sum + getToolHeight(tool, visibleTasks, collapsedSet) + LANE_GAP; }, 0);
     var svgWidth = visibleCanvasWidth + MARGIN.left + MARGIN.right;
     var svgHeight = canvasHeight + MARGIN.top + MARGIN.bottom;
@@ -516,9 +497,9 @@ const VIEWER_JS = `
     });
     var docPositions = buildDocPositions(visibleDocuments, visibleTasks, visibleTools, collapsedSet, visibleCanvasWidth, canvasHeight, docHeights);
 
-    // Build SVG string
+    // Build SVG string — matches editor: width/height 100%, viewBox-based zoom
     var svg = '';
-    svg += '<svg xmlns="http://www.w3.org/2000/svg" width="' + svgWidth + '" height="' + svgHeight + '" viewBox="0 0 ' + svgWidth + ' ' + svgHeight + '" style="background:#f8f9fb;display:block;user-select:none;">';
+    svg += '<svg xmlns="http://www.w3.org/2000/svg" width="' + svgWidth + '" height="' + svgHeight + '" data-native-w="' + svgWidth + '" data-native-h="' + svgHeight + '" viewBox="0 0 ' + svgWidth + ' ' + svgHeight + '" style="background:#f8f9fb;display:block;user-select:none;cursor:grab;width:100%;height:100%;">';
     svg += '<defs>';
     svg += '<marker id="arrow" markerWidth="10" markerHeight="10" refX="8" refY="3.5" orient="auto"><polygon points="0 0, 10 3.5, 0 7" fill="#64748b"/></marker>';
     svg += '<marker id="arrow-gold" markerWidth="10" markerHeight="10" refX="8" refY="3.5" orient="auto"><polygon points="0 0, 10 3.5, 0 7" fill="#FFD700"/></marker>';
@@ -709,14 +690,22 @@ const VIEWER_JS = `
     // Zoom/pan state
     var zoom = 1, MIN_Z = 0.2, MAX_Z = 3, STEP = 0.15;
     var zoomLabel = panelEl.querySelector('.zoom-label');
-    function applyZoom() { svgEl.style.transform = 'scale(' + zoom + ')'; svgEl.style.transformOrigin = '0 0'; if (zoomLabel) zoomLabel.textContent = Math.round(zoom * 100) + '%'; }
+    // viewBox-based zoom/pan — matches editor approach for crisp rendering at all zoom levels
+    var panX = 0, panY = 0;
+    function applyZoom() {
+      var nw = parseInt(svgEl.getAttribute('data-native-w'), 10) || parseInt(svgEl.getAttribute('width'), 10);
+      var nh = parseInt(svgEl.getAttribute('data-native-h'), 10) || parseInt(svgEl.getAttribute('height'), 10);
+      svgEl.setAttribute('viewBox', (-panX / zoom) + ' ' + (-panY / zoom) + ' ' + (nw / zoom) + ' ' + (nh / zoom));
+      if (zoomLabel) zoomLabel.textContent = Math.round(zoom * 100) + '%';
+    }
     function doFit() {
       var hostRect = hostEl.getBoundingClientRect();
-      var svgW = parseInt(svgEl.getAttribute('width'), 10);
-      var svgH = parseInt(svgEl.getAttribute('height'), 10);
+      var svgW = parseInt(svgEl.getAttribute('data-native-w'), 10) || parseInt(svgEl.getAttribute('width'), 10);
+      var svgH = parseInt(svgEl.getAttribute('data-native-h'), 10) || parseInt(svgEl.getAttribute('height'), 10);
       if (!svgW || !svgH) return;
       zoom = Math.max(MIN_Z, Math.min(hostRect.width / svgW, hostRect.height / svgH, 1));
-      applyZoom(); hostEl.scrollTo(0, 0);
+      panX = 0; panY = 0;
+      applyZoom();
     }
     panelEl.querySelector('.zoom-in').onclick = function() { zoom = Math.min(MAX_Z, zoom + STEP); applyZoom(); };
     panelEl.querySelector('.zoom-out').onclick = function() { zoom = Math.max(MIN_Z, zoom - STEP); applyZoom(); };
@@ -726,26 +715,32 @@ const VIEWER_JS = `
     hostEl.addEventListener('wheel', function(e) {
       if (!e.ctrlKey && !e.metaKey) return;
       e.preventDefault();
+      var prevZoom = zoom;
       zoom = Math.min(MAX_Z, Math.max(MIN_Z, zoom * (e.deltaY > 0 ? 0.9 : 1.1)));
+      // Zoom towards mouse cursor (matching editor behaviour)
+      var rect = svgEl.getBoundingClientRect();
+      var mx = e.clientX - rect.left, my = e.clientY - rect.top;
+      var r = zoom / prevZoom;
+      panX = mx - (mx - panX) * r;
+      panY = my - (my - panY) * r;
       applyZoom();
     }, { passive: false });
 
-
-
-    // Pan via drag
-    var isPanning = false, panStartX = 0, panStartY = 0, scrollStartX = 0, scrollStartY = 0;
+    // Pan via drag — viewBox offset instead of scroll
+    var isPanning = false, panStartX = 0, panStartY = 0, panStartPanX = 0, panStartPanY = 0;
     hostEl.addEventListener('mousedown', function(e) {
       if (e.target.closest('.task-node') || e.target.closest('.doc-node') || e.target.closest('.collapse-toggle') || e.target.closest('.note-icon')) return;
-      isPanning = true; hostEl.classList.add('panning');
+      isPanning = true; svgEl.style.cursor = 'grabbing';
       panStartX = e.clientX; panStartY = e.clientY;
-      scrollStartX = hostEl.scrollLeft; scrollStartY = hostEl.scrollTop;
+      panStartPanX = panX; panStartPanY = panY;
     });
     window.addEventListener('mousemove', function(e) {
       if (!isPanning) return;
-      hostEl.scrollLeft = scrollStartX - (e.clientX - panStartX);
-      hostEl.scrollTop = scrollStartY - (e.clientY - panStartY);
+      panX = panStartPanX + (e.clientX - panStartX);
+      panY = panStartPanY + (e.clientY - panStartY);
+      applyZoom();
     });
-    window.addEventListener('mouseup', function() { isPanning = false; hostEl.classList.remove('panning'); });
+    window.addEventListener('mouseup', function() { isPanning = false; svgEl.style.cursor = 'grab'; });
 
     // Collapse toggle
     svgEl.querySelectorAll('.collapse-toggle').forEach(function(el) {
@@ -1278,23 +1273,36 @@ const VIEWER_JS = `
     var svgEl = hostEl.querySelector('svg');
     if (!svgEl) return;
 
-    // Zoom/pan
+    // Zoom/pan — viewBox-based, matching timeline view
     var zoom = 1, MIN_Z = 0.2, MAX_Z = 3, STEP = 0.15;
     var zoomLabel = panelEl.querySelector('.zoom-label');
-    function applyZoom() { svgEl.style.transform = 'scale(' + zoom + ')'; svgEl.style.transformOrigin = '0 0'; if (zoomLabel) zoomLabel.textContent = Math.round(zoom * 100) + '%'; }
+    var panX = 0, panY = 0;
+    function applyZoom() {
+      var nw = parseInt(svgEl.getAttribute('data-native-w'), 10) || parseInt(svgEl.getAttribute('width'), 10);
+      var nh = parseInt(svgEl.getAttribute('data-native-h'), 10) || parseInt(svgEl.getAttribute('height'), 10);
+      svgEl.setAttribute('viewBox', (-panX / zoom) + ' ' + (-panY / zoom) + ' ' + (nw / zoom) + ' ' + (nh / zoom));
+      if (zoomLabel) zoomLabel.textContent = Math.round(zoom * 100) + '%';
+    }
     panelEl.querySelector('.zoom-in').onclick = function() { zoom = Math.min(MAX_Z, zoom + STEP); applyZoom(); };
     panelEl.querySelector('.zoom-out').onclick = function() { zoom = Math.max(MIN_Z, zoom - STEP); applyZoom(); };
     panelEl.querySelector('.zoom-fit').onclick = function() {
       var hostRect = hostEl.getBoundingClientRect();
-      var svgW = parseInt(svgEl.getAttribute('width'), 10);
-      var svgH = parseInt(svgEl.getAttribute('height'), 10);
+      var svgW = parseInt(svgEl.getAttribute('data-native-w'), 10) || parseInt(svgEl.getAttribute('width'), 10);
+      var svgH = parseInt(svgEl.getAttribute('data-native-h'), 10) || parseInt(svgEl.getAttribute('height'), 10);
       zoom = Math.max(MIN_Z, Math.min(hostRect.width / svgW, hostRect.height / svgH, 1));
-      applyZoom(); hostEl.scrollTo(0, 0);
+      panX = 0; panY = 0;
+      applyZoom();
     };
     hostEl.addEventListener('wheel', function(e) {
       if (!e.ctrlKey && !e.metaKey) return;
       e.preventDefault();
+      var prevZoom = zoom;
       zoom = Math.min(MAX_Z, Math.max(MIN_Z, zoom * (e.deltaY > 0 ? 0.9 : 1.1)));
+      var rect = svgEl.getBoundingClientRect();
+      var mx = e.clientX - rect.left, my = e.clientY - rect.top;
+      var r = zoom / prevZoom;
+      panX = mx - (mx - panX) * r;
+      panY = my - (my - panY) * r;
       applyZoom();
     }, { passive: false });
 
@@ -2370,29 +2378,6 @@ const VIEWER_JS = `
       reRenderActive();
     });
   }
-  var stretchSlider = document.getElementById('stretch-slider');
-  var stretchLabel = document.getElementById('stretch-label');
-  var stretchResetBtn = document.getElementById('stretch-reset');
-
-  if (stretchSlider) {
-    stretchSlider.value = Math.round(stretchFactor * 100);
-    if (stretchLabel) stretchLabel.textContent = Math.round(stretchFactor * 100) + '%';
-    stretchSlider.addEventListener('input', function() {
-      stretchFactor = parseInt(stretchSlider.value, 10) / 100;
-      if (stretchLabel) stretchLabel.textContent = Math.round(stretchFactor * 100) + '%';
-      saveDisplayPrefs();
-      reRenderActive();
-    });
-  }
-  if (stretchResetBtn) {
-    stretchResetBtn.addEventListener('click', function() {
-      stretchFactor = 1.0;
-      if (stretchSlider) stretchSlider.value = 100;
-      if (stretchLabel) stretchLabel.textContent = '100%';
-      saveDisplayPrefs();
-      reRenderActive();
-    });
-  }
 
   // Tips banner dismiss
   var tipsBanner = document.getElementById('tips-banner');
@@ -2610,12 +2595,7 @@ function buildHtml(workflowData, options) {
       <span id="font-size-label" class="fc-value">11px</span>
       <button id="font-reset" type="button" class="fc-reset" title="Reset font size">↺</button>
     </div>
-    <div class="font-controls" title="Adjust timeline width stretch">
-      <span class="fc-label" title="Timeline Width">Width</span>
-      <input id="stretch-slider" type="range" min="50" max="350" step="10" value="100" title="Adjust timeline width stretch" />
-      <span id="stretch-label" class="fc-value">100%</span>
-      <button id="stretch-reset" type="button" class="fc-reset" title="Reset timeline stretch">↺</button>
-    </div>
+
     <button id="feedback-toggle-btn" class="feedback-topbtn" style="margin-left:auto;">
       💬 Leave Feedback <span id="feedback-count" class="feedback-count-badge" style="display:none;">0</span>
     </button>
