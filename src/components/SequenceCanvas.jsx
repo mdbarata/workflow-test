@@ -36,7 +36,8 @@ const SequenceCanvas = ({
       let t = { ...task };
       // Apply tool setting
       if (activeToolSetting === 'setting_2' && t.alternativeTools && t.alternativeTools.length > 0) {
-        t.tool = t.alternativeTools[0];
+        const firstAlt = t.alternativeTools[0];
+        t.tool = typeof firstAlt === 'object' && firstAlt !== null ? firstAlt.tool : firstAlt;
       }
       // Apply variant overrides
       if (variant === 'option_1' || !t.overrides || !t.overrides[variant]) return t;

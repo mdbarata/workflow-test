@@ -15,7 +15,8 @@ const FilterBar = ({ activity, filters, onChange, onImport, onToolNotes, onChapt
     const getTaskProps = (task) => {
       let t = { ...task };
       if (activeToolSetting === 'setting_2' && t.alternativeTools && t.alternativeTools.length > 0) {
-        t.tool = t.alternativeTools[0];
+        const firstAlt = t.alternativeTools[0];
+        t.tool = typeof firstAlt === 'object' && firstAlt !== null ? firstAlt.tool : firstAlt;
       }
       const v = activeVariant || 'option_1';
       if (v === 'option_1' || !t.overrides || !t.overrides[v]) return t;

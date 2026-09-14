@@ -371,7 +371,7 @@ const AltToolsModal = ({ workflowData, onClose }) => {
                         </div>
                         <div style={{ fontSize: 13, color: '#475569', display: 'flex', alignItems: 'flex-start', gap: '8px' }}>
                           <span style={{ fontWeight: 600, color: '#059669', flexShrink: 0 }}>Alternatives:</span>
-                          <span style={{ lineHeight: 1.4 }}>{task.alternativeTools.join(', ')}</span>
+                          <span style={{ lineHeight: 1.4 }}>{task.alternativeTools.map(a => typeof a === 'object' && a !== null ? a.tool : a).join(', ')}</span>
                         </div>
                       </div>
                     ))}

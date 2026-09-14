@@ -160,7 +160,7 @@ const Tooltip = ({ task, responsible, documents, pos }) => {
         {task.dependencies.length > 0 && <p><strong>Depends on:</strong> {task.dependencies.map(depId).join(', ')}</p>}
         {inputDocs.length > 0 && <p><strong>Inputs:</strong> {inputDocs.map((d) => d.name).join(', ')}</p>}
         {outputDocs.length > 0 && <p><strong>Outputs:</strong> {outputDocs.map((d) => d.name).join(', ')}</p>}
-        {task.alternativeTools?.length > 0 && <p><strong>Alternative tools:</strong> {task.alternativeTools.join(', ')}</p>}
+        {task.alternativeTools?.length > 0 && <p><strong>Alternative tools:</strong> {task.alternativeTools.map(a => typeof a === 'object' && a !== null ? a.tool : a).join(', ')}</p>}
       </div>
     </div>
   );
@@ -240,19 +240,21 @@ const computeToolEdgeFormats = (tasks) => {
       if (fromTool && fromTool !== task.tool) {
         const key = `${fromTool}→${task.tool}`;
         if (!map[key]) map[key] = { formats: new Set(), types: new Set(), statuses: new Set() };
-        const fmt = typeof dep === 'object' ? dep.format : '';
-        const type = typeof dep === 'object' ? dep.type || 'file' : 'file';
-        const status = typeof dep === 'object' ? dep.status || 'undefined' : 'undefined';
-        if (fmt) map[key].formats.add(fmt);
-        map[key].types.add(type);
-        map[key].statuses.add(status);
         // If the source task was created from an alternative tool with metadata,
-        // pull that metadata in as well (stored in _altMeta by getTaskProps).
+        // use that metadata instead of the dependency's original format/type/status,
+        // since the alt tool uses a different interface.
         if (fromTask?._altMeta) {
           const am = fromTask._altMeta;
           if (am.format) map[key].formats.add(am.format);
           if (am.type && am.type !== 'undefined') map[key].types.add(am.type);
           if (am.status && am.status !== 'undefined') map[key].statuses.add(am.status);
+        } else {
+          const fmt = typeof dep === 'object' ? dep.format : '';
+          const type = typeof dep === 'object' ? dep.type || 'file' : 'file';
+          const status = typeof dep === 'object' ? dep.status || 'undefined' : 'undefined';
+          if (fmt) map[key].formats.add(fmt);
+          map[key].types.add(type);
+          map[key].statuses.add(status);
         }
       }
     });
@@ -261,6 +263,12 @@ const computeToolEdgeFormats = (tasks) => {
 };
 
 const ArchitectureView = ({ activity, tasks: tasksProp, filters, toolNotes, onToolNoteChange, onToolClick, onFilterChange, searchMatchTools, archPositions, onArchPositionsChange, edgeSides: propEdgeSides, onEdgeSidesChange }) => {
+  const safeFilters = {
+    responsibles: [],
+    tools: [],
+    chapters: [],
+    ...(typeof filters === 'object' && filters !== null ? filters : {})
+  };
   const { tools, responsibles } = activity;
   // Use explicitly passed tasks (already transformed by getTaskProps) if available,
   // otherwise fall back to activity.tasks (static HTML viewer compat).
@@ -308,13 +316,13 @@ const ArchitectureView = ({ activity, tasks: tasksProp, filters, toolNotes, onTo
   // filters.chapters or activity.chapters changes (avoids stale-closure issues
   // with a single merged useMemo).
   const visibleTasksByFilter = useMemo(() => tasks.filter((t) => {
-    const byResp = (filters.responsibles || []).length === 0 || (filters.responsibles || []).includes(t.responsible);
-    const byTool = (filters.tools || []).length === 0 || (filters.tools || []).includes(t.tool);
+    const byResp = (safeFilters.responsibles || []).length === 0 || (safeFilters.responsibles || []).includes(t.responsible);
+    const byTool = (safeFilters.tools || []).length === 0 || (safeFilters.tools || []).includes(t.tool);
     return byResp && byTool;
-  }), [tasks, filters.responsibles, filters.tools]);
+  }), [tasks, safeFilters.responsibles, safeFilters.tools]);
 
   const visibleTasks = useMemo(() => {
-    const activeChapters = filters.chapters || [];
+    const activeChapters = safeFilters.chapters || [];
     if (activeChapters.length === 0) return visibleTasksByFilter;
     const chapters = activity.chapters || [];
     const selectedChapters = chapters.filter((c) => activeChapters.includes(c.id));
@@ -872,6 +880,12 @@ const WorkflowCanvas = ({
   setActiveToolSetting,
   onToolSettingNamesChange,
 }) => {
+  const safeFilters = {
+    responsibles: [],
+    tools: [],
+    chapters: [],
+    ...(typeof filters === 'object' && filters !== null ? filters : {})
+  };
   const { tools, responsibles, documents, name } = activity;
 
   // Derive display labels for settings and options
@@ -1218,13 +1232,13 @@ const WorkflowCanvas = ({
   // filters.chapters or activity.chapters changes (avoids stale-closure issues
   // with a single merged useMemo).
   const visibleTasksByFilter = useMemo(() => tasks.filter((t) => {
-    const byResp = (filters.responsibles || []).length === 0 || (filters.responsibles || []).includes(t.responsible);
-    const byTool = (filters.tools || []).length === 0 || (filters.tools || []).includes(t.tool);
+    const byResp = (safeFilters.responsibles || []).length === 0 || (safeFilters.responsibles || []).includes(t.responsible);
+    const byTool = (safeFilters.tools || []).length === 0 || (safeFilters.tools || []).includes(t.tool);
     return byResp && byTool;
-  }), [tasks, filters.responsibles, filters.tools]);
+  }), [tasks, safeFilters.responsibles, safeFilters.tools]);
 
   const visibleTasks = useMemo(() => {
-    const activeChapters = filters.chapters || [];
+    const activeChapters = safeFilters.chapters || [];
     if (activeChapters.length === 0) return visibleTasksByFilter;
     const chapters = activity.chapters || [];
     const selectedChapters = chapters.filter((c) => activeChapters.includes(c.id));
@@ -1232,7 +1246,7 @@ const WorkflowCanvas = ({
     return visibleTasksByFilter.filter((t) =>
       selectedChapters.some((c) => (c.tasks || []).includes(t.id))
     );
-  }, [visibleTasksByFilter, filters.chapters, activity.chapters]);
+  }, [visibleTasksByFilter, safeFilters.chapters, activity.chapters]);
 
   const visibleTools = useMemo(() => { const s = new Set(visibleTasks.map((t) => t.tool)); return activeTools.filter((tool) => s.has(tool)); }, [activeTools, visibleTasks]);
   const visibleDocIds = useMemo(() => { const s = new Set(); visibleTasks.forEach((t) => { (t.inputs || []).forEach((id) => s.add(id)); (t.outputs || []).forEach((id) => s.add(id)); }); return s; }, [visibleTasks]);
@@ -1590,8 +1604,8 @@ const WorkflowCanvas = ({
           {visibleTasks.map((task) =>
             task.dependencies.map((dep) => {
               const dId = depId(dep);
-              const fmt = typeof dep === 'object' ? dep.format || '' : '';
               const depTask = visibleTasks.find((t) => t.id === dId);
+              const fmt = depTask?._altMeta ? (depTask._altMeta.format || '') : (typeof dep === 'object' ? dep.format || '' : '');
               if (!depTask) return null;
               const y1 = getTaskY(depTask, visibleTasks, visibleTools, collapsedTools) + TASK_HEIGHT / 2;
               const y2 = getTaskY(task, visibleTasks, visibleTools, collapsedTools) + TASK_HEIGHT / 2;

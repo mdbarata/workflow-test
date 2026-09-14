@@ -584,8 +584,8 @@ const VIEWER_JS = `
     visibleTasks.forEach(function(task) {
       (task.dependencies || []).forEach(function(dep) {
         var dId = depId(dep);
-        var fmt = typeof dep === 'object' ? dep.format || '' : '';
         var depTask = visibleTasks.find(function(t) { return t.id === dId; });
+        var fmt = depTask && depTask._altMeta ? (depTask._altMeta.format || '') : (typeof dep === 'object' ? dep.format || '' : '');
         if (!depTask) return;
         var y1 = getTaskY(depTask, visibleTasks, visibleTools, collapsedSet) + getTaskHeight(depTask.name, getTaskW(depTask)) / 2;
         var y2 = getTaskY(task, visibleTasks, visibleTools, collapsedSet) + getTaskHeight(task.name, getTaskW(task)) / 2;
@@ -873,7 +873,7 @@ const VIEWER_JS = `
           }).join(', ') + '</p>';
         }
         if (task.details) html += '<p><strong>Details:</strong> ' + escapeHtml(task.details) + '</p>';
-        if (task.alternativeTools && task.alternativeTools.length) html += '<p><strong>Alt. tools:</strong> ' + task.alternativeTools.map(escapeHtml).join(', ') + '</p>';
+        if (task.alternativeTools && task.alternativeTools.length) html += '<p><strong>Alt. tools:</strong> ' + task.alternativeTools.map(function(a) { return escapeHtml(typeof a === 'object' && a !== null ? a.tool : a); }).join(', ') + '</p>';
         if (task.dependencies && task.dependencies.length) {
           html += '<p><strong>Depends on:</strong> ' + task.dependencies.map(function(d) {
             var did = depId(d);
@@ -942,18 +942,21 @@ const VIEWER_JS = `
         if (fromTool && fromTool !== task.tool) {
           var key = fromTool + '→' + task.tool;
           if (!map[key]) map[key] = { formats: new Set(), types: new Set(), statuses: new Set() };
-          var fmt = typeof dep === 'object' ? dep.format : '';
-          var type = typeof dep === 'object' ? dep.type || 'file' : 'file';
-          var status = typeof dep === 'object' ? dep.status || 'undefined' : 'undefined';
-          if (fmt) map[key].formats.add(fmt);
-          map[key].types.add(type);
-          map[key].statuses.add(status);
-          // Pull in alt-tool metadata from the source task if present
+          // If the source task was created from an alternative tool with metadata,
+          // use that metadata instead of the dependency's original format/type/status,
+          // since the alt tool uses a different interface.
           if (fromTask && fromTask._altMeta) {
             var am = fromTask._altMeta;
             if (am.format) map[key].formats.add(am.format);
             if (am.type && am.type !== 'undefined') map[key].types.add(am.type);
             if (am.status && am.status !== 'undefined') map[key].statuses.add(am.status);
+          } else {
+            var fmt = typeof dep === 'object' ? dep.format : '';
+            var type = typeof dep === 'object' ? dep.type || 'file' : 'file';
+            var status = typeof dep === 'object' ? dep.status || 'undefined' : 'undefined';
+            if (fmt) map[key].formats.add(fmt);
+            map[key].types.add(type);
+            map[key].statuses.add(status);
           }
         }
       });
