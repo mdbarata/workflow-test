@@ -1,7 +1,7 @@
 import React, { useState, useMemo, useCallback, useRef, useEffect } from 'react';
 
 // ── Layout constants ──
-const CARD_W = 420;
+const CARD_W = 460;
 const CARD_GAP_Y = 140;
 const CHIP_H = 22;
 const CHIP_PAD_X = 14; // horizontal padding inside each chip
@@ -15,6 +15,15 @@ const CHIP_ROW_H = CHIP_H + CHIP_GAP;
 const STORAGE_KEY = 'activity_links_positions';
 const MIN_ZOOM = 0.3;
 const MAX_ZOOM = 2.5;
+
+const getStageFontSize = (name) => {
+  const maxW = CARD_W - 105;
+  const baseSize = 13;
+  const charW = 7.5;
+  const estW = (name || '').length * charW;
+  if (estW <= maxW) return baseSize;
+  return Math.max(10, Math.floor(maxW / ((name || '').length * (charW / baseSize))));
+};
 
 const loadPositions = () => { try { return JSON.parse(localStorage.getItem(STORAGE_KEY) || 'null'); } catch { return null; } };
 const savePositions = (pos) => localStorage.setItem(STORAGE_KEY, JSON.stringify(pos));
@@ -120,7 +129,7 @@ const ActivityCard = ({ activity, pos, height, isHovered, onMouseEnter, onMouseL
       <rect x={pos.x} y={pos.y} width={CARD_W} height={height} rx={10}
         fill="#ffffff" stroke={isHovered ? '#2563eb' : '#cbd5e1'} strokeWidth={isHovered ? 2.5 : 1.5}
         style={{ filter: isHovered ? 'drop-shadow(0 6px 16px rgba(0,0,0,0.18))' : 'none', transition: 'stroke 0.15s' }} />
-      <text x={pos.x + 16} y={pos.y + 26} fontSize="14px" fontWeight="700" fill="#1e293b">{activity.name}</text>
+      <text x={pos.x + 16} y={pos.y + 26} fontSize={`${getStageFontSize(activity.name)}px`} fontWeight="700" fill="#1e293b">{activity.name}</text>
       <text x={pos.x + CARD_W - 16} y={pos.y + 26} fontSize="11px" fill="#94a3b8" textAnchor="end">
         {taskCount} task{taskCount !== 1 ? 's' : ''}
       </text>

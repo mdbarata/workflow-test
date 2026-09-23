@@ -195,11 +195,37 @@ const ZoomControls = ({ zoom, onZoom, onFit }) => (
 );
 const zBtnStyle = { background: 'none', border: 'none', cursor: 'pointer', fontSize: 16, fontWeight: 600, color: '#64748b', padding: '0 4px', lineHeight: 1, borderRadius: 4, display: 'flex', alignItems: 'center', justifyContent: 'center', width: 24, height: 24 };
 
-const ARCH_BOX_W = 180;
-const ARCH_BOX_H = 90;
+const ARCH_BOX_W = 210;
+const ARCH_BOX_H = 95;
 const ARCH_COL_GAP = 100;
 const ARCH_ROW_GAP = 80;
 const ARCH_MAX_COLS = 4;
+
+const getTextWidth = (text, font = 'bold 12px sans-serif') => {
+  if (typeof document !== 'undefined') {
+    if (!getTextWidth._canvas) getTextWidth._canvas = document.createElement('canvas');
+    const ctx = getTextWidth._canvas.getContext('2d');
+    if (ctx) {
+      ctx.font = font;
+      return ctx.measureText(text || '').width;
+    }
+  }
+  return (text || '').length * 8.2;
+};
+
+const getToolLaneArrowX = (tool) => {
+  const textW = getTextWidth(tool, 'bold 12px sans-serif');
+  return Math.max(150, Math.ceil(12 + textW + 24));
+};
+
+const getArchToolFontSize = (toolName) => {
+  const maxW = ARCH_BOX_W - 24;
+  const baseSize = 12;
+  const charW = 7.2;
+  const estW = (toolName || '').length * charW;
+  if (estW <= maxW) return baseSize;
+  return Math.max(9, Math.floor(maxW / ((toolName || '').length * (charW / baseSize))));
+};
 const ARCH_POS_KEY = (actId) => `arch_positions_${actId}`;
 const loadPositions = (actId) => { try { return JSON.parse(localStorage.getItem(ARCH_POS_KEY(actId)) || 'null'); } catch { return null; } };
 const savePositions = (actId, pos) => localStorage.setItem(ARCH_POS_KEY(actId), JSON.stringify(pos));
@@ -812,7 +838,7 @@ const ArchitectureView = ({ activity, tasks: tasksProp, filters, toolNotes, onTo
                 style={{ filter: isDragging ? 'drop-shadow(0 6px 16px rgba(0,0,0,0.18))' : 'none' }} />
               {resps[0] && <rect x={p.x} y={p.y} width={ARCH_BOX_W} height={8} rx={10} fill={resps[0].taskColor} />}
               {resps[0] && <rect x={p.x} y={p.y + 4} width={ARCH_BOX_W} height={4} fill={resps[0].taskColor} />}
-              <text x={p.x + ARCH_BOX_W / 2} y={p.y + 30} textAnchor="middle" fontSize="12px" fontWeight="700" fill="#1e293b" style={{ pointerEvents: 'none', userSelect: 'none' }}>{tool}</text>
+              <text x={p.x + ARCH_BOX_W / 2} y={p.y + 30} textAnchor="middle" fontSize={`${getArchToolFontSize(tool)}px`} fontWeight="700" fill="#1e293b" style={{ pointerEvents: 'none', userSelect: 'none' }}>{tool}</text>
               <text x={p.x + ARCH_BOX_W / 2} y={p.y + 48} textAnchor="middle" fontSize="10px" fill="#64748b" style={{ pointerEvents: 'none', userSelect: 'none' }}>{count} task{count !== 1 ? 's' : ''}</text>
               {resps.slice(0, 4).map((r, ri) => (
                 <circle key={r.key} cx={p.x + 14 + ri * 16} cy={p.y + 68} r={6} fill={r.taskColor} stroke="#ffffff" strokeWidth={1.5} />
@@ -1544,14 +1570,15 @@ const WorkflowCanvas = ({
             const isCollapsed = collapsedTools.has(tool);
             const toolDisplayHeight = getToolHeight(tool, collapsedTools, visibleTasks);
             const hasNote = !!(toolNotes && toolNotes[tool]?.trim());
+            const arrowX = getToolLaneArrowX(tool);
             return (
               <g key={tool}>
                 <rect x={0} y={toolY} width={visibleCanvasWidth} height={toolDisplayHeight} rx={6} fill="#ffffff" stroke="#2563eb" strokeWidth={2} />
                 <text x={12} y={toolY + 24} fontSize="12px" fontWeight="700" fill="#1d4ed8" style={{ pointerEvents: 'none' }}>{tool}</text>
                 <g style={{ cursor: 'pointer' }} onClick={() => toggleToolCollapse(tool)}>
-                  <circle cx={150} cy={toolY + 17} r={12} fill="#ffffff" fillOpacity="0.01" stroke="#94a3b8" strokeWidth={1.5} />
-                  <text x={150} y={toolY + 22} textAnchor="middle" fontSize="12px" fontWeight="700" fill="#94a3b8"
-                    transform={isCollapsed ? `rotate(-90, 150, ${toolY + 22})` : undefined}
+                  <circle cx={arrowX} cy={toolY + 17} r={12} fill="#ffffff" fillOpacity="0.01" stroke="#94a3b8" strokeWidth={1.5} />
+                  <text x={arrowX} y={toolY + 22} textAnchor="middle" fontSize="12px" fontWeight="700" fill="#94a3b8"
+                    transform={isCollapsed ? `rotate(-90, ${arrowX}, ${toolY + 22})` : undefined}
                     style={{ pointerEvents: 'none', userSelect: 'none' }}>▼</text>
                 </g>
                 {!isCollapsed && <line x1={0} y1={toolY + 34} x2={visibleCanvasWidth} y2={toolY + 34} stroke="#2563eb" strokeWidth={1} strokeOpacity={0.15} />}

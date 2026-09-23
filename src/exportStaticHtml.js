@@ -242,7 +242,7 @@ const VIEWER_JS = `
   var DOC_LEFT_X = 20, DOC_RIGHT_OFFSET = 30, ELBOW_STUB = 28;
   var FONT_SIZE = 11, LINE_HEIGHT = 14, PAD_X = 8, PAD_Y = 8, TASK_RADIUS = 6;
   var DOC_WIDTH = 130, DOC_MIN_HEIGHT = 48, DOC_RADIUS = 6;
-  var ARCH_BOX_W = 180, ARCH_BOX_H = 90, ARCH_COL_GAP = 100, ARCH_ROW_GAP = 80, ARCH_MAX_COLS = 4;
+  var ARCH_BOX_W = 210, ARCH_BOX_H = 95, ARCH_COL_GAP = 100, ARCH_ROW_GAP = 80, ARCH_MAX_COLS = 4;
 
   // ── Display preference defaults ──
   var DEFAULT_FONT_SIZE = 11, DEFAULT_LINE_HEIGHT = 14;
@@ -273,7 +273,7 @@ const VIEWER_JS = `
   }
 
   // Activity links constants
-  var CARD_W = 420, CARD_GAP_Y = 140;
+  var CARD_W = 460, CARD_GAP_Y = 140;
   var CHIP_H = 22, CHIP_PAD_X = 14, CHIP_DOT = 16;
   var FONT_SIZE_RESP = 10, FONT_SIZE_TOOL = 9;
   var CHAR_W_RESP = FONT_SIZE_RESP * 0.62, CHAR_W_TOOL = FONT_SIZE_TOOL * 0.62;
@@ -281,6 +281,42 @@ const VIEWER_JS = `
   var LABEL_H = 28, LABEL_GAP = 6, LABEL_FONT = 11, LABEL_CHAR_W = LABEL_FONT * 0.62, LABEL_PAD_X = 20;
 
   var tooltip = document.getElementById('tooltip');
+
+  function getTextWidth(text, font) {
+    if (typeof document !== 'undefined') {
+      if (!getTextWidth._canvas) getTextWidth._canvas = document.createElement('canvas');
+      var ctx = getTextWidth._canvas.getContext('2d');
+      if (ctx) {
+        ctx.font = font || ('bold ' + (FONT_SIZE + 1) + 'px sans-serif');
+        return ctx.measureText(text || '').width;
+      }
+    }
+    return (text || '').length * ((FONT_SIZE + 1) * 0.68);
+  }
+
+  function getToolLaneArrowX(tool, fontSize) {
+    var fs = fontSize || (FONT_SIZE + 1);
+    var textW = getTextWidth(tool, 'bold ' + fs + 'px sans-serif');
+    return Math.max(150, Math.ceil(12 + textW + 24));
+  }
+
+  function getStageFontSize(name) {
+    var maxW = CARD_W - 105;
+    var baseSize = 13;
+    var charW = 7.5;
+    var estW = (name || '').length * charW;
+    if (estW <= maxW) return baseSize;
+    return Math.max(10, Math.floor(maxW / ((name || '').length * (charW / baseSize))));
+  }
+
+  function getArchToolFontSize(toolName) {
+    var maxW = ARCH_BOX_W - 24;
+    var baseSize = 12;
+    var charW = 7.2;
+    var estW = (toolName || '').length * charW;
+    if (estW <= maxW) return baseSize;
+    return Math.max(9, Math.floor(maxW / ((toolName || '').length * (charW / baseSize))));
+  }
 
   function escapeHtml(s) { var d = document.createElement('div'); d.innerText = s || ''; return d.innerHTML; }
   function depId(d) { return typeof d === 'object' ? d.id : d; }
@@ -535,12 +571,13 @@ const VIEWER_JS = `
       svg += '<rect x="0" y="' + toolY + '" width="' + visibleCanvasWidth + '" height="' + h + '" rx="6" fill="#ffffff" stroke="#2563eb" stroke-width="2"/>';
       svg += '<text x="12" y="' + (toolY + 24) + '" font-size="' + toolNameFontSize + 'px" font-weight="700" fill="#1d4ed8" style="pointer-events:none">' + escapeHtml(tool) + '</text>';
       // Collapse toggle
+      var arrowX = getToolLaneArrowX(tool, toolNameFontSize);
       svg += '<g class="collapse-toggle" data-tool="' + escapeHtml(tool) + '" style="cursor:pointer">';
-      svg += '<circle cx="150" cy="' + (toolY + 17) + '" r="12" fill="#ffffff" fill-opacity="0.01" stroke="#94a3b8" stroke-width="1.5"/>';
+      svg += '<circle cx="' + arrowX + '" cy="' + (toolY + 17) + '" r="12" fill="#ffffff" fill-opacity="0.01" stroke="#94a3b8" stroke-width="1.5"/>';
       if (isCollapsed) {
-        svg += '<text x="150" y="' + (toolY + 22) + '" text-anchor="middle" font-size="12px" font-weight="700" fill="#94a3b8" transform="rotate(-90, 150, ' + (toolY + 22) + ')" style="pointer-events:none;user-select:none">▼</text>';
+        svg += '<text x="' + arrowX + '" y="' + (toolY + 22) + '" text-anchor="middle" font-size="12px" font-weight="700" fill="#94a3b8" transform="rotate(-90, ' + arrowX + ', ' + (toolY + 22) + ')" style="pointer-events:none;user-select:none">▼</text>';
       } else {
-        svg += '<text x="150" y="' + (toolY + 22) + '" text-anchor="middle" font-size="12px" font-weight="700" fill="#94a3b8" style="pointer-events:none;user-select:none">▼</text>';
+        svg += '<text x="' + arrowX + '" y="' + (toolY + 22) + '" text-anchor="middle" font-size="12px" font-weight="700" fill="#94a3b8" style="pointer-events:none;user-select:none">▼</text>';
       }
       svg += '</g>';
       // Note icon
@@ -1223,7 +1260,8 @@ const VIEWER_JS = `
         svg += '<rect x="' + p.x + '" y="' + p.y + '" width="' + ARCH_BOX_W + '" height="8" rx="10" fill="' + resps[0].taskColor + '"/>';
         svg += '<rect x="' + p.x + '" y="' + (p.y + 4) + '" width="' + ARCH_BOX_W + '" height="4" fill="' + resps[0].taskColor + '"/>';
       }
-      svg += '<text x="' + (p.x + ARCH_BOX_W / 2) + '" y="' + (p.y + 30) + '" text-anchor="middle" font-size="12px" font-weight="700" fill="#1e293b" style="pointer-events:none;user-select:none">' + escapeHtml(tool) + '</text>';
+      var archToolFontSize = getArchToolFontSize(tool);
+      svg += '<text x="' + (p.x + ARCH_BOX_W / 2) + '" y="' + (p.y + 30) + '" text-anchor="middle" font-size="' + archToolFontSize + 'px" font-weight="700" fill="#1e293b" style="pointer-events:none;user-select:none">' + escapeHtml(tool) + '</text>';
       svg += '<text x="' + (p.x + ARCH_BOX_W / 2) + '" y="' + (p.y + 48) + '" text-anchor="middle" font-size="10px" fill="#64748b" style="pointer-events:none;user-select:none">' + count + ' task' + (count !== 1 ? 's' : '') + '</text>';
       resps.slice(0, 4).forEach(function(r, ri) {
         svg += '<circle cx="' + (p.x + 14 + ri * 16) + '" cy="' + (p.y + 68) + '" r="6" fill="' + r.taskColor + '" stroke="#ffffff" stroke-width="1.5"/>';
@@ -1527,7 +1565,8 @@ const VIEWER_JS = `
 
       svg += '<g class="link-card" data-card-id="' + escapeHtml(act.id) + '">';
       svg += '<rect x="' + pos.x + '" y="' + pos.y + '" width="' + CARD_W + '" height="' + h + '" rx="10" fill="#ffffff" stroke="#cbd5e1" stroke-width="1.5"/>';
-      svg += '<text x="' + (pos.x + 16) + '" y="' + (pos.y + 26) + '" font-size="14px" font-weight="700" fill="#1e293b">' + escapeHtml(act.name) + '</text>';
+      var stageFontSize = getStageFontSize(act.name);
+      svg += '<text x="' + (pos.x + 16) + '" y="' + (pos.y + 26) + '" font-size="' + stageFontSize + 'px" font-weight="700" fill="#1e293b">' + escapeHtml(act.name) + '</text>';
       svg += '<text x="' + (pos.x + CARD_W - 16) + '" y="' + (pos.y + 26) + '" font-size="11px" fill="#94a3b8" text-anchor="end">' + taskCount + ' task' + (taskCount !== 1 ? 's' : '') + '</text>';
 
       // Responsible chips
