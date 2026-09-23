@@ -3,7 +3,7 @@
 // workflow viewer. Supports:
 //   • Multiple activities with tab navigation
 //   • Timeline view (with collapse/expand & filter) and Architecture view
-//   • Activity Links view
+//   • Overview view
 //   • Tool notes on hover
 //   • Zoom / pan / tooltips
 // No React, no build step, no network calls, no data leaves the browser.
@@ -272,7 +272,7 @@ const VIEWER_JS = `
     } catch(e) {}
   }
 
-  // Activity links constants
+  // Overview constants
   var CARD_W = 460, CARD_GAP_Y = 140;
   var CHIP_H = 22, CHIP_PAD_X = 14, CHIP_DOT = 16;
   var FONT_SIZE_RESP = 10, FONT_SIZE_TOOL = 9;
@@ -1438,7 +1438,7 @@ const VIEWER_JS = `
   }
 
   // ══════════════════════════════════════════════════════════════════════════
-  // ACTIVITY LINKS VIEW RENDERER
+  // OVERVIEW VIEW RENDERER
   // ══════════════════════════════════════════════════════════════════════════
   function computeLinks(activities) {
     var pairMap = {};
@@ -1548,7 +1548,7 @@ const VIEWER_JS = `
       link.docNames.forEach(function(docName, i) {
         var labelW = docName.length * LABEL_CHAR_W + LABEL_PAD_X * 2;
         var labelY = gapStart + i * (LABEL_H + LABEL_GAP) + LABEL_H / 2;
-        svg += '<g transform="translate(' + midX + ', ' + labelY + ')">';
+        svg += '<g class="deliverable-box" data-from="' + escapeHtml(link.from) + '" data-to="' + escapeHtml(link.to) + '" transform="translate(' + midX + ', ' + labelY + ')" style="cursor:pointer;" title="Double-click to open stage">';
         svg += '<rect x="' + (-labelW / 2) + '" y="' + (-LABEL_H / 2) + '" width="' + labelW + '" height="' + LABEL_H + '" rx="13" fill="#ffffff" stroke="#94a3b8" stroke-width="1.2"/>';
         svg += '<text text-anchor="middle" y="4" font-size="' + LABEL_FONT + 'px" font-weight="600" fill="#475569">' + escapeHtml(docName) + '</text>';
         svg += '</g>';
@@ -1563,7 +1563,7 @@ const VIEWER_JS = `
       var taskCount = act.tasks ? act.tasks.length : 0;
       var TITLE_H = 44;
 
-      svg += '<g class="link-card" data-card-id="' + escapeHtml(act.id) + '">';
+      svg += '<g class="link-card" data-card-id="' + escapeHtml(act.id) + '" style="cursor:pointer;" title="Double-click to open stage">';
       svg += '<rect x="' + pos.x + '" y="' + pos.y + '" width="' + CARD_W + '" height="' + h + '" rx="10" fill="#ffffff" stroke="#cbd5e1" stroke-width="1.5"/>';
       var stageFontSize = getStageFontSize(act.name);
       svg += '<text x="' + (pos.x + 16) + '" y="' + (pos.y + 26) + '" font-size="' + stageFontSize + 'px" font-weight="700" fill="#1e293b">' + escapeHtml(act.name) + '</text>';
@@ -1647,6 +1647,29 @@ const VIEWER_JS = `
           g.querySelectorAll('rect').forEach(function(r) { r.setAttribute('fill', '#ffffff'); r.setAttribute('stroke', '#94a3b8'); r.setAttribute('opacity', '1'); });
           g.querySelectorAll('text').forEach(function(t) { t.setAttribute('fill', '#475569'); t.setAttribute('opacity', '1'); });
         });
+      });
+    });
+
+    // Double-click card or deliverable box to navigate to stage tab
+    svgEl.querySelectorAll('.link-card').forEach(function(card) {
+      var cardId = card.getAttribute('data-card-id');
+      card.addEventListener('dblclick', function(e) {
+        e.stopPropagation();
+        var actIdx = activities.findIndex(function(a) { return a.id === cardId; });
+        if (actIdx >= 0) {
+          activateTab('tab-timeline-' + actIdx);
+        }
+      });
+    });
+
+    svgEl.querySelectorAll('.deliverable-box').forEach(function(box) {
+      box.addEventListener('dblclick', function(e) {
+        e.stopPropagation();
+        var fromId = box.getAttribute('data-from');
+        var actIdx = activities.findIndex(function(a) { return a.id === fromId; });
+        if (actIdx >= 0) {
+          activateTab('tab-timeline-' + actIdx);
+        }
       });
     });
 
@@ -2588,10 +2611,10 @@ function buildHtml(workflowData, options) {
     });
   }
 
-  // Activity Links tab
+  // Overview tab
   if (showLinks) {
     tabBarHtml += `<div class="tab-sep tab-activity"></div>`;
-    tabBarHtml += `<button class="tab-btn tab-activity" data-tab="tab-links">Activity links</button>`;
+    tabBarHtml += `<button class="tab-btn tab-activity" data-tab="tab-links">Overview</button>`;
     panelsHtml += `<div class="tab-panel" id="tab-links" data-type="links">
       <div style="position:relative;flex:1;overflow:hidden;display:flex;flex-direction:column;">
         <div class="canvas-host" style="flex:1;overflow:auto;"></div>

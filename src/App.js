@@ -1014,7 +1014,7 @@ const App = () => {
                 className={`activity-tab ${isLinksViewActive ? 'active' : ''}`}
                 onClick={() => setShowLinks(true)}
               >
-                Activity links
+                Overview
               </button>
             )}
           </>
@@ -1081,7 +1081,17 @@ const App = () => {
             onLoadJson={handleLoadJson}
           />
         ) : isLinksViewActive ? (
-          <ActivityLinksView activities={activities} onEditTasks={() => setShowEditor(true)} />
+          <ActivityLinksView
+            activities={activities}
+            onEditTasks={() => setShowEditor(true)}
+            onSelectActivity={(actId) => {
+              const idx = activities.findIndex((a) => a.id === actId);
+              if (idx >= 0) {
+                setActiveActivityIndex(idx);
+                setShowLinks(false);
+              }
+            }}
+          />
         ) : (
           <WorkflowCanvas
             activity={activity}

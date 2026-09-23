@@ -116,7 +116,7 @@ const buildDefaultPositions = (activities) => {
 };
 
 // ── ActivityCard ──────────────────────────────────────────────────────────────
-const ActivityCard = ({ activity, pos, height, isHovered, onMouseEnter, onMouseLeave, onMouseDown }) => {
+const ActivityCard = ({ activity, pos, height, isHovered, onMouseEnter, onMouseLeave, onMouseDown, onDoubleClick }) => {
   const taskCount = activity.tasks?.length || 0;
   const TITLE_H = 44;
 
@@ -125,7 +125,9 @@ const ActivityCard = ({ activity, pos, height, isHovered, onMouseEnter, onMouseL
   const { chips: toolChips } = layoutToolChips(activity.tools || [], toolStartY);
 
   return (
-    <g style={{ cursor: 'grab' }} onMouseEnter={onMouseEnter} onMouseLeave={onMouseLeave} onMouseDown={onMouseDown}>
+    <g style={{ cursor: 'grab' }} onMouseEnter={onMouseEnter} onMouseLeave={onMouseLeave} onMouseDown={onMouseDown}
+      onDoubleClick={(e) => { e.stopPropagation(); onDoubleClick && onDoubleClick(activity.id); }}
+      title="Double-click to open stage">
       <rect x={pos.x} y={pos.y} width={CARD_W} height={height} rx={10}
         fill="#ffffff" stroke={isHovered ? '#2563eb' : '#cbd5e1'} strokeWidth={isHovered ? 2.5 : 1.5}
         style={{ filter: isHovered ? 'drop-shadow(0 6px 16px rgba(0,0,0,0.18))' : 'none', transition: 'stroke 0.15s' }} />
@@ -173,7 +175,7 @@ const ZoomControls = ({ zoom, onZoom, onFit }) => (
 const zBtn = { background: 'none', border: 'none', cursor: 'pointer', fontSize: 16, fontWeight: 600, color: '#64748b', width: 24, height: 24 };
 
 // ── ActivityLinksView ─────────────────────────────────────────────────────────
-const ActivityLinksView = ({ activities, onEditTasks }) => {
+const ActivityLinksView = ({ activities, onEditTasks, onSelectActivity }) => {
   const [positions, setPositions] = useState(() => loadPositions() || buildDefaultPositions(activities));
   const [hoveredId, setHoveredId] = useState(null);
   const [dragging, setDragging] = useState(null);
@@ -298,7 +300,10 @@ const ActivityLinksView = ({ activities, onEditTasks }) => {
           const labelW = docName.length * LABEL_CHAR_W + LABEL_PAD_X * 2;
           const labelY = gapStart + i * (LABEL_H + LABEL_GAP) + LABEL_H / 2;
           return (
-            <g key={docName} transform={`translate(${midX}, ${labelY})`}>
+            <g key={docName} transform={`translate(${midX}, ${labelY})`}
+              style={{ cursor: 'pointer' }}
+              onDoubleClick={(e) => { e.stopPropagation(); onSelectActivity && onSelectActivity(link.from); }}
+              title="Double-click to open stage">
               <rect x={-labelW / 2} y={-LABEL_H / 2} width={labelW} height={LABEL_H} rx={13}
                 fill={isHov ? '#ecfdf5' : '#ffffff'} stroke={color} strokeWidth={1.2}
                 opacity={hoveredId && !isHov ? 0.2 : 1} />
@@ -342,7 +347,8 @@ const ActivityLinksView = ({ activities, onEditTasks }) => {
             isHovered={hoveredId === act.id}
             onMouseEnter={() => setHoveredId(act.id)}
             onMouseLeave={() => setHoveredId(null)}
-            onMouseDown={(e) => handleCardMouseDown(e, act.id)} />
+            onMouseDown={(e) => handleCardMouseDown(e, act.id)}
+            onDoubleClick={(id) => onSelectActivity && onSelectActivity(id)} />
         ))}
       </svg>
 

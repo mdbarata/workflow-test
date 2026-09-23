@@ -16,7 +16,7 @@ const ExportModal = ({ onExport, onClose }) => {
         <div style={{ padding: '20px 20px 8px' }}>
           <p style={{ fontSize: 12, color: '#64748b', margin: '0 0 16px' }}>Choose what to include in the exported HTML file. The viewer will be fully interactive (zoom, pan, filter, collapse) but read-only.</p>
           {[{ value: 'current', label: 'Current activity', desc: 'Timeline diagram for the selected activity' },
-          { value: 'all', label: 'All activities', desc: 'All timelines + architecture views + activity links' }].map((opt) => (
+          { value: 'all', label: 'All activities', desc: 'All timelines + architecture views + overview' }].map((opt) => (
             <label key={opt.value} style={{ display: 'flex', alignItems: 'flex-start', gap: 10, padding: '10px 12px', marginBottom: 8, borderRadius: 8, border: `1.5px solid ${scope === opt.value ? '#2563eb' : '#e2e8f0'}`, background: scope === opt.value ? '#eff6ff' : '#fff', cursor: 'pointer', transition: 'all .15s' }}>
               <input type="radio" name="scope" checked={scope === opt.value} onChange={() => setScope(opt.value)} style={{ marginTop: 2 }} />
               <div>
