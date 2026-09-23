@@ -485,7 +485,7 @@ const RenameDropdown = ({ label, options, onRename }) => {
 };
 
 // ── Main component ────────────────────────────────────────────────────────────
-const TaskEditor = ({ workflowData, onSave, onClose, initialTabMode = 'stages', initialSequenceId = null }) => {
+const TaskEditor = ({ workflowData, onSave, onClose, initialTabMode = 'stages', initialSequenceId = null, initialActivityId = null }) => {
   // Local state for option display names (renamed independently of row data)
   const [variantNames, setVariantNames] = useState(() => ({
     option_1: workflowData?.variantNames?.option_1 || 'Option 1',
@@ -501,7 +501,7 @@ const TaskEditor = ({ workflowData, onSave, onClose, initialTabMode = 'stages', 
   const [editingToolSetting, setEditingToolSetting] = useState(null); // 'setting_1' | 'setting_2' | null
   const [toolSettingDraft, setToolSettingDraft] = useState('');
   const [rows, setRows] = useState(() => workflowToRows(workflowData));
-  const [activeAct, setActiveAct] = useState('__all__');
+  const [activeAct, setActiveAct] = useState(() => initialActivityId || '__all__');
   const [activeSeq, setActiveSeq] = useState(() => initialSequenceId || '__all__');
   const [tabMode, setTabMode] = useState(initialTabMode);
   const [error, setError] = useState(null);

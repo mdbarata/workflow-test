@@ -411,6 +411,8 @@ const App = () => {
   const [archPositions, setArchPositions] = useState(saved?.archPositions || {});
   // edgeSides: { [activityId]: { [edgeKey]: { from, to } } } — per-activity edge port sides
   const [edgeSides, setEdgeSides] = useState(saved?.edgeSides || {});
+  // overviewPositions: { [activityId]: { x, y } } — stage card positions in the Overview tab
+  const [overviewPositions, setOverviewPositions] = useState(saved?.overviewPositions || null);
   // feedbackItems: array of imported reviewer comments
   const [feedbackItems, setFeedbackItems] = useState(saved?.feedbackItems || []);
   const [showFeedbackModal, setShowFeedbackModal] = useState(false);
@@ -438,7 +440,7 @@ const App = () => {
     });
   }, [currentTabKey]);
 
-  useAutoSave({ workflowData, activeActivityIndex, perTabFilters, showLinks, toolNotes, docPositions, archPositions, edgeSides, feedbackItems, activeVariant, activeToolSetting });
+  useAutoSave({ workflowData, activeActivityIndex, perTabFilters, showLinks, toolNotes, docPositions, archPositions, edgeSides, feedbackItems, activeVariant, activeToolSetting, overviewPositions });
 
   const handleDocPositionsChange = useCallback((activityId, positions) => {
     setDocPositions((prev) => {
@@ -473,6 +475,10 @@ const App = () => {
     });
   }, []);
 
+  const handleOverviewPositionsChange = useCallback((positions) => {
+    setOverviewPositions(positions || null);
+  }, []);
+
   const handleVariantNamesChange = useCallback((names) => {
     setWorkflowData((prev) => ({ ...prev, variantNames: { ...(prev.variantNames || {}), ...names } }));
   }, []);
@@ -500,6 +506,7 @@ const App = () => {
     setDocPositions({});
     setArchPositions({});
     setEdgeSides({});
+    setOverviewPositions(null);
     setFeedbackItems([]);
   };
 
@@ -522,7 +529,11 @@ const App = () => {
       activities: (workflowData.activities || []).map((act) => ({
         ...act,
         chapters: Array.isArray(act.chapters) ? act.chapters : []
-      }))
+      })),
+      // Persist layout positions so the diagram looks the same when shared
+      toolPositions: archPositions,
+      edgeSides: edgeSides,
+      ...(overviewPositions ? { overviewPositions } : {}),
     };
     const data = JSON.stringify(cleanData, null, 2);
     const a = document.createElement('a');
@@ -653,6 +664,12 @@ const App = () => {
     setDocPositions(newDocPos);
     setArchPositions(newArchPos);
     setEdgeSides(newEdgeSides);
+    // Merge overview positions from imported payload if present
+    pendingImport.payloads.forEach((payload) => {
+      if (payload.overviewPositions) {
+        setOverviewPositions((prev) => ({ ...(prev || {}), ...payload.overviewPositions }));
+      }
+    });
     setActiveActivityIndex(firstNewIndex);
     setPerTabFilters({});
     setPendingImport(null);
@@ -724,6 +741,12 @@ const App = () => {
     setDocPositions(combinedDocPos);
     setArchPositions(combinedArchPos);
     setEdgeSides(combinedEdgeSides);
+    // Restore overview positions from imported payload if present
+    const combinedOverviewPos = {};
+    pendingImport.payloads.forEach((payload) => {
+      if (payload.overviewPositions) Object.assign(combinedOverviewPos, payload.overviewPositions);
+    });
+    if (Object.keys(combinedOverviewPos).length > 0) setOverviewPositions(combinedOverviewPos);
     setActiveActivityIndex(0);
     setPerTabFilters({});
     setPendingImport(null);
@@ -1084,6 +1107,8 @@ const App = () => {
           <ActivityLinksView
             activities={activities}
             onEditTasks={() => setShowEditor(true)}
+            overviewPositions={overviewPositions}
+            onOverviewPositionsChange={handleOverviewPositionsChange}
             onSelectActivity={(actId) => {
               const idx = activities.findIndex((a) => a.id === actId);
               if (idx >= 0) {
@@ -1131,6 +1156,7 @@ const App = () => {
           onClose={() => setShowEditor(false)}
           initialTabMode={activeSequenceId ? 'sequences' : 'stages'}
           initialSequenceId={activeSequenceId}
+          initialActivityId={!activeSequenceId ? (activity?.name || null) : null}
         />
       )}
 

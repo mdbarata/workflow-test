@@ -233,13 +233,15 @@ const ARCH_SIDES_KEY = (actId) => `arch_sides_${actId}`;
 const loadEdgeSides = (actId) => { try { return JSON.parse(localStorage.getItem(ARCH_SIDES_KEY(actId)) || 'null'); } catch { return null; } };
 const saveEdgeSides = (actId, sides) => localStorage.setItem(ARCH_SIDES_KEY(actId), JSON.stringify(sides));
 
-const computeToolLayout = (tools, tasks) => {
+const computeToolLayout = (tools, tasks, allTasks) => {
+  const taskLookup = allTasks && allTasks.length > 0 ? allTasks : tasks;
   const toolSet = new Set(tools);
   const edges = {};
   tools.forEach((t) => { edges[t] = new Set(); });
   tasks.forEach((task) => {
     task.dependencies.forEach((dep) => {
-      const fromTool = tasks.find((t) => t.id === depId(dep))?.tool;
+      const dId = depId(dep);
+      const fromTool = (taskLookup.find((t) => t.id === dId) || tasks.find((t) => t.id === dId))?.tool;
       if (fromTool && fromTool !== task.tool && toolSet.has(fromTool) && toolSet.has(task.tool)) edges[fromTool].add(task.tool);
     });
   });
@@ -257,23 +259,39 @@ const computeToolLayout = (tools, tasks) => {
   return { pos, edges };
 };
 
-const computeToolEdgeFormats = (tasks) => {
+const computeToolEdgeFormats = (tasks, allTasks) => {
+  const taskLookup = allTasks && allTasks.length > 0 ? allTasks : tasks;
   const map = {};
   tasks.forEach((task) => {
     task.dependencies.forEach((dep) => {
-      const fromTask = tasks.find((t) => t.id === depId(dep));
+      const dId = depId(dep);
+      const fromTask = taskLookup.find((t) => t.id === dId) || tasks.find((t) => t.id === dId);
       const fromTool = fromTask?.tool;
       if (fromTool && fromTool !== task.tool) {
         const key = `${fromTool}→${task.tool}`;
         if (!map[key]) map[key] = { formats: new Set(), types: new Set(), statuses: new Set() };
-        // If the source task was created from an alternative tool with metadata,
-        // use that metadata instead of the dependency's original format/type/status,
-        // since the alt tool uses a different interface.
-        if (fromTask?._altMeta) {
-          const am = fromTask._altMeta;
-          if (am.format) map[key].formats.add(am.format);
-          if (am.type && am.type !== 'undefined') map[key].types.add(am.type);
-          if (am.status && am.status !== 'undefined') map[key].statuses.add(am.status);
+        // Check if either the source task or the target task was configured with an alternative tool interface
+        const altMeta = (fromTask?._altMeta?.format ? fromTask._altMeta : null)
+          || (task?._altMeta?.format ? task._altMeta : null)
+          || (fromTask?._altMeta && (fromTask._altMeta.type !== 'undefined' || fromTask._altMeta.status !== 'undefined') ? fromTask._altMeta : null)
+          || (task?._altMeta && (task._altMeta.type !== 'undefined' || task._altMeta.status !== 'undefined') ? task._altMeta : null);
+
+        if (altMeta) {
+          const amFormat = fromTask?._altMeta?.format || task?._altMeta?.format || '';
+          const amType = (fromTask?._altMeta?.type && fromTask._altMeta.type !== 'undefined')
+            ? fromTask._altMeta.type
+            : (task?._altMeta?.type && task._altMeta.type !== 'undefined')
+              ? task._altMeta.type
+              : 'undefined';
+          const amStatus = (fromTask?._altMeta?.status && fromTask._altMeta.status !== 'undefined')
+            ? fromTask._altMeta.status
+            : (task?._altMeta?.status && task._altMeta.status !== 'undefined')
+              ? task._altMeta.status
+              : 'undefined';
+
+          if (amFormat) map[key].formats.add(amFormat);
+          if (amType !== 'undefined') map[key].types.add(amType);
+          if (amStatus !== 'undefined') map[key].statuses.add(amStatus);
         } else {
           const fmt = typeof dep === 'object' ? dep.format : '';
           const type = typeof dep === 'object' ? dep.type || 'file' : 'file';
@@ -288,7 +306,7 @@ const computeToolEdgeFormats = (tasks) => {
   return map;
 };
 
-const ArchitectureView = ({ activity, tasks: tasksProp, filters, toolNotes, onToolNoteChange, onToolClick, onFilterChange, searchMatchTools, archPositions, onArchPositionsChange, edgeSides: propEdgeSides, onEdgeSidesChange }) => {
+const ArchitectureView = ({ activity, tasks: tasksProp, allTasks, filters, toolNotes, onToolNoteChange, onToolClick, onFilterChange, searchMatchTools, archPositions, onArchPositionsChange, edgeSides: propEdgeSides, onEdgeSidesChange }) => {
   const safeFilters = {
     responsibles: [],
     tools: [],
@@ -359,8 +377,8 @@ const ArchitectureView = ({ activity, tasks: tasksProp, filters, toolNotes, onTo
   }, [visibleTasksByFilter, filters.chapters, activity.chapters]);
 
   const visibleTools = useMemo(() => { const s = new Set(visibleTasks.map((t) => t.tool)); return tools.filter((t) => s.has(t)); }, [tools, visibleTasks]);
-  const { pos: autoPos, edges } = useMemo(() => computeToolLayout(visibleTools, visibleTasks), [visibleTools, visibleTasks]);
-  const edgeFormats = useMemo(() => computeToolEdgeFormats(visibleTasks), [visibleTasks]);
+  const { pos: autoPos, edges } = useMemo(() => computeToolLayout(visibleTools, visibleTasks, allTasks), [visibleTools, visibleTasks, allTasks]);
+  const edgeFormats = useMemo(() => computeToolEdgeFormats(visibleTasks, allTasks), [visibleTasks, allTasks]);
 
   const pos = useMemo(() => {
     const savedPos = toolPositions || loadPositions(activity.id) || {};
@@ -932,21 +950,25 @@ const WorkflowCanvas = ({
     (t) => t.overrides && t.overrides.option_2
   );
 
+  // Show the Tool Setting 2 button only when at least one raw task declares
+  // alternativeTools (so switching would actually change anything).
+  const hasSetting2 = (activity.tasks || []).some(
+    (t) => t.alternativeTools && t.alternativeTools.length > 0
+  );
+
   const getTaskProps = (task, variant) => {
     let t = { ...task };
     // Apply tool setting — when Setting 2 is active, swap in the alternative tool
     // and, if the alt tool carries metadata (format/type/status), attach that info
-    // to the task so the architecture view can render the correct edge style.
+    // to the task so the architecture view and timeline can render the correct edge style.
     if (activeToolSetting === 'setting_2' && t.alternativeTools && t.alternativeTools.length > 0) {
       const firstAlt = t.alternativeTools[0];
       if (typeof firstAlt === 'object' && firstAlt !== null) {
         t.tool = firstAlt.tool;
-        // Annotate the task with alt-tool interface metadata so arch view edge-format
-        // aggregation picks it up via the dependencies of downstream tasks.
-        // We store it on a helper property; computeToolEdgeFormats reads dep objects.
         t._altMeta = { format: firstAlt.format || '', type: firstAlt.type || 'undefined', status: firstAlt.status || 'undefined' };
       } else {
         t.tool = firstAlt;
+        t._altMeta = { format: '', type: 'undefined', status: 'undefined' };
       }
     }
     // Apply variant overrides
@@ -954,6 +976,19 @@ const WorkflowCanvas = ({
     return { ...t, ...t.overrides[variant] };
   };
   const tasks = (activity.tasks || []).map(t => getTaskProps(t, activeVariant));
+
+  const allTasks = useMemo(() => {
+    const list = [];
+    (workflowData?.activities || []).forEach((act) => {
+      (act.tasks || []).forEach((rawT) => {
+        list.push(getTaskProps(rawT, activeVariant));
+      });
+    });
+    (workflowData?.hiddenTasks || []).forEach((rawT) => {
+      list.push(getTaskProps(rawT, activeVariant));
+    });
+    return list;
+  }, [workflowData, activeVariant, activeToolSetting]);
 
   const activeTools = useMemo(() => {
     const s = new Set();
@@ -1351,6 +1386,7 @@ const WorkflowCanvas = ({
         <ArchitectureView
           activity={{ ...activity, tools: activeTools }}
           tasks={tasks}
+          allTasks={allTasks}
           filters={filters}
           toolNotes={toolNotes}
           onToolNoteChange={onToolNoteChange}
@@ -1381,7 +1417,8 @@ const WorkflowCanvas = ({
       {/* Toggles Container */}
       <div style={{ position: 'absolute', top: 12, left: 310, zIndex: 100, display: 'flex', gap: 12 }}>
         
-        {/* Tool Settings Toggle */}
+        {/* Tool Settings Toggle — only visible when activity has alternative tools */}
+        {hasSetting2 && (
         <div style={{ display: 'flex', alignItems: 'center', background: '#ffffff', border: '1px solid #cbd5e1', borderRadius: 6, overflow: 'hidden', boxShadow: '0 2px 8px rgba(0,0,0,0.08)' }}>
           {editingToolSetting === 'setting_1' ? (
             <input
@@ -1415,7 +1452,7 @@ const WorkflowCanvas = ({
               )}
             </div>
           )}
-          {editingToolSetting === 'setting_2' ? (
+          {hasSetting2 && (editingToolSetting === 'setting_2' ? (
             <input
               autoFocus
               value={toolSettingDraft}
@@ -1446,8 +1483,9 @@ const WorkflowCanvas = ({
                 >✎</button>
               )}
             </div>
-          )}
+          ))}
         </div>
+        )}
 
         {/* Options Toggle */}
         <div style={{ display: 'flex', alignItems: 'center', background: '#ffffff', border: '1px solid #cbd5e1', borderRadius: 6, overflow: 'hidden', boxShadow: '0 2px 8px rgba(0,0,0,0.08)' }}>
@@ -1631,8 +1669,10 @@ const WorkflowCanvas = ({
           {visibleTasks.map((task) =>
             task.dependencies.map((dep) => {
               const dId = depId(dep);
-              const depTask = visibleTasks.find((t) => t.id === dId);
-              const fmt = depTask?._altMeta ? (depTask._altMeta.format || '') : (typeof dep === 'object' ? dep.format || '' : '');
+              const depTask = visibleTasks.find((t) => t.id === dId) || (allTasks && allTasks.find((t) => t.id === dId));
+              const fmt = depTask?._altMeta?.format
+                || task?._altMeta?.format
+                || (typeof dep === 'object' ? dep.format || '' : '');
               if (!depTask) return null;
               const y1 = getTaskY(depTask, visibleTasks, visibleTools, collapsedTools) + TASK_HEIGHT / 2;
               const y2 = getTaskY(task, visibleTasks, visibleTools, collapsedTools) + TASK_HEIGHT / 2;

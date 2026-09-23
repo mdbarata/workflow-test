@@ -175,8 +175,14 @@ const ZoomControls = ({ zoom, onZoom, onFit }) => (
 const zBtn = { background: 'none', border: 'none', cursor: 'pointer', fontSize: 16, fontWeight: 600, color: '#64748b', width: 24, height: 24 };
 
 // ── ActivityLinksView ─────────────────────────────────────────────────────────
-const ActivityLinksView = ({ activities, onEditTasks, onSelectActivity }) => {
-  const [positions, setPositions] = useState(() => loadPositions() || buildDefaultPositions(activities));
+const ActivityLinksView = ({ activities, onEditTasks, onSelectActivity, overviewPositions, onOverviewPositionsChange }) => {
+  const [positions, setPositions] = useState(() => overviewPositions || loadPositions() || buildDefaultPositions(activities));
+
+  // Sync positions when the parent loads a new JSON (overviewPositions prop changes)
+  const overviewPosKey = JSON.stringify(overviewPositions || null);
+  useEffect(() => {
+    if (overviewPositions) setPositions(overviewPositions);
+  }, [overviewPosKey]); // eslint-disable-line
   const [hoveredId, setHoveredId] = useState(null);
   const [dragging, setDragging] = useState(null);
   const [zoom, setZoom] = useState(1);
@@ -257,9 +263,16 @@ const ActivityLinksView = ({ activities, onEditTasks, onSelectActivity }) => {
   }, [dragging, isPanning, panStart, pan, zoom]);
 
   const handleSvgMouseUp = useCallback(() => {
-    if (dragging) { setPositions((prev) => { savePositions(prev); return prev; }); setDragging(null); }
+    if (dragging) {
+      setPositions((prev) => {
+        savePositions(prev);
+        if (onOverviewPositionsChange) onOverviewPositionsChange(prev);
+        return prev;
+      });
+      setDragging(null);
+    }
     setIsPanning(false);
-  }, [dragging]);
+  }, [dragging, onOverviewPositionsChange]);
 
   const handleSvgMouseDown = useCallback((e) => {
     if (e.button !== 0) return;

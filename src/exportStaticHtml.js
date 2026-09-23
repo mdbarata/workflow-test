@@ -621,8 +621,9 @@ const VIEWER_JS = `
     visibleTasks.forEach(function(task) {
       (task.dependencies || []).forEach(function(dep) {
         var dId = depId(dep);
-        var depTask = visibleTasks.find(function(t) { return t.id === dId; });
-        var fmt = depTask && depTask._altMeta ? (depTask._altMeta.format || '') : (typeof dep === 'object' ? dep.format || '' : '');
+        var fmt = (depTask && depTask._altMeta && depTask._altMeta.format)
+          || (task && task._altMeta && task._altMeta.format)
+          || (typeof dep === 'object' ? dep.format || '' : '');
         if (!depTask) return;
         var y1 = getTaskY(depTask, visibleTasks, visibleTools, collapsedSet) + getTaskHeight(depTask.name, getTaskW(depTask)) / 2;
         var y2 = getTaskY(task, visibleTasks, visibleTools, collapsedSet) + getTaskHeight(task.name, getTaskW(task)) / 2;
@@ -970,23 +971,41 @@ const VIEWER_JS = `
     return { pos: pos, edges: edges };
   }
 
-  function computeToolEdgeFormats(tasks) {
+  function computeToolEdgeFormats(tasks, allTasksLookup) {
+    var taskLookup = allTasksLookup && allTasksLookup.length ? allTasksLookup : tasks;
     var map = {};
     tasks.forEach(function(task) {
       (task.dependencies || []).forEach(function(dep) {
-        var fromTask = tasks.find(function(t) { return t.id === depId(dep); });
+        var dId = depId(dep);
+        var fromTask = taskLookup.find(function(t) { return t.id === dId; }) || tasks.find(function(t) { return t.id === dId; });
         var fromTool = fromTask ? fromTask.tool : null;
         if (fromTool && fromTool !== task.tool) {
           var key = fromTool + '→' + task.tool;
           if (!map[key]) map[key] = { formats: new Set(), types: new Set(), statuses: new Set() };
-          // If the source task was created from an alternative tool with metadata,
-          // use that metadata instead of the dependency's original format/type/status,
-          // since the alt tool uses a different interface.
-          if (fromTask && fromTask._altMeta) {
-            var am = fromTask._altMeta;
-            if (am.format) map[key].formats.add(am.format);
-            if (am.type && am.type !== 'undefined') map[key].types.add(am.type);
-            if (am.status && am.status !== 'undefined') map[key].statuses.add(am.status);
+          
+          var altMeta = (fromTask && fromTask._altMeta && fromTask._altMeta.format ? fromTask._altMeta : null)
+            || (task && task._altMeta && task._altMeta.format ? task._altMeta : null)
+            || (fromTask && fromTask._altMeta && (fromTask._altMeta.type !== 'undefined' || fromTask._altMeta.status !== 'undefined') ? fromTask._altMeta : null)
+            || (task && task._altMeta && (task._altMeta.type !== 'undefined' || task._altMeta.status !== 'undefined') ? task._altMeta : null);
+
+          if (altMeta) {
+            var amFormat = (fromTask && fromTask._altMeta && fromTask._altMeta.format)
+              || (task && task._altMeta && task._altMeta.format)
+              || '';
+            var amType = (fromTask && fromTask._altMeta && fromTask._altMeta.type && fromTask._altMeta.type !== 'undefined')
+              ? fromTask._altMeta.type
+              : (task && task._altMeta && task._altMeta.type && task._altMeta.type !== 'undefined')
+                ? task._altMeta.type
+                : 'undefined';
+            var amStatus = (fromTask && fromTask._altMeta && fromTask._altMeta.status && fromTask._altMeta.status !== 'undefined')
+              ? fromTask._altMeta.status
+              : (task && task._altMeta && task._altMeta.status && task._altMeta.status !== 'undefined')
+                ? task._altMeta.status
+                : 'undefined';
+
+            if (amFormat) map[key].formats.add(amFormat);
+            if (amType !== 'undefined') map[key].types.add(amType);
+            if (amStatus !== 'undefined') map[key].statuses.add(amStatus);
           } else {
             var fmt = typeof dep === 'object' ? dep.format : '';
             var type = typeof dep === 'object' ? dep.type || 'file' : 'file';
@@ -1013,10 +1032,30 @@ const VIEWER_JS = `
           t._altMeta = { format: firstAlt.format || '', type: firstAlt.type || 'undefined', status: firstAlt.status || 'undefined' };
         } else {
           t.tool = firstAlt;
+          t._altMeta = { format: '', type: 'undefined', status: 'undefined' };
         }
       }
       return t;
     });
+
+    var allTasksLookup = [];
+    activities.forEach(function(act) {
+      (act.tasks || []).forEach(function(rawT) {
+        var t = Object.assign({}, rawT);
+        if (activeToolSetting === 'setting_2' && t.alternativeTools && t.alternativeTools.length > 0) {
+          var firstAlt = t.alternativeTools[0];
+          if (typeof firstAlt === 'object' && firstAlt !== null) {
+            t.tool = firstAlt.tool;
+            t._altMeta = { format: firstAlt.format || '', type: firstAlt.type || 'undefined', status: firstAlt.status || 'undefined' };
+          } else {
+            t.tool = firstAlt;
+            t._altMeta = { format: '', type: 'undefined', status: 'undefined' };
+          }
+        }
+        allTasksLookup.push(t);
+      });
+    });
+
     // Rebuild the active tool list from transformed tasks
     var toolSet = new Set(tasks.map(function(t) { return t.tool; }).filter(Boolean));
     var tools = activity.tools.filter(function(t) { return toolSet.has(t); });
@@ -1047,7 +1086,7 @@ const VIEWER_JS = `
       Object.assign(savedEdgeSides, options.edgeSides[activity.id]);
     }
     var edges = layout.edges;
-    var edgeFormats = computeToolEdgeFormats(tasks);
+    var edgeFormats = computeToolEdgeFormats(tasks, allTasksLookup);
     var toolResps = {};
     tools.forEach(function(tool) {
       var resps = [];
