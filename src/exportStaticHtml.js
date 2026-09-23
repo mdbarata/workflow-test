@@ -156,7 +156,7 @@ const VIEWER_JS = `
   var initialCollapsed = new Set(D.collapsedTools || []);
   var scope = D.scope;
   var activeIdx = D.activeActivityIndex || 0;
-  var options = { edgeSides: D.edgeSides || {}, toolPositions: D.toolPositions || {} };
+  var options = { edgeSides: D.edgeSides || {}, toolPositions: D.toolPositions || {}, overviewPositions: D.overviewPositions || null };
   var sequences = D.workflowData.sequences || [];
   var hiddenTasks = D.workflowData.hiddenTasks || [];
   // Shared state for sequence view — set up in BOOTSTRAP but referenced from timeline interaction handlers
@@ -481,17 +481,29 @@ const VIEWER_JS = `
 
     var bannerEl = panelEl.querySelector('.variant-banner');
     var hasOptional = tasks.some(function(t) { return t.optional; });
-    if (hasOptional) {
+    if (hasOptional && activeVariant === 'option_2') {
       if (!bannerEl) {
         bannerEl = document.createElement('div');
         bannerEl.className = 'variant-banner';
-        bannerEl.style = 'position:absolute; top:16px; left:50%; transform:translateX(-50%); z-index:100; padding:8px 16px; background:#fffbeb; border:1px solid #f59e0b; border-radius:6px; color:#b45309; font-size:13px; font-weight:600; box-shadow:0 4px 12px rgba(245,158,11,0.15); display:flex; align-items:center; gap:8px; pointer-events:none;';
-        bannerEl.innerHTML = '<span>⚠️</span> The faded tasks are not mandatory in this variant.';
+        bannerEl.style = 'position:absolute; bottom:24px; left:50%; transform:translateX(-50%); z-index:120; padding:8px 16px; background:#fffbeb; border:1px solid #f59e0b; border-radius:6px; color:#b45309; font-size:13px; font-weight:600; box-shadow:0 4px 12px rgba(245,158,11,0.15); display:flex; align-items:center; gap:10px;';
+        bannerEl.innerHTML = '<span>⚠️</span> <span>The faded tasks are not mandatory in this variant.</span> <button type="button" class="variant-banner-close" style="background:none;border:none;color:#b45309;font-size:14px;font-weight:bold;cursor:pointer;padding:0 4px;margin-left:4px;" title="Dismiss">✕</button>';
         panelEl.querySelector('.canvas-host').parentElement.appendChild(bannerEl);
+        bannerEl.querySelector('.variant-banner-close').addEventListener('click', function() {
+          bannerEl.style.display = 'none';
+        });
       }
       bannerEl.style.display = 'flex';
     } else if (bannerEl) {
       bannerEl.style.display = 'none';
+    }
+
+    var docLegend = panelEl.querySelector('.doc-legend');
+    if (!docLegend) {
+      docLegend = document.createElement('div');
+      docLegend.className = 'doc-legend';
+      docLegend.style = 'position:absolute; bottom:60px; right:16px; z-index:90; background:rgba(255,255,255,0.92); border:1px solid #e2e8f0; border-radius:6px; padding:6px 10px; font-size:11px; color:#475569; display:flex; align-items:center; gap:8px; box-shadow:0 1px 4px rgba(0,0,0,0.05); pointer-events:none;';
+      docLegend.innerHTML = '<div style="display:flex;align-items:center;gap:4px;"><span style="display:inline-block;width:12px;height:12px;background:#6b7280;border-radius:3px;"></span><span style="display:inline-block;width:12px;height:12px;background:#374151;border-radius:3px;"></span></div><span>Grey &amp; dark grey boxes represent supporting documents, methods, or manuals</span>';
+      panelEl.querySelector('.canvas-host').parentElement.appendChild(docLegend);
     }
 
     // Apply filters
@@ -549,12 +561,21 @@ const VIEWER_JS = `
 
     // Legend
     svg += '<g transform="translate(0,-' + (MARGIN.top - 56) + ')">';
-    activeResponsibles.forEach(function(r, i) {
-      svg += '<g transform="translate(' + (i * 280) + ',0)">';
+    var legCx = 0, legCy = 0, legMaxW = Math.max(visibleCanvasWidth, 800);
+    activeResponsibles.forEach(function(r) {
+      var name = r.name || '';
+      var textW = Math.max(50, name.length * 8.5);
+      var itemW = 46 + textW + 28;
+      if (legCx > 0 && legCx + itemW > legMaxW) {
+        legCx = 0;
+        legCy += 32;
+      }
+      svg += '<g transform="translate(' + legCx + ',' + legCy + ')">';
       svg += '<rect width="36" height="26" rx="4" fill="' + r.color + '" stroke="' + r.borderColor + '" stroke-width="2"/>';
       svg += '<rect x="6" y="6" width="24" height="14" rx="3" fill="' + r.taskColor + '"/>';
-      svg += '<text x="46" y="18" font-size="12px" font-weight="600" fill="#374151">' + escapeHtml(r.name) + '</text>';
+      svg += '<text x="46" y="18" font-size="12px" font-weight="600" fill="#374151">' + escapeHtml(name) + '</text>';
       svg += '</g>';
+      legCx += itemW;
     });
     svg += '</g>';
 
@@ -620,11 +641,12 @@ const VIEWER_JS = `
     // Task dependency arrows
     visibleTasks.forEach(function(task) {
       (task.dependencies || []).forEach(function(dep) {
-        var dId = depId(dep);
+        var dId = typeof dep === 'object' ? dep.id : dep;
+        var depTask = visibleTasks.find(function(t) { return t.id === dId; });
+        if (!depTask) return;
         var fmt = (depTask && depTask._altMeta && depTask._altMeta.format)
           || (task && task._altMeta && task._altMeta.format)
           || (typeof dep === 'object' ? dep.format || '' : '');
-        if (!depTask) return;
         var y1 = getTaskY(depTask, visibleTasks, visibleTools, collapsedSet) + getTaskHeight(depTask.name, getTaskW(depTask)) / 2;
         var y2 = getTaskY(task, visibleTasks, visibleTools, collapsedSet) + getTaskHeight(task.name, getTaskW(task)) / 2;
         if (y1 < -1000 || y2 < -1000) return;
@@ -662,11 +684,12 @@ const VIEWER_JS = `
       
       var taskSeqs = Array.isArray(task.sequences) ? task.sequences : (task.sequences ? String(task.sequences).split(',') : []);
       taskSeqs = taskSeqs.map(function(s) { return s.trim(); }).filter(Boolean);
-      if (taskSeqs.length > 0 && (task.isSequenceParent || task.isParent)) {
-        var seqIconX = getTaskX(task) + w - 24;
-        var seqIconY = taskYVal + h - 24;
+      var isSeq = (panelEl && panelEl.getAttribute('data-type') === 'sequence') || (activity && String(activity.id || '').indexOf('seq_') === 0);
+      if (!isSeq && taskSeqs.length > 0) {
+        var seqIconX = getTaskX(task) + w - 16;
+        var seqIconY = taskYVal + h - 16;
         svg += '<g class="seq-nav-icon" data-seq-name="' + escapeHtml(taskSeqs[0]) + '" transform="translate(' + seqIconX + ', ' + seqIconY + ')" style="cursor:pointer;pointer-events:all;" title="Open Sequence View">';
-        svg += '<rect x="-4" y="-4" width="24" height="24" fill="transparent" />';
+        svg += '<rect x="-8" y="-8" width="24" height="24" fill="transparent" />';
         svg += '<path d="M6,1 L1,3.5 L6,6 L11,3.5 Z M1,6 L6,8.5 L11,6 M1,8.5 L6,11 L11,8.5" fill="none" stroke="rgba(255,255,255,0.9)" stroke-width="1.2" stroke-linejoin="round" pointer-events="none" />';
         svg += '</g>';
       }
@@ -704,6 +727,38 @@ const VIEWER_JS = `
     // Insert SVG into host
     var hostEl = panelEl.querySelector('.canvas-host');
     hostEl.innerHTML = svg;
+
+    // Supporting documents legend note
+    var existingDocLegend = panelEl.querySelector('.doc-legend-overlay');
+    if (existingDocLegend) existingDocLegend.remove();
+    var docLegendWrap = document.createElement('div');
+    docLegendWrap.className = 'doc-legend-overlay';
+    docLegendWrap.innerHTML = '<div style="position:absolute; bottom:60px; right:16px; z-index:90; background:rgba(255,255,255,0.92); border:1px solid #e2e8f0; border-radius:6px; padding:6px 10px; font-size:11px; color:#475569; display:flex; align-items:center; gap:8px; box-shadow:0 1px 4px rgba(0,0,0,0.05); pointer-events:none;">' +
+      '<div style="display:flex; align-items:center; gap:4px;">' +
+        '<span style="display:inline-block; width:12px; height:12px; background:#6b7280; border-radius:3px;"></span>' +
+        '<span style="display:inline-block; width:12px; height:12px; background:#374151; border-radius:3px;"></span>' +
+      '</div>' +
+      '<span>Grey &amp; dark grey boxes represent supporting documents, methods, or manuals</span>' +
+    '</div>';
+    hostEl.parentElement.appendChild(docLegendWrap.firstChild);
+
+    // Option 2 faded notice (re-appears every time option 2 is active)
+    var existingOpt2Banner = panelEl.querySelector('.opt2-banner-overlay');
+    if (existingOpt2Banner) existingOpt2Banner.remove();
+    if (activeVariant === 'option_2' && visibleTasks.some(function(t) { return t.optional; })) {
+      var opt2Wrap = document.createElement('div');
+      opt2Wrap.className = 'opt2-banner-overlay';
+      opt2Wrap.innerHTML = '<div style="position:absolute; bottom:24px; left:50%; transform:translateX(-50%); z-index:120; padding:8px 16px; background:#fffbeb; border:1px solid #f59e0b; border-radius:6px; color:#b45309; font-size:13px; font-weight:600; box-shadow:0 4px 12px rgba(245, 158, 11, 0.15); display:flex; align-items:center; gap:10px;">' +
+        '<span>⚠️</span>' +
+        '<span>The faded tasks are not mandatory in this variant.</span>' +
+        '<button id="opt2-dismiss-btn" title="Dismiss" style="background:none; border:none; cursor:pointer; color:#b45309; font-size:14px; font-weight:bold; padding:0 4px; margin-left:4px;">✕</button>' +
+      '</div>';
+      var bannerEl = opt2Wrap.firstChild;
+      bannerEl.querySelector('#opt2-dismiss-btn').addEventListener('click', function() {
+        bannerEl.remove();
+      });
+      hostEl.parentElement.appendChild(bannerEl);
+    }
 
     // Attach interactivity
     attachTimelineInteraction(hostEl, visibleTasks, visibleDocuments, respMap, activity, collapsedSet, filterState, panelEl);
@@ -1316,7 +1371,7 @@ const VIEWER_JS = `
 
     svg += '</svg>';
 
-    var legendHtml = '<div style="position:absolute; bottom:54px; left:12px; z-index:100; background:rgba(255,255,255,0.92); border:1px solid #e2e8f0; border-radius:8px; padding:8px 12px; font-size:11px; color:#475569; box-shadow:0 2px 8px rgba(0,0,0,0.06); pointer-events:none;">' +
+    var legendHtml = '<div style="position:absolute; bottom:84px; left:16px; z-index:100; background:rgba(255,255,255,0.92); border:1px solid #e2e8f0; border-radius:8px; padding:8px 12px; font-size:11px; color:#475569; box-shadow:0 2px 8px rgba(0,0,0,0.06); pointer-events:none;">' +
       '<div style="font-weight:700; margin-bottom:6px; color:#1e293b;">Interface link styles</div>' +
       '<div style="display:flex; flex-direction:column; gap:4px;">' +
         '<div style="display:flex; align-items:center; gap:8px;">' +
@@ -1508,7 +1563,8 @@ const VIEWER_JS = `
     var PAD = 16, MAX_ROW_W = CARD_W - PAD * 2;
     var chips = [], cx = PAD, cy = startY;
     responsibles.forEach(function(r) {
-      var w = respChipWidth(r.name);
+      var rawW = respChipWidth(r.name);
+      var w = Math.min(rawW, MAX_ROW_W);
       if (chips.length > 0 && cx + w > PAD + MAX_ROW_W) { cx = PAD; cy += CHIP_ROW_H; }
       chips.push({ r: r, x: cx, y: cy, w: w });
       cx += w + CHIP_GAP;
@@ -1544,19 +1600,39 @@ const VIEWER_JS = `
     var heights = {};
     activities.forEach(function(a) { heights[a.id] = cardHeight(a); });
 
-    // Dynamic smart spacing: stack cards based on actual height + 150px gap
+    // Use saved overviewPositions if available, fallback to dynamic smart spacing
     var positions = {};
     var currentY = 40;
+    var overviewPos = options && options.overviewPositions ? options.overviewPositions : null;
+    if (!overviewPos && typeof D !== 'undefined' && D && D.overviewPositions) {
+      overviewPos = D.overviewPositions;
+    }
     activities.forEach(function(act) {
-      positions[act.id] = { x: 140, y: currentY };
+      if (overviewPos && overviewPos[act.id]) {
+        var p = overviewPos[act.id];
+        var px = (p.x !== undefined && p.x !== null && !isNaN(Number(p.x))) ? Number(p.x) : 140;
+        var py = (p.y !== undefined && p.y !== null && !isNaN(Number(p.y))) ? Number(p.y) : currentY;
+        positions[act.id] = { x: px, y: py };
+      } else {
+        positions[act.id] = { x: 140, y: currentY };
+      }
       currentY += (heights[act.id] || 100) + 150;
     });
 
-    var maxX = Math.max.apply(null, Object.values(positions).map(function(p) { return p.x; }).concat([0])) + CARD_W + 200;
+    var xs = Object.values(positions).map(function(p) { return p.x; });
+    var ys = Object.values(positions).map(function(p) { return p.y; });
+    var minX = Math.min.apply(null, xs.concat([0]));
+    var minY = Math.min.apply(null, ys.concat([0]));
+    var maxX = Math.max.apply(null, xs.concat([0])) + CARD_W + 200;
     var maxYArr = Object.keys(positions).map(function(id) { return positions[id].y + (heights[id] || 100); });
-    var maxY = Math.max.apply(null, maxYArr.concat([0])) + 80;
+    var maxY = Math.max.apply(null, maxYArr.concat([0])) + 150;
 
-    var svg = '<svg xmlns="http://www.w3.org/2000/svg" width="' + maxX + '" height="' + maxY + '" viewBox="0 0 ' + maxX + ' ' + maxY + '" style="background:#f8f9fb;display:block;user-select:none;">';
+    var vbX = minX < 0 ? minX - 40 : 0;
+    var vbY = minY < 0 ? minY - 40 : 0;
+    var vbW = maxX - vbX;
+    var vbH = maxY - vbY;
+
+    var svg = '<svg xmlns="http://www.w3.org/2000/svg" width="' + vbW + '" height="' + vbH + '" viewBox="' + vbX + ' ' + vbY + ' ' + vbW + ' ' + vbH + '" style="background:#f8f9fb;display:block;user-select:none;">';
     svg += '<defs>';
     svg += '<marker id="link-arrow" markerWidth="8" markerHeight="8" refX="7" refY="3.5" orient="auto"><polygon points="0 0, 8 3.5, 0 7" fill="#94a3b8"/></marker>';
     svg += '<marker id="link-arrow-active" markerWidth="8" markerHeight="8" refX="7" refY="3.5" orient="auto"><polygon points="0 0, 8 3.5, 0 7" fill="#059669"/></marker>';
@@ -1646,11 +1722,18 @@ const VIEWER_JS = `
     panelEl.querySelector('.zoom-out').onclick = function() { zoom = Math.max(MIN_Z, zoom - STEP); applyZoom(); };
     panelEl.querySelector('.zoom-fit').onclick = function() {
       var hostRect = hostEl.getBoundingClientRect();
-      var svgW = parseInt(svgEl.getAttribute('width'), 10);
-      var svgH = parseInt(svgEl.getAttribute('height'), 10);
+      var svgW = parseInt(svgEl.getAttribute('width'), 10) || 1000;
+      var svgH = parseInt(svgEl.getAttribute('height'), 10) || 1000;
       zoom = Math.max(MIN_Z, Math.min(hostRect.width / svgW, hostRect.height / svgH, 1));
       applyZoom(); hostEl.scrollTo(0, 0);
     };
+    var hostRect = hostEl.getBoundingClientRect();
+    var svgW = parseInt(svgEl.getAttribute('width'), 10) || 1000;
+    var svgH = parseInt(svgEl.getAttribute('height'), 10) || 1000;
+    if (hostRect.width > 0 && hostRect.height > 0) {
+      zoom = Math.max(MIN_Z, Math.min(hostRect.width / svgW, hostRect.height / svgH, 1));
+      applyZoom();
+    }
     hostEl.addEventListener('wheel', function(e) {
       if (!e.ctrlKey && !e.metaKey) return;
       e.preventDefault();
@@ -1702,14 +1785,16 @@ const VIEWER_JS = `
     });
 
     svgEl.querySelectorAll('.deliverable-box').forEach(function(box) {
-      box.addEventListener('dblclick', function(e) {
+      function openStage(e) {
         e.stopPropagation();
         var fromId = box.getAttribute('data-from');
         var actIdx = activities.findIndex(function(a) { return a.id === fromId; });
         if (actIdx >= 0) {
           activateTab('tab-timeline-' + actIdx);
         }
-      });
+      }
+      box.addEventListener('click', openStage);
+      box.addEventListener('dblclick', openStage);
     });
 
     setTimeout(function() { panelEl.querySelector('.zoom-fit').click(); }, 50);
@@ -1851,6 +1936,8 @@ const VIEWER_JS = `
       renderTimeline(activePanel, seqAct, cs, fs);
     } else if (type === 'arch') {
       renderArchitecture(activePanel, activities[idx]);
+    } else if (type === 'seq-arch') {
+      renderArchitecture(activePanel, getSequenceActivity(idx));
     } else if (type === 'links') {
       renderLinks(activePanel);
     }
@@ -1866,7 +1953,13 @@ const VIEWER_JS = `
   var rendered = {}; // track which panels have been rendered
 
   function activateTab(tabId) {
-    tabBtns.forEach(function(b) { b.classList.toggle('active', b.getAttribute('data-tab') === tabId); });
+    tabBtns.forEach(function(b) {
+      var bTab = b.getAttribute('data-tab');
+      var isActive = (bTab === tabId) ||
+        (tabId.indexOf('tab-arch-') === 0 && bTab === tabId.replace('tab-arch-', 'tab-timeline-')) ||
+        (tabId.indexOf('tab-seq-arch-') === 0 && bTab === tabId.replace('tab-seq-arch-', 'tab-seq-'));
+      b.classList.toggle('active', isActive);
+    });
     tabPanels.forEach(function(p) { p.classList.toggle('active', p.id === tabId); });
     if (!rendered[tabId]) {
       rendered[tabId] = true;
@@ -1893,8 +1986,14 @@ const VIEWER_JS = `
         renderTimeline(panel, seqAct, cs, fs);
       } else if (type === 'arch') {
         renderArchitecture(panel, activities[idx]);
+      } else if (type === 'seq-arch') {
+        renderArchitecture(panel, getSequenceActivity(idx));
       } else if (type === 'links') {
         renderLinks(panel);
+        setTimeout(function() {
+          var fitBtn = panel.querySelector('.zoom-fit');
+          if (fitBtn) fitBtn.click();
+        }, 30);
       }
     }
   }
@@ -1911,11 +2010,12 @@ const VIEWER_JS = `
   });
 
   // View toggles (timeline ↔ arch)
-  document.querySelectorAll('.view-toggle button').forEach(function(btn) {
-    btn.addEventListener('click', function() {
+  document.addEventListener('click', function(e) {
+    var btn = e.target.closest('.view-toggle button');
+    if (btn) {
       var target = btn.getAttribute('data-show');
-      activateTab(target);
-    });
+      if (target) activateTab(target);
+    }
   });
 
   // Variant toggles
@@ -1966,14 +2066,8 @@ const VIEWER_JS = `
     }
   });
 
-  // ── Floating Buttons (bottom-left) — matches App.js layout exactly ──
+  // ── Floating Buttons (bottom-left) ──
   var seqViewBtn = document.getElementById('seq-view-btn');
-  var altToolsBtn = document.getElementById('alt-tools-btn');
-  var altToolsModal = document.getElementById('alt-tools-modal');
-  var altToolsClose = document.getElementById('alt-tools-close');
-  var altToolsFooterClose = document.getElementById('alt-tools-footer-close');
-  var altToolsBackdrop = document.getElementById('alt-tools-backdrop');
-  var altToolsContent = document.getElementById('alt-tools-content');
   var lastActiveTab = null;
 
   function enterSequenceViewImpl() {
@@ -2016,71 +2110,6 @@ const VIEWER_JS = `
     seqViewBtn.addEventListener('click', function() {
       if (isSequenceView) exitSequenceView(); else enterSequenceView();
     });
-  }
-
-  // Alternative Tools Modal — matches AltToolsModal in App.js (grouped by tool)
-  if (altToolsBtn) {
-    altToolsBtn.addEventListener('click', function() {
-      var allTasksFlat = [];
-      activities.forEach(function(act) {
-        (act.tasks || []).forEach(function(t) {
-          if (t.alternativeTools && t.alternativeTools.length > 0) {
-            allTasksFlat.push({ task: t, stageName: act.name });
-          }
-        });
-      });
-      (hiddenTasks || []).forEach(function(t) {
-        if (t.alternativeTools && t.alternativeTools.length > 0) {
-          allTasksFlat.push({ task: t, stageName: 'Hidden Tasks' });
-        }
-      });
-
-      // Group by tool
-      var byTool = {};
-      allTasksFlat.forEach(function(item) {
-        var tool = item.task.tool || 'Unassigned Tool';
-        if (!byTool[tool]) byTool[tool] = [];
-        byTool[tool].push(item);
-      });
-      var toolKeys = Object.keys(byTool).sort();
-
-      var html = '';
-      if (toolKeys.length === 0) {
-        html = '<p style="font-size:13px;color:#64748b;text-align:center;margin:40px 0;">No alternative tools proposed in any task.</p>';
-      } else {
-        html = '<div style="display:flex;flex-direction:column;gap:24px;">';
-        toolKeys.forEach(function(tool) {
-          html += '<div>';
-          html += '<h3 style="margin:0 0 12px 0;font-size:15px;color:#0f172a;display:flex;align-items:center;gap:8px;">';
-          html += '<span style="padding:4px 8px;background:#eff6ff;color:#1d4ed8;border-radius:6px;font-size:13px;border:1px solid #bfdbfe;">' + escapeHtml(tool) + '</span>';
-          html += '</h3>';
-          html += '<div style="display:flex;flex-direction:column;gap:8px;">';
-          byTool[tool].forEach(function(item) {
-            html += '<div style="border:1px solid #e2e8f0;border-radius:8px;padding:12px;background:#f8fafc;">';
-            html += '<div style="display:flex;justify-content:space-between;margin-bottom:8px;">';
-            html += '<strong style="font-size:14px;color:#334155;">' + escapeHtml(item.task.name) + '</strong>';
-            html += '<span style="font-size:11px;color:#94a3b8;">' + escapeHtml(item.stageName) + '</span>';
-            html += '</div>';
-            html += '<div style="font-size:13px;color:#475569;display:flex;align-items:flex-start;gap:8px;">';
-            html += '<span style="font-weight:600;color:#059669;flex-shrink:0;">Alternatives:</span>';
-            html += '<span style="line-height:1.4;">' + escapeHtml(item.task.alternativeTools.map(function(a) { return typeof a === 'object' && a !== null ? a.tool : a; }).join(', ')) + '</span>';
-            html += '</div></div>';
-          });
-          html += '</div></div>';
-        });
-        html += '</div>';
-      }
-      altToolsContent.innerHTML = html;
-      altToolsModal.style.display = 'flex';
-      altToolsBackdrop.style.display = 'block';
-    });
-    var closeAltModal = function() {
-      altToolsModal.style.display = 'none';
-      altToolsBackdrop.style.display = 'none';
-    };
-    if (altToolsClose) altToolsClose.addEventListener('click', closeAltModal);
-    if (altToolsFooterClose) altToolsFooterClose.addEventListener('click', closeAltModal);
-    if (altToolsBackdrop) altToolsBackdrop.addEventListener('click', closeAltModal);
   }
 
   // ══════════════════════════════════════════════════════════════════════════
@@ -2509,8 +2538,16 @@ function buildHtml(workflowData, options) {
   const tNotes = options.toolNotes || {};
   const generatedAt = new Date().toISOString();
 
-  const visibleActivities = scope === 'all' ? activities : [activities[activeIdx]];
+  const visibleActivities = scope === 'all'
+    ? activities
+    : (activities[activeIdx] ? [activities[activeIdx]] : activities.slice(0, 1));
   const showLinks = scope === 'all' && activities.length > 1;
+
+  const activityHasOption2 = (act) =>
+    (act?.tasks || []).some((t) => t.overrides && t.overrides.option_2);
+
+  const activityHasSetting2 = (act) =>
+    (act?.tasks || []).some((t) => t.alternativeTools && t.alternativeTools.length > 0);
 
   // Variant (option) display names
   const variantNames = {
@@ -2523,15 +2560,27 @@ function buildHtml(workflowData, options) {
     setting_2: workflowData.toolSettingNames?.setting_2 || 'TOOL SETTING 2',
   };
 
-  // Helper: does an activity have at least one task with option_2 overrides?
-  const activityHasOption2 = (act) =>
-    (act.tasks || []).some((t) => t.overrides && t.overrides.option_2);
+  // Collect sequences involved in visible activities
+  const involvedSeqIds = new Set();
+  visibleActivities.forEach((act) => {
+    (act.tasks || []).forEach((t) => {
+      (t.sequences || []).forEach((s) => {
+        if (s) involvedSeqIds.add(String(s).trim());
+      });
+    });
+  });
+
+  const relevantSequences = (workflowData.sequences || []).filter((seq) =>
+    scope === 'all' || involvedSeqIds.has(seq.id) || involvedSeqIds.has(seq.name)
+  );
+
+  const hasSequences = relevantSequences.length > 0;
 
   // Build data blob
   const exportData = {
     workflowData: {
       activities: visibleActivities,
-      sequences: workflowData.sequences || [],
+      sequences: relevantSequences,
       hiddenTasks: workflowData.hiddenTasks || [],
       hiddenDocuments: workflowData.hiddenDocuments || [],
       documents: workflowData.documents || [],
@@ -2542,6 +2591,13 @@ function buildHtml(workflowData, options) {
     collapsedTools: collapsedTools,
     edgeSides: options.edgeSides || {},
     toolPositions: options.toolPositions || {},
+    overviewPositions: options.overviewPositions || workflowData?.overviewPositions || (() => {
+      try {
+        return (typeof localStorage !== 'undefined')
+          ? JSON.parse(localStorage.getItem('activity_links_positions') || localStorage.getItem('activity_links_positions_v1') || 'null')
+          : null;
+      } catch(e) { return null; }
+    })() || null,
     scope: scope,
     activeActivityIndex: 0,
   };
@@ -2553,6 +2609,8 @@ function buildHtml(workflowData, options) {
   visibleActivities.forEach((act, i) => {
     const tlId = 'tab-timeline-' + i;
     const archId = 'tab-arch-' + i;
+    const hasSetting2 = activityHasSetting2(act);
+    const hasOpt2 = activityHasOption2(act);
 
     // Timeline tab
     tabBarHtml += `<button class="tab-btn tab-activity" data-tab="${tlId}">${esc(act.name)}</button>`;
@@ -2564,13 +2622,13 @@ function buildHtml(workflowData, options) {
           <button class="inactive-view" data-show="${archId}">⬡ Architecture</button>
         </div>
         <div style="position:absolute; top:12px; left:310px; z-index:100; display:flex; gap:12px;">
-          <div class="tool-setting-toggle" style="display:flex; background:#ffffff; border:1px solid #cbd5e1; border-radius:6px; overflow:hidden; box-shadow:0 2px 8px rgba(0,0,0,0.08);">
+          ${hasSetting2 ? `<div class="tool-setting-toggle" style="display:flex; background:#ffffff; border:1px solid #cbd5e1; border-radius:6px; overflow:hidden; box-shadow:0 2px 8px rgba(0,0,0,0.08);">
             <button class="tool-setting-btn" data-setting="setting_1" style="padding:8px 14px; border:none; font-size:12px; font-weight:600; cursor:pointer; transition:all 0.15s; background:#1e40af; color:#fff;">${esc(toolSettingNames.setting_1)}</button>
             <button class="tool-setting-btn" data-setting="setting_2" style="padding:8px 14px; border:none; font-size:12px; font-weight:600; cursor:pointer; transition:all 0.15s; background:#fff; color:#475569; border-left:1px solid #cbd5e1;">${esc(toolSettingNames.setting_2)}</button>
-          </div>
+          </div>` : ''}
           <div class="variant-toggle" style="display:flex; background:#ffffff; border:1px solid #cbd5e1; border-radius:6px; overflow:hidden; box-shadow:0 2px 8px rgba(0,0,0,0.08);">
             <button class="variant-btn" data-variant="option_1" style="padding:8px 14px; border:none; font-size:12px; font-weight:600; cursor:pointer; transition:all 0.15s; background:#1e40af; color:#fff;">${esc(variantNames.option_1)}</button>
-            ${activityHasOption2(act) ? `<button class="variant-btn" data-variant="option_2" style="padding:8px 14px; border:none; font-size:12px; font-weight:600; cursor:pointer; transition:all 0.15s; background:#fff; color:#475569; border-left:1px solid #cbd5e1;">${esc(variantNames.option_2)}</button>` : ''}
+            ${hasOpt2 ? `<button class="variant-btn" data-variant="option_2" style="padding:8px 14px; border:none; font-size:12px; font-weight:600; cursor:pointer; transition:all 0.15s; background:#fff; color:#475569; border-left:1px solid #cbd5e1;">${esc(variantNames.option_2)}</button>` : ''}
           </div>
         </div>
         <div class="canvas-host" style="flex:1;overflow:auto;"></div>
@@ -2592,10 +2650,10 @@ function buildHtml(workflowData, options) {
           <button class="active-view" data-show="${archId}">⬡ Architecture</button>
         </div>
         <div style="position:absolute; top:12px; left:310px; z-index:100; display:flex; gap:12px;">
-          <div class="tool-setting-toggle" style="display:flex; background:#ffffff; border:1px solid #cbd5e1; border-radius:6px; overflow:hidden; box-shadow:0 2px 8px rgba(0,0,0,0.08);">
+          ${hasSetting2 ? `<div class="tool-setting-toggle" style="display:flex; background:#ffffff; border:1px solid #cbd5e1; border-radius:6px; overflow:hidden; box-shadow:0 2px 8px rgba(0,0,0,0.08);">
             <button class="tool-setting-btn" data-setting="setting_1" style="padding:8px 14px; border:none; font-size:12px; font-weight:600; cursor:pointer; transition:all 0.15s; background:#1e40af; color:#fff;">${esc(toolSettingNames.setting_1)}</button>
             <button class="tool-setting-btn" data-setting="setting_2" style="padding:8px 14px; border:none; font-size:12px; font-weight:600; cursor:pointer; transition:all 0.15s; background:#fff; color:#475569; border-left:1px solid #cbd5e1;">${esc(toolSettingNames.setting_2)}</button>
-          </div>
+          </div>` : ''}
         </div>
         <div class="canvas-host" style="flex:1;overflow:auto;"></div>
         <div class="zoom-controls">
@@ -2610,9 +2668,8 @@ function buildHtml(workflowData, options) {
   });
 
   // Sequences tabs
-  const sequences = workflowData.sequences || [];
-  if (scope === 'all' && sequences.length > 0) {
-    sequences.forEach((seq, i) => {
+  if (relevantSequences.length > 0) {
+    relevantSequences.forEach((seq, i) => {
       const tlId = 'tab-seq-' + i;
       // Check if any task in any activity that belongs to this sequence has option_2 overrides
       const seqHasOption2 = (workflowData.activities || []).some((act) =>
@@ -2622,20 +2679,58 @@ function buildHtml(workflowData, options) {
       ) || (workflowData.hiddenTasks || []).some(
         (t) => (t.sequences || []).includes(seq.id) && t.overrides && t.overrides.option_2
       );
+
+      const seqHasSetting2 = (workflowData.activities || []).some((act) =>
+        (act.tasks || []).some(
+          (t) => (t.sequences || []).includes(seq.id) && t.alternativeTools && t.alternativeTools.length > 0
+        )
+      ) || (workflowData.hiddenTasks || []).some(
+        (t) => (t.sequences || []).includes(seq.id) && t.alternativeTools && t.alternativeTools.length > 0
+      );
+
       tabBarHtml += `<button class="tab-btn tab-sequence" style="display:none;" data-tab="${tlId}">${esc(seq.name)}</button>`;
+      const archId = 'tab-seq-arch-' + i;
       panelsHtml += `<div class="tab-panel" id="${tlId}" data-type="sequence" data-index="${i}">
         <div class="filter-bar"></div>
         <div class="assoc-container"></div>
         <div style="position:relative;flex:1;overflow:hidden;display:flex;flex-direction:column;">
-          <div style="position:absolute; top:12px; left:12px; z-index:100; display:flex; gap:12px;">
-            <div class="tool-setting-toggle" style="display:flex; background:#ffffff; border:1px solid #cbd5e1; border-radius:6px; overflow:hidden; box-shadow:0 2px 8px rgba(0,0,0,0.08);">
+          <div class="view-toggle">
+            <button class="active-view" data-show="${tlId}">← Timeline</button>
+            <button class="inactive-view" data-show="${archId}">⬡ Architecture</button>
+          </div>
+          <div style="position:absolute; top:12px; left:310px; z-index:100; display:flex; gap:12px;">
+            ${seqHasSetting2 ? `<div class="tool-setting-toggle" style="display:flex; background:#ffffff; border:1px solid #cbd5e1; border-radius:6px; overflow:hidden; box-shadow:0 2px 8px rgba(0,0,0,0.08);">
               <button class="tool-setting-btn" data-setting="setting_1" style="padding:8px 14px; border:none; font-size:12px; font-weight:600; cursor:pointer; transition:all 0.15s; background:#1e40af; color:#fff;">${esc(toolSettingNames.setting_1)}</button>
               <button class="tool-setting-btn" data-setting="setting_2" style="padding:8px 14px; border:none; font-size:12px; font-weight:600; cursor:pointer; transition:all 0.15s; background:#fff; color:#475569; border-left:1px solid #cbd5e1;">${esc(toolSettingNames.setting_2)}</button>
-            </div>
+            </div>` : ''}
             <div class="variant-toggle" style="display:flex; background:#ffffff; border:1px solid #cbd5e1; border-radius:6px; overflow:hidden; box-shadow:0 2px 8px rgba(0,0,0,0.08);">
               <button class="variant-btn" data-variant="option_1" style="padding:8px 14px; border:none; font-size:12px; font-weight:600; cursor:pointer; transition:all 0.15s; background:#1e40af; color:#fff;">${esc(variantNames.option_1)}</button>
               ${seqHasOption2 ? `<button class="variant-btn" data-variant="option_2" style="padding:8px 14px; border:none; font-size:12px; font-weight:600; cursor:pointer; transition:all 0.15s; background:#fff; color:#475569; border-left:1px solid #cbd5e1;">${esc(variantNames.option_2)}</button>` : ''}
             </div>
+          </div>
+          <div class="canvas-host" style="flex:1;overflow:auto;"></div>
+          <div class="zoom-controls">
+            <button class="zoom-out" title="Zoom out">−</button>
+            <span class="zoom-label">100%</span>
+            <button class="zoom-in" title="Zoom in">+</button>
+            <div style="width:1px;height:16px;background:#e2e8f0;margin:0 2px;"></div>
+            <button class="zoom-fit" title="Fit to screen">⊡</button>
+          </div>
+        </div>
+      </div>`;
+
+      // Sequence architecture panel
+      panelsHtml += `<div class="tab-panel" id="${archId}" data-type="seq-arch" data-index="${i}">
+        <div style="position:relative;flex:1;overflow:hidden;display:flex;flex-direction:column;">
+          <div class="view-toggle">
+            <button class="inactive-view" data-show="${tlId}">← Timeline</button>
+            <button class="active-view" data-show="${archId}">⬡ Architecture</button>
+          </div>
+          <div style="position:absolute; top:12px; left:310px; z-index:100; display:flex; gap:12px;">
+            ${seqHasSetting2 ? `<div class="tool-setting-toggle" style="display:flex; background:#ffffff; border:1px solid #cbd5e1; border-radius:6px; overflow:hidden; box-shadow:0 2px 8px rgba(0,0,0,0.08);">
+              <button class="tool-setting-btn" data-setting="setting_1" style="padding:8px 14px; border:none; font-size:12px; font-weight:600; cursor:pointer; transition:all 0.15s; background:#1e40af; color:#fff;">${esc(toolSettingNames.setting_1)}</button>
+              <button class="tool-setting-btn" data-setting="setting_2" style="padding:8px 14px; border:none; font-size:12px; font-weight:600; cursor:pointer; transition:all 0.15s; background:#fff; color:#475569; border-left:1px solid #cbd5e1;">${esc(toolSettingNames.setting_2)}</button>
+            </div>` : ''}
           </div>
           <div class="canvas-host" style="flex:1;overflow:auto;"></div>
           <div class="zoom-controls">
@@ -2656,6 +2751,9 @@ function buildHtml(workflowData, options) {
     tabBarHtml += `<button class="tab-btn tab-activity" data-tab="tab-links">Overview</button>`;
     panelsHtml += `<div class="tab-panel" id="tab-links" data-type="links">
       <div style="position:relative;flex:1;overflow:hidden;display:flex;flex-direction:column;">
+        <div style="background:#eff6ff; border-bottom:1px solid #bfdbfe; padding:8px 16px; font-size:12px; color:#1e40af; display:flex; align-items:center; gap:8px; z-index:10;">
+          <span>💡</span> <span><strong>Tip:</strong> Double-click any stage box or click a deliverable pill to switch directly to that stage's timeline.</span>
+        </div>
         <div class="canvas-host" style="flex:1;overflow:auto;"></div>
         <div class="zoom-controls">
           <button class="zoom-out" title="Zoom out">−</button>
@@ -2668,7 +2766,6 @@ function buildHtml(workflowData, options) {
     </div>`;
   }
 
-  const hasSequences = scope === 'all' && (workflowData.sequences || []).length > 0;
   const showTabBar = visibleActivities.length > 1 || showLinks || hasSequences;
 
   const title = scope === 'all'
@@ -2707,27 +2804,15 @@ function buildHtml(workflowData, options) {
   ${showTabBar ? `<div class="tab-bar">${tabBarHtml}</div>` : `<div class="tab-bar" style="display:none">${tabBarHtml}</div>`}
   <div id="tips-banner" class="tips-banner">
     <span class="tip-item">🖱️ <strong>Hover</strong> over any task to see its details, dependencies, and linked documents.</span>
+    <span class="tip-sep"></span><span class="tip-item">📄 <strong>Grey</strong> (inputs) &amp; <strong>dark grey</strong> (outputs) boxes represent supporting documents, methods, or manuals.</span>
     ${hasSequences ? `<span class="tip-sep"></span><span class="tip-item"><svg width="14" height="14" viewBox="0 0 14 14" fill="none" style="flex-shrink:0"><path d="M7,1 L1,4 L7,7 L13,4 Z M1,7 L7,10 L13,7 M1,10 L7,13 L13,10" stroke="#92400e" stroke-width="1.4" stroke-linejoin="round"/></svg> Tasks with a <strong>layers icon</strong> at the bottom-right corner belong to a Sequence — click the icon to jump directly to that sequence view.</span>` : ''}
     <button id="tips-dismiss" class="tips-banner-close" title="Dismiss">✕</button>
   </div>
   ${panelsHtml}
-  <!-- Floating bottom-left buttons — mirrors App.js position:fixed bottom:24 left:24 group -->
-  <div style="position:fixed;bottom:24px;left:24px;z-index:3000;display:flex;gap:12px;">
-    ${hasSequences ? `<button id="seq-view-btn" style="padding:10px 16px;background:#ffffff;color:#1e293b;border:1.5px solid #cbd5e1;border-radius:8px;box-shadow:0 4px 12px rgba(0,0,0,0.15);cursor:pointer;font-weight:600;display:flex;align-items:center;gap:8px;transition:all 0.2s;font-size:13px;"><span style="font-size:16px;">📚</span> Sequences View</button>` : ''}
-    <button id="alt-tools-btn" style="padding:10px 16px;background:#ffffff;color:#1e293b;border:1.5px solid #cbd5e1;border-radius:8px;box-shadow:0 4px 12px rgba(0,0,0,0.15);cursor:pointer;font-weight:600;display:flex;align-items:center;gap:8px;transition:all 0.2s;font-size:13px;"><span style="font-size:16px;">💡</span> Alternative Tools</button>
-  </div>
-  <!-- Alt Tools Modal -->
-  <div id="alt-tools-modal" style="display:none;position:fixed;top:50%;left:50%;transform:translate(-50%,-50%);width:600px;max-height:80vh;background:#fff;z-index:4000;border-radius:12px;box-shadow:0 20px 60px rgba(0,0,0,0.3);overflow:hidden;flex-direction:column;">
-    <div style="display:flex;align-items:center;justify-content:space-between;padding:16px 20px;border-bottom:0.5px solid #e2e8f0;background:#f8fafc;">
-      <span style="font-size:16px;font-weight:600;color:#1e293b;">Alternative Tools Compilation</span>
-      <button id="alt-tools-close" style="background:none;border:none;font-size:18px;color:#64748b;cursor:pointer;">✕</button>
-    </div>
-    <div id="alt-tools-content" style="padding:20px;overflow-y:auto;flex:1;"></div>
-    <div style="display:flex;justify-content:flex-end;padding:12px 20px;border-top:0.5px solid #e2e8f0;background:#f8fafc;">
-      <button id="alt-tools-footer-close" style="padding:6px 16px;font-size:12px;background:#f1f5f9;color:#334155;border:1px solid #cbd5e1;border-radius:6px;font-weight:600;cursor:pointer;">Close</button>
-    </div>
-  </div>
-  <div id="alt-tools-backdrop" style="display:none;position:fixed;top:0;left:0;right:0;bottom:0;background:rgba(0,0,0,0.5);z-index:3999;backdrop-filter:blur(3px);"></div>
+  ${hasSequences ? `<!-- Floating bottom-left button for Sequences View -->
+  <div style="position:fixed;bottom:24px;left:24px;z-index:3000;">
+    <button id="seq-view-btn" style="padding:10px 16px;background:#ffffff;color:#1e293b;border:1.5px solid #cbd5e1;border-radius:8px;box-shadow:0 4px 12px rgba(0,0,0,0.15);cursor:pointer;font-weight:600;display:flex;align-items:center;gap:8px;transition:all 0.2s;font-size:13px;"><span style="font-size:16px;">📚</span> Sequences View</button>
+  </div>` : ''}
 
   <div id="tooltip" class="d3-tooltip"></div>
   <div id="feedback-drawer" class="feedback-drawer">

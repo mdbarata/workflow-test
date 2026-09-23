@@ -412,7 +412,13 @@ const App = () => {
   // edgeSides: { [activityId]: { [edgeKey]: { from, to } } } — per-activity edge port sides
   const [edgeSides, setEdgeSides] = useState(saved?.edgeSides || {});
   // overviewPositions: { [activityId]: { x, y } } — stage card positions in the Overview tab
-  const [overviewPositions, setOverviewPositions] = useState(saved?.overviewPositions || null);
+  const [overviewPositions, setOverviewPositions] = useState(() => {
+    if (saved?.overviewPositions) return saved.overviewPositions;
+    try {
+      const raw = localStorage.getItem('activity_links_positions') || localStorage.getItem('activity_links_positions_v1');
+      return raw ? JSON.parse(raw) : null;
+    } catch { return null; }
+  });
   // feedbackItems: array of imported reviewer comments
   const [feedbackItems, setFeedbackItems] = useState(saved?.feedbackItems || []);
   const [showFeedbackModal, setShowFeedbackModal] = useState(false);
@@ -524,6 +530,12 @@ const App = () => {
 
   const handleSaveJson = () => {
     // Ensure activities always have at least a clean chapters array in the exported JSON
+    const currentOverviewPos = overviewPositions || (() => {
+      try {
+        const raw = localStorage.getItem('activity_links_positions') || localStorage.getItem('activity_links_positions_v1');
+        return raw ? JSON.parse(raw) : null;
+      } catch { return null; }
+    })();
     const cleanData = {
       ...workflowData,
       activities: (workflowData.activities || []).map((act) => ({
@@ -533,7 +545,7 @@ const App = () => {
       // Persist layout positions so the diagram looks the same when shared
       toolPositions: archPositions,
       edgeSides: edgeSides,
-      ...(overviewPositions ? { overviewPositions } : {}),
+      ...(currentOverviewPos ? { overviewPositions: currentOverviewPos } : {}),
     };
     const data = JSON.stringify(cleanData, null, 2);
     const a = document.createElement('a');
@@ -667,7 +679,14 @@ const App = () => {
     // Merge overview positions from imported payload if present
     pendingImport.payloads.forEach((payload) => {
       if (payload.overviewPositions) {
-        setOverviewPositions((prev) => ({ ...(prev || {}), ...payload.overviewPositions }));
+        setOverviewPositions((prev) => {
+          const merged = { ...(prev || {}), ...payload.overviewPositions };
+          try {
+            localStorage.setItem('activity_links_positions', JSON.stringify(merged));
+            localStorage.setItem('activity_links_positions_v1', JSON.stringify(merged));
+          } catch {}
+          return merged;
+        });
       }
     });
     setActiveActivityIndex(firstNewIndex);
@@ -746,7 +765,13 @@ const App = () => {
     pendingImport.payloads.forEach((payload) => {
       if (payload.overviewPositions) Object.assign(combinedOverviewPos, payload.overviewPositions);
     });
-    if (Object.keys(combinedOverviewPos).length > 0) setOverviewPositions(combinedOverviewPos);
+    if (Object.keys(combinedOverviewPos).length > 0) {
+      setOverviewPositions(combinedOverviewPos);
+      try {
+        localStorage.setItem('activity_links_positions', JSON.stringify(combinedOverviewPos));
+        localStorage.setItem('activity_links_positions_v1', JSON.stringify(combinedOverviewPos));
+      } catch {}
+    }
     setActiveActivityIndex(0);
     setPerTabFilters({});
     setPendingImport(null);
@@ -1145,6 +1170,7 @@ const App = () => {
             activeToolSetting={activeToolSetting}
             setActiveToolSetting={setActiveToolSetting}
             onToolSettingNamesChange={handleToolSettingNamesChange}
+            overviewPositions={overviewPositions}
           />
         )}
       </div>

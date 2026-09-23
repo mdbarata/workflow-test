@@ -25,8 +25,17 @@ const getStageFontSize = (name) => {
   return Math.max(10, Math.floor(maxW / ((name || '').length * (charW / baseSize))));
 };
 
-const loadPositions = () => { try { return JSON.parse(localStorage.getItem(STORAGE_KEY) || 'null'); } catch { return null; } };
-const savePositions = (pos) => localStorage.setItem(STORAGE_KEY, JSON.stringify(pos));
+const loadPositions = () => {
+  try {
+    return JSON.parse(localStorage.getItem(STORAGE_KEY) || localStorage.getItem('activity_links_positions_v1') || 'null');
+  } catch { return null; }
+};
+const savePositions = (pos) => {
+  try {
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(pos));
+    localStorage.setItem('activity_links_positions_v1', JSON.stringify(pos));
+  } catch {}
+};
 
 const computeLinks = (activities) => {
   const pairMap = new Map();
@@ -62,7 +71,8 @@ const layoutRespChips = (responsibles, startY) => {
   const chips = [];
   let cx = PAD, cy = startY, rowMaxH = 0;
   responsibles.forEach((r) => {
-    const w = respChipWidth(r.name);
+    const rawW = respChipWidth(r.name);
+    const w = Math.min(rawW, MAX_ROW_W);
     if (chips.length > 0 && cx + w > PAD + MAX_ROW_W) {
       cx = PAD;
       cy += CHIP_ROW_H;
@@ -181,7 +191,14 @@ const ActivityLinksView = ({ activities, onEditTasks, onSelectActivity, overview
   // Sync positions when the parent loads a new JSON (overviewPositions prop changes)
   const overviewPosKey = JSON.stringify(overviewPositions || null);
   useEffect(() => {
-    if (overviewPositions) setPositions(overviewPositions);
+    if (overviewPositions) {
+      setPositions(overviewPositions);
+    } else {
+      const loaded = loadPositions();
+      if (loaded && onOverviewPositionsChange) {
+        onOverviewPositionsChange(loaded);
+      }
+    }
   }, [overviewPosKey]); // eslint-disable-line
   const [hoveredId, setHoveredId] = useState(null);
   const [dragging, setDragging] = useState(null);

@@ -645,30 +645,6 @@ const TaskEditor = ({ workflowData, onSave, onClose, initialTabMode = 'stages', 
     setError(null);
   };
 
-  const handleImport = (e) => {
-    const file = e.target.files[0];
-    if (!file) return;
-    const reader = new FileReader();
-    reader.onload = (ev) => {
-      try {
-        const parsed = JSON.parse(ev.target.result);
-        if (!parsed.activities) { setError('Missing "activities" in JSON.'); return; }
-        setRows(workflowToRows(parsed));
-        setError(null);
-      } catch (err) { setError('Invalid JSON: ' + err.message); }
-    };
-    reader.readAsText(file);
-    e.target.value = '';
-  };
-
-  const handleExport = () => {
-    const withIds = rows.map((r, i) => ({ ...r, taskId: r.taskId.trim() || `task${i + 1}` }));
-    const data = JSON.stringify(rowsToWorkflow(withIds, workflowData, variantNames, toolSettingNames), null, 2);
-    const a = document.createElement('a');
-    a.href = 'data:application/json;charset=utf-8,' + encodeURIComponent(data);
-    a.download = 'workflow.json';
-    a.click();
-  };
 
   const handleSave = () => {
     const filled = rows.filter((r) => r.label.trim());
@@ -1094,11 +1070,6 @@ const TaskEditor = ({ workflowData, onSave, onClose, initialTabMode = 'stages', 
             <button className="btn-secondary" onClick={handleAutoArrange} title="Recalculate start times from dependencies">
               🔄 Auto-arrange
             </button>
-            <label className="btn-secondary" style={{ cursor: 'pointer', display: 'inline-flex', alignItems: 'center' }}>
-              ↑ Import JSON
-              <input type="file" accept=".json" onChange={handleImport} style={{ display: 'none' }} />
-            </label>
-            <button className="btn-secondary" onClick={handleExport}>↓ Export JSON</button>
           </div>
           <div style={{ display: 'flex', gap: 8 }}>
             <button className="btn-primary" onClick={handleSave}>Apply & view diagram</button>
