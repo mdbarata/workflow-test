@@ -277,12 +277,18 @@ const rowsToWorkflow = (rows, originalData, variantNames, toolSettingNames) => {
   const hiddenStartTimes = computeStartTimes(hiddenRows);
   const hiddenTasks = hiddenRows.map((r) => rowToTask(r, hiddenStartTimes));
 
-  // Merge existing sequences with new ones to preserve properties like name
+  // Merge existing sequences with new ones to preserve properties like name AND user-defined order.
+  // Strategy: start with originalSequences (preserving their order), keeping only those that still
+  // exist in sequencesSet, then append any brand-new sequences at the end.
   const originalSequences = originalData?.sequences || [];
-  const sequences = Array.from(sequencesSet).map(seqId => {
-    const existing = originalSequences.find(s => s.id === seqId || s.name === seqId);
-    return existing || { id: seqId, name: seqId };
-  });
+  const sequences = [
+    // 1. Keep existing sequences in their original (user-reordered) order
+    ...originalSequences.filter(s => sequencesSet.has(s.id) || sequencesSet.has(s.name)),
+    // 2. Append new sequences that weren't in the original list
+    ...Array.from(sequencesSet)
+      .filter(seqId => !originalSequences.some(s => s.id === seqId || s.name === seqId))
+      .map(seqId => ({ id: seqId, name: seqId })),
+  ];
 
   // Preserve variantNames and toolSettingNames from original data or use the
   // caller-supplied override (from the TaskEditor rename UI).

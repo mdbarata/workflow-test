@@ -624,11 +624,15 @@ const ArchitectureView = ({ activity, tasks: tasksProp, allTasks, filters, toolN
       lineColor = '#64748b'; lineDash = undefined; markerId = 'arch-arr-gray';
     }
 
+    // Icon prefix based on link type
+    const typeIcon = isPlugin ? '🔌 ' : isVisualization ? '🖥️ ' : (fmts ? '📄 ' : '');
     let labelTxt = fmts;
     if (!labelTxt && isPlugin) labelTxt = 'Plug-in';
     if (!labelTxt && isVisualization) labelTxt = 'Visual.';
-    const badgeW = labelTxt ? labelTxt.length * 6.5 + 12 : 0;
-    const revBadgeW = revFmts ? revFmts.length * 6.5 + 12 : 0;
+    const labelWithIcon = labelTxt ? (typeIcon + labelTxt) : '';
+    const revLabelWithIcon = revFmts ? ('📄 ' + revFmts) : '';
+    const badgeW = labelWithIcon ? labelWithIcon.length * 6.5 + 14 : 0;
+    const revBadgeW = revLabelWithIcon ? revLabelWithIcon.length * 6.5 + 14 : 0;
 
     const badgeFill = isVisualization ? '#f0f9ff' : isPlugin ? '#faf5ff' : isPlanned ? '#fffbeb' : isImpl ? '#f0fdf4' : isHov ? '#eff6ff' : '#f1f5f9';
     const badgeStroke = isVisualization ? '#1e293b' : isPlugin ? '#9333ea' : isPlanned ? '#d97706' : isImpl ? '#16a34a' : lineColor;
@@ -643,11 +647,14 @@ const ArchitectureView = ({ activity, tasks: tasksProp, allTasks, filters, toolN
     const fromSide = port.fromSide || 'right';
     const toSide = port.toSide || 'left';
 
-    const dist = Math.max(40, Math.min(Math.abs(lx2 - lx1) * 0.45, 140));
-    const cx1 = lx1 + (fromSide === 'right' ? dist : fromSide === 'left' ? -dist : 0);
-    const cy1 = ly1 + (fromSide === 'bottom' ? dist : fromSide === 'top' ? -dist : 0);
-    const cx2 = lx2 + (toSide === 'right' ? dist : toSide === 'left' ? -dist : 0);
-    const cy2 = ly2 + (toSide === 'bottom' ? dist : toSide === 'top' ? -dist : 0);
+    // Compute separate horizontal & vertical distances for robust curve control points.
+    // Minimum of 60px guarantees a visible arc even for vertically-aligned boxes.
+    const hDist = Math.max(60, Math.min(Math.abs(lx2 - lx1) * 0.5, 160));
+    const vDist = Math.max(60, Math.min(Math.abs(ly2 - ly1) * 0.5, 160));
+    const cx1 = lx1 + (fromSide === 'right' ? hDist : fromSide === 'left' ? -hDist : 0);
+    const cy1 = ly1 + (fromSide === 'bottom' ? vDist : fromSide === 'top' ? -vDist : 0);
+    const cx2 = lx2 + (toSide === 'right' ? hDist : toSide === 'left' ? -hDist : 0);
+    const cy2 = ly2 + (toSide === 'bottom' ? vDist : toSide === 'top' ? -vDist : 0);
 
     const style = edgeConfig.style || 'curve';
     const dx = edgeConfig.dx || 0;
@@ -713,7 +720,7 @@ const ArchitectureView = ({ activity, tasks: tasksProp, allTasks, filters, toolN
             style={{ transition: 'r 0.15s ease' }} />
         </g>
 
-        {labelTxt && (
+        {labelWithIcon && (
           <g transform={`translate(${fwdX}, ${fwdY})`}
             style={{ cursor: 'pointer', opacity: lineOpacity }}
             onMouseDown={(e) => e.stopPropagation()}
@@ -721,11 +728,11 @@ const ArchitectureView = ({ activity, tasks: tasksProp, allTasks, filters, toolN
             <rect x={-badgeW / 2 - 4} y={-11} width={badgeW + 8} height={22} rx={6}
               fill={badgeFill} stroke={badgeStroke} strokeWidth={isHov ? 1.5 : 1} />
             <text textAnchor="middle" y={4.5} fontSize="10px" fontWeight="700" fill={badgeTextFill}
-              style={{ pointerEvents: 'none', userSelect: 'none' }}>{labelTxt}</text>
+              style={{ pointerEvents: 'none', userSelect: 'none' }}>{labelWithIcon}</text>
           </g>
         )}
 
-        {isBidi && revFmts && (
+        {isBidi && revLabelWithIcon && (
           <g transform={`translate(${revX}, ${revY})`}
             style={{ cursor: 'pointer', opacity: lineOpacity }}
             onMouseDown={(e) => e.stopPropagation()}
@@ -733,7 +740,7 @@ const ArchitectureView = ({ activity, tasks: tasksProp, allTasks, filters, toolN
             <rect x={-revBadgeW / 2 - 4} y={-11} width={revBadgeW + 8} height={22} rx={6}
               fill={badgeFill} stroke={badgeStroke} strokeWidth={isHov ? 1.5 : 1} />
             <text textAnchor="middle" y={4.5} fontSize="10px" fontWeight="700" fill={badgeTextFill}
-              style={{ pointerEvents: 'none', userSelect: 'none' }}>{revFmts}</text>
+              style={{ pointerEvents: 'none', userSelect: 'none' }}>{revLabelWithIcon}</text>
           </g>
         )}
 

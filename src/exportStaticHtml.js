@@ -1153,10 +1153,12 @@ const VIEWER_JS = `
     });
 
     var vals = Object.values(pos);
-    var maxX = (vals.length ? vals.reduce(function(m, p) { return Math.max(m, p.x); }, 0) : 0) + ARCH_BOX_W + 120;
-    var maxY = (vals.length ? vals.reduce(function(m, p) { return Math.max(m, p.y); }, 0) : 0) + ARCH_BOX_H + 120;
+    // Add extra margin (180px horizontal, 140px vertical) so edge labels and
+    // curve control handles don't get clipped against the SVG boundary.
+    var maxX = (vals.length ? vals.reduce(function(m, p) { return Math.max(m, p.x); }, 0) : 0) + ARCH_BOX_W + 180;
+    var maxY = (vals.length ? vals.reduce(function(m, p) { return Math.max(m, p.y); }, 0) : 0) + ARCH_BOX_H + 140;
 
-    var svg = '<svg xmlns="http://www.w3.org/2000/svg" width="' + maxX + '" height="' + maxY + '" viewBox="0 0 ' + maxX + ' ' + maxY + '" style="background:#f8f9fb;display:block;user-select:none;">';
+    var svg = '<svg xmlns="http://www.w3.org/2000/svg" width="' + maxX + '" height="' + maxY + '" data-native-w="' + maxX + '" data-native-h="' + maxY + '" viewBox="0 0 ' + maxX + ' ' + maxY + '" style="background:#f8f9fb;display:block;user-select:none;">';
     svg += '<defs>';
     svg += '<marker id="arch-arr-gray" markerWidth="6" markerHeight="6" refX="3" refY="3" orient="auto"><polygon points="0 0, 6 3, 0 6" fill="#64748b"/></marker>';
     svg += '<marker id="arch-arr-blue" markerWidth="6" markerHeight="6" refX="3" refY="3" orient="auto"><polygon points="0 0, 6 3, 0 6" fill="#2563eb"/></marker>';
@@ -1274,11 +1276,15 @@ const VIEWER_JS = `
           strokeColor = '#64748b'; markerId = 'arch-arr-gray'; dashAttr = '';
         }
 
+        // Determine the icon prefix based on link type
+        var typeIcon = isPlugin ? '🔌 ' : isVisualization ? '🖥️ ' : (fmts ? '📄 ' : '');
         var labelTxt = fmts;
         if (!labelTxt && isPlugin) labelTxt = 'Plug-in';
         if (!labelTxt && isVisualization) labelTxt = 'Visual.';
-        var badgeW = labelTxt ? labelTxt.length * 6.5 + 12 : 0;
-        var revBadgeW = revFmts ? revFmts.length * 6.5 + 12 : 0;
+        var labelWithIcon = labelTxt ? (typeIcon + labelTxt) : '';
+        var revLabelWithIcon = revFmts ? ('📄 ' + revFmts) : '';
+        var badgeW = labelWithIcon ? labelWithIcon.length * 6.5 + 14 : 0;
+        var revBadgeW = revLabelWithIcon ? revLabelWithIcon.length * 6.5 + 14 : 0;
 
         var badgeFill = isVisualization ? '#f0f9ff' : isPlugin ? '#faf5ff' : isPlanned ? '#fffbeb' : isImpl ? '#f0fdf4' : '#f1f5f9';
         var badgeStroke = isVisualization ? '#1e293b' : isPlugin ? '#9333ea' : isPlanned ? '#d97706' : isImpl ? '#16a34a' : '#64748b';
@@ -1291,11 +1297,14 @@ const VIEWER_JS = `
         var ly2 = port.ly2 !== undefined ? port.ly2 : t.y + 27;
         var fromSide = port.fromSide || 'right', toSide = port.toSide || 'left';
 
-        var dist = Math.max(40, Math.min(Math.abs(lx2 - lx1) * 0.45, 140));
-        var cx1 = lx1 + (fromSide === 'right' ? dist : fromSide === 'left' ? -dist : 0);
-        var cy1 = ly1 + (fromSide === 'bottom' ? dist : fromSide === 'top' ? -dist : 0);
-        var cx2 = lx2 + (toSide === 'right' ? dist : toSide === 'left' ? -dist : 0);
-        var cy2 = ly2 + (toSide === 'bottom' ? dist : toSide === 'top' ? -dist : 0);
+        // Compute separate horizontal & vertical distances for robust curve control points.
+        // Use a minimum of 60px so curves always have a visible arc even for short distances.
+        var hDist = Math.max(60, Math.min(Math.abs(lx2 - lx1) * 0.5, 160));
+        var vDist = Math.max(60, Math.min(Math.abs(ly2 - ly1) * 0.5, 160));
+        var cx1 = lx1 + (fromSide === 'right' ? hDist : fromSide === 'left' ? -hDist : 0);
+        var cy1 = ly1 + (fromSide === 'bottom' ? vDist : fromSide === 'top' ? -vDist : 0);
+        var cx2 = lx2 + (toSide === 'right' ? hDist : toSide === 'left' ? -hDist : 0);
+        var cy2 = ly2 + (toSide === 'bottom' ? vDist : toSide === 'top' ? -vDist : 0);
 
         var style = edgeConfig.style || 'curve';
         var dx = edgeConfig.dx || 0;
@@ -1323,16 +1332,16 @@ const VIEWER_JS = `
         svg += '<path d="' + pathD + '" fill="none" stroke="' + strokeColor + '" stroke-width="1.5"' + dashAttr + ' stroke-opacity="0.55" marker-end="url(#' + markerId + ')"' + (isBidi ? ' marker-start="url(#' + markerId + ')"' : '') + ' style="transition:all 0.2s ease"/>';
         svg += '<circle cx="' + lx1 + '" cy="' + ly1 + '" r="2.5" fill="' + strokeColor + '" stroke="#ffffff" stroke-width="0.5" stroke-opacity="0.55"/>';
         svg += '<circle cx="' + lx2 + '" cy="' + ly2 + '" r="2.5" fill="' + strokeColor + '" stroke="#ffffff" stroke-width="0.5" stroke-opacity="0.55"/>';
-        if (labelTxt) {
+        if (labelWithIcon) {
           svg += '<g transform="translate(' + fwdX + ', ' + fwdY + ')" style="opacity:0.85;transition:opacity 0.2s ease">';
-          svg += '<rect x="' + (-badgeW / 2) + '" y="-8" width="' + badgeW + '" height="16" rx="4" fill="' + badgeFill + '" stroke="' + badgeStroke + '" stroke-width="1"/>';
-          svg += '<text x="0" y="4" text-anchor="middle" font-size="9px" font-weight="600" fill="' + badgeTextFill + '">' + escapeHtml(labelTxt) + '</text>';
+          svg += '<rect x="' + (-badgeW / 2) + '" y="-9" width="' + badgeW + '" height="18" rx="5" fill="' + badgeFill + '" stroke="' + badgeStroke + '" stroke-width="1"/>';
+          svg += '<text x="0" y="5" text-anchor="middle" font-size="9px" font-weight="600" fill="' + badgeTextFill + '">' + escapeHtml(labelWithIcon) + '</text>';
           svg += '</g>';
         }
-        if (isBidi && revFmts) {
+        if (isBidi && revLabelWithIcon) {
           svg += '<g transform="translate(' + revX + ', ' + revY + ')" style="opacity:0.85;transition:opacity 0.2s ease">';
-          svg += '<rect x="' + (-revBadgeW / 2) + '" y="-8" width="' + revBadgeW + '" height="16" rx="4" fill="' + badgeFill + '" stroke="' + badgeStroke + '" stroke-width="1"/>';
-          svg += '<text x="0" y="4" text-anchor="middle" font-size="9px" font-weight="600" fill="' + badgeTextFill + '">' + escapeHtml(revFmts) + '</text>';
+          svg += '<rect x="' + (-revBadgeW / 2) + '" y="-9" width="' + revBadgeW + '" height="18" rx="5" fill="' + badgeFill + '" stroke="' + badgeStroke + '" stroke-width="1"/>';
+          svg += '<text x="0" y="5" text-anchor="middle" font-size="9px" font-weight="600" fill="' + badgeTextFill + '">' + escapeHtml(revLabelWithIcon) + '</text>';
           svg += '</g>';
         }
         svg += '</g>';
