@@ -72,6 +72,8 @@ const STATIC_CSS = `
   /* SVG interaction classes */
   .task-node, .doc-node { transition: opacity .15s ease; }
   .dimmed { opacity: .2; }
+  .task-node.optional { opacity: .2; }
+  .task-node.optional.dimmed { opacity: .08; }
   .doc-dimmed { opacity: .15; }
   .task-rect.hovered, .doc-rect.hovered { stroke: #fff !important; stroke-width: 3 !important; filter: drop-shadow(0 4px 14px rgba(0,0,0,.45)); }
   .dep-arrow path { transition: stroke .15s ease, stroke-opacity .15s ease, stroke-width .15s ease; }
@@ -225,13 +227,20 @@ const VIEWER_JS = `
       }
     });
     
+    var seenR = {}, seqResps = [];
+    activities.forEach(function(a) {
+      (a.responsibles || []).forEach(function(r) {
+        if (respsSet[r.key] && !seenR[r.key]) { seenR[r.key] = true; seqResps.push(r); }
+      });
+    });
+
     return {
       id: 'seq_' + seq.id,
       name: 'Sequence: ' + seq.name,
       tasks: seqTasks,
       parentTasks: parentTasks,
       tools: Object.keys(toolsSet),
-      responsibles: activities[0] ? activities[0].responsibles.filter(function(r) { return respsSet[r.key]; }) : [],
+      responsibles: seqResps,
       documents: globalDocs
     };
   }
@@ -479,24 +488,6 @@ const VIEWER_JS = `
     var respMap = {};
     activeResponsibles.forEach(function(r) { respMap[r.key] = r; });
 
-    var bannerEl = panelEl.querySelector('.variant-banner');
-    var hasOptional = tasks.some(function(t) { return t.optional; });
-    if (hasOptional && activeVariant === 'option_2') {
-      if (!bannerEl) {
-        bannerEl = document.createElement('div');
-        bannerEl.className = 'variant-banner';
-        bannerEl.style = 'position:absolute; bottom:24px; left:50%; transform:translateX(-50%); z-index:120; padding:8px 16px; background:#fffbeb; border:1px solid #f59e0b; border-radius:6px; color:#b45309; font-size:13px; font-weight:600; box-shadow:0 4px 12px rgba(245,158,11,0.15); display:flex; align-items:center; gap:10px;';
-        bannerEl.innerHTML = '<span>⚠️</span> <span>The faded tasks are not mandatory in this variant.</span> <button type="button" class="variant-banner-close" style="background:none;border:none;color:#b45309;font-size:14px;font-weight:bold;cursor:pointer;padding:0 4px;margin-left:4px;" title="Dismiss">✕</button>';
-        panelEl.querySelector('.canvas-host').parentElement.appendChild(bannerEl);
-        bannerEl.querySelector('.variant-banner-close').addEventListener('click', function() {
-          bannerEl.style.display = 'none';
-        });
-      }
-      bannerEl.style.display = 'flex';
-    } else if (bannerEl) {
-      bannerEl.style.display = 'none';
-    }
-
     var docLegend = panelEl.querySelector('.doc-legend');
     if (!docLegend) {
       docLegend = document.createElement('div');
@@ -676,20 +667,21 @@ const VIEWER_JS = `
       var cx = getTaskX(task) + w / 2;
       var firstBaselineY = taskYVal + PAD_Y + LINE_HEIGHT - 2;
 
-      svg += '<g class="task-node' + (task.optional ? ' dimmed' : '') + '" data-id="' + escapeHtml(task.id) + '" data-task-id="' + escapeHtml(task.id) + '" data-tool="' + escapeHtml(task.tool || '') + '" style="cursor:pointer;">';
+      var taskSeqs = Array.isArray(task.sequences) ? task.sequences : (task.sequences ? String(task.sequences).split(',') : []);
+      taskSeqs = taskSeqs.map(function(s) { return s.trim(); }).filter(Boolean);
+      var isSeq = (panelEl && panelEl.getAttribute('data-type') === 'sequence') || (activity && String(activity.id || '').indexOf('seq_') === 0);
+      var navSeq = (!isSeq && taskSeqs.length > 0) ? taskSeqs[0] : '';
+
+      svg += '<g class="task-node' + (task.optional ? ' optional' : '') + '" data-id="' + escapeHtml(task.id) + '" data-task-id="' + escapeHtml(task.id) + '" data-tool="' + escapeHtml(task.tool || '') + '"' + (navSeq ? ' data-seq-name="' + escapeHtml(navSeq) + '"' : '') + ' style="cursor:pointer;">';
       svg += '<rect x="' + getTaskX(task) + '" y="' + taskYVal + '" width="' + w + '" height="' + h + '" rx="' + TASK_RADIUS + '" fill="' + fill + '" stroke="rgba(0,0,0,0.25)" stroke-width="1.5" class="task-rect"/>';
       lines.forEach(function(line, i) {
         svg += '<text x="' + cx + '" y="' + (firstBaselineY + i * LINE_HEIGHT) + '" text-anchor="middle" font-size="' + FONT_SIZE + 'px" font-weight="bold" fill="white" pointer-events="none">' + escapeHtml(line) + '</text>';
       });
       
-      var taskSeqs = Array.isArray(task.sequences) ? task.sequences : (task.sequences ? String(task.sequences).split(',') : []);
-      taskSeqs = taskSeqs.map(function(s) { return s.trim(); }).filter(Boolean);
-      var isSeq = (panelEl && panelEl.getAttribute('data-type') === 'sequence') || (activity && String(activity.id || '').indexOf('seq_') === 0);
-      if (!isSeq && taskSeqs.length > 0) {
+      if (navSeq) {
         var seqIconX = getTaskX(task) + w - 16;
         var seqIconY = taskYVal + h - 16;
-        svg += '<g class="seq-nav-icon" data-seq-name="' + escapeHtml(taskSeqs[0]) + '" transform="translate(' + seqIconX + ', ' + seqIconY + ')" style="cursor:pointer;pointer-events:all;" title="Open Sequence View">';
-        svg += '<rect x="-8" y="-8" width="24" height="24" fill="transparent" />';
+        svg += '<g class="seq-nav-icon" data-seq-name="' + escapeHtml(taskSeqs[0]) + '" transform="translate(' + seqIconX + ', ' + seqIconY + ')" style="pointer-events:none;" title="Open Sequence View">';
         svg += '<path d="M6,1 L1,3.5 L6,6 L11,3.5 Z M1,6 L6,8.5 L11,6 M1,8.5 L6,11 L11,8.5" fill="none" stroke="rgba(255,255,255,0.9)" stroke-width="1.2" stroke-linejoin="round" pointer-events="none" />';
         svg += '</g>';
       }
@@ -846,12 +838,16 @@ const VIEWER_JS = `
     });
 
     // Sequence navigation (clicking 📚 icon on task node)
-    svgEl.querySelectorAll('.seq-nav-icon').forEach(function(el) {
-      el.addEventListener('click', function(e) {
+    svgEl.querySelectorAll('.task-node[data-seq-name]').forEach(function(node) {
+      node.addEventListener('click', function(e) {
         e.stopPropagation();
-        var seqName = el.getAttribute('data-seq-name');
+        // While the feedback drawer is open, double-click selects the task, so don't navigate away
+        var drawer = document.getElementById('feedback-drawer');
+        if (drawer && drawer.classList.contains('open')) return;
+        var seqName = node.getAttribute('data-seq-name');
         var seqIdx = sequences.findIndex(function(s) { return s.name === seqName || s.id === seqName; });
         if (seqIdx >= 0) {
+          hideTooltip();
           if (!isSequenceView) enterSequenceView();
           activateTab('tab-seq-' + seqIdx);
         }
@@ -1001,13 +997,14 @@ const VIEWER_JS = `
   // ══════════════════════════════════════════════════════════════════════════
   // ARCHITECTURE VIEW RENDERER
   // ══════════════════════════════════════════════════════════════════════════
-  function computeToolLayout(tools, tasks) {
+  function computeToolLayout(tools, tasks, lookup) {
+    var src = (lookup && lookup.length) ? lookup : tasks;
     var toolSet = new Set(tools);
     var edges = {};
     tools.forEach(function(t) { edges[t] = new Set(); });
     tasks.forEach(function(task) {
       (task.dependencies || []).forEach(function(dep) {
-        var fromTask = tasks.find(function(t) { return t.id === depId(dep); });
+        var fromTask = src.find(function(t) { return t.id === depId(dep); });
         var fromTool = fromTask ? fromTask.tool : null;
         if (fromTool && fromTool !== task.tool && toolSet.has(fromTool) && toolSet.has(task.tool)) edges[fromTool].add(task.tool);
       });
@@ -1094,8 +1091,9 @@ const VIEWER_JS = `
     });
 
     var allTasksLookup = [];
-    activities.forEach(function(act) {
-      (act.tasks || []).forEach(function(rawT) {
+    var lookupSources = activities.map(function(a) { return a.tasks || []; }).concat([hiddenTasks || []]);
+    lookupSources.forEach(function(taskList) {
+      taskList.forEach(function(rawT) {
         var t = Object.assign({}, rawT);
         if (activeToolSetting === 'setting_2' && t.alternativeTools && t.alternativeTools.length > 0) {
           var firstAlt = t.alternativeTools[0];
@@ -1116,15 +1114,18 @@ const VIEWER_JS = `
     var tools = activity.tools.filter(function(t) { return toolSet.has(t); });
     // Also add any new alt tools not in the original list
     tasks.forEach(function(t) { if (t.tool && !tools.includes(t.tool)) tools.push(t.tool); });
-    var responsibles = activity.responsibles;
     var respMap = {};
-    responsibles.forEach(function(r) { respMap[r.key] = r; });
+    activities.forEach(function(act) {
+      (act.responsibles || []).forEach(function(r) { if (!respMap[r.key]) respMap[r.key] = r; });
+    });
+    (activity.responsibles || []).forEach(function(r) { respMap[r.key] = r; });
 
-    var layout = computeToolLayout(tools, tasks);
+    var layout = computeToolLayout(tools, tasks, allTasksLookup);
     var pos = Object.assign({}, layout.pos);
+    var baseActId = String(activity.id).replace(/^seq_/, '');
     if (options && options.toolPositions) {
-      if (options.toolPositions[activity.id]) {
-        Object.assign(pos, options.toolPositions[activity.id]);
+      if (options.toolPositions[activity.id] || options.toolPositions[baseActId]) {
+        Object.assign(pos, options.toolPositions[activity.id] || options.toolPositions[baseActId]);
       } else if (Object.keys(options.toolPositions).length > 0 && !options.toolPositions[activities[0]?.id]) {
         var firstVal = Object.values(options.toolPositions)[0];
         if (firstVal && typeof firstVal.x === 'number' && typeof firstVal.y === 'number') {
@@ -1137,8 +1138,8 @@ const VIEWER_JS = `
       if (localSaved) Object.assign(pos, localSaved);
     } catch(e) {}
     var savedEdgeSides = {};
-    if (options && options.edgeSides && options.edgeSides[activity.id]) {
-      Object.assign(savedEdgeSides, options.edgeSides[activity.id]);
+    if (options && options.edgeSides && (options.edgeSides[activity.id] || options.edgeSides[baseActId])) {
+      Object.assign(savedEdgeSides, options.edgeSides[activity.id] || options.edgeSides[baseActId]);
     }
     var edges = layout.edges;
     var edgeFormats = computeToolEdgeFormats(tasks, allTasksLookup);
@@ -1174,16 +1175,6 @@ const VIEWER_JS = `
         if (pos[from] && pos[to]) allEdges.push({ from: from, to: to });
       });
     });
-    var edgeSides = (options && options.edgeSides && options.edgeSides[activity.id]) ? options.edgeSides[activity.id] : {};
-    var getSide = function(e, end) {
-      var key = e.from + '→' + e.to;
-      if (edgeSides[key] && edgeSides[key][end]) return edgeSides[key][end];
-      var pf = pos[e.from], pt = pos[e.to];
-      if (!pf || !pt) return end === 'from' ? 'right' : 'left';
-      if (end === 'from') return pf.x > pt.x ? 'left' : 'right';
-      else return pf.x > pt.x ? 'right' : 'left';
-    };
-
     var edgePorts = {};
     function getSide(e, end) {
       var k = e.from + '→' + e.to;
@@ -1960,6 +1951,20 @@ const VIEWER_JS = `
   var tabBtns = document.querySelectorAll('.tab-btn');
   var tabPanels = document.querySelectorAll('.tab-panel');
   var rendered = {}; // track which panels have been rendered
+  var renderedKey = {}; // variant|toolSetting each panel was last rendered with
+
+  function syncToggleStyles() {
+    document.querySelectorAll('.variant-btn').forEach(function(b) {
+      var on = b.getAttribute('data-variant') === activeVariant;
+      b.style.background = on ? '#1e40af' : '#fff';
+      b.style.color = on ? '#fff' : '#475569';
+    });
+    document.querySelectorAll('.tool-setting-btn').forEach(function(b) {
+      var on = b.getAttribute('data-setting') === activeToolSetting;
+      b.style.background = on ? '#1e40af' : '#fff';
+      b.style.color = on ? '#fff' : '#475569';
+    });
+  }
 
   function activateTab(tabId) {
     tabBtns.forEach(function(b) {
@@ -1970,8 +1975,11 @@ const VIEWER_JS = `
       b.classList.toggle('active', isActive);
     });
     tabPanels.forEach(function(p) { p.classList.toggle('active', p.id === tabId); });
-    if (!rendered[tabId]) {
+    var renderKey = activeVariant + '|' + activeToolSetting;
+    syncToggleStyles();
+    if (!rendered[tabId] || renderedKey[tabId] !== renderKey) {
       rendered[tabId] = true;
+      renderedKey[tabId] = renderKey;
       var panel = document.getElementById(tabId);
       if (!panel) return;
       var type = panel.getAttribute('data-type');
@@ -2388,7 +2396,8 @@ const VIEWER_JS = `
     if (!activePanel) return;
 
     var idx = parseInt(activePanel.getAttribute('data-index') || '0', 10);
-    var act = activities[idx];
+    var panelType = activePanel.getAttribute('data-type');
+    var act = (panelType === 'sequence' || panelType === 'seq-arch') ? getSequenceActivity(idx) : activities[idx];
     if (!act) return;
 
     var taskNodes = activePanel.querySelectorAll('.task-node');
