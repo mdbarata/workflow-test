@@ -449,7 +449,7 @@ const VIEWER_JS = `
   // TIMELINE RENDERER
   // ══════════════════════════════════════════════════════════════════════════
   function renderTimeline(panelEl, activity, collapsedSet, filterState) {
-    var tools = activity.tools, responsibles = activity.responsibles, documents = activity.documents || [];
+    var responsibles = activity.responsibles, documents = activity.documents || [];
     var getTaskProps = function(task, variant) {
       var t = variant === 'option_1' || !task.overrides || !task.overrides[variant]
         ? Object.assign({}, task) : Object.assign({}, task, task.overrides[variant]);
@@ -465,6 +465,13 @@ const VIEWER_JS = `
       return t;
     };
     var tasks = (activity.tasks || []).map(function(t) { return getTaskProps(t, activeVariant); });
+
+    // Rebuild the effective tool list from transformed tasks so that alternative
+    // tools (setting_2) are included and tasks appear in the correct lanes.
+    // Original order is preserved where tools still exist; new alt-tools are appended.
+    var taskToolSet = new Set(tasks.map(function(t) { return t.tool; }).filter(Boolean));
+    var tools = (activity.tools || []).filter(function(tool) { return taskToolSet.has(tool); });
+    tasks.forEach(function(t) { if (t.tool && tools.indexOf(t.tool) === -1) tools.push(t.tool); });
 
     var activeResponsibles = [];
     var usedRespKeys = {};
@@ -1875,7 +1882,22 @@ const VIEWER_JS = `
       html += '<button class="chip' + (active ? ' chip-active' : '') + '" data-type="responsibles" data-key="' + escapeHtml(r.key) + '" style="' + style + '"><span class="chip-dot" style="background-color:' + r.taskColor + '"></span>' + escapeHtml(r.name) + '</button>';
     });
     html += '<div class="filter-divider"></div><span class="filter-label">TOOL</span>';
-    (activity.tools || []).forEach(function(tool) {
+    // Compute the effective tool list respecting the active tool setting so filter
+    // chips reflect the tools that are actually visible rather than the static originals.
+    var effectiveFilterTools = (function() {
+      if (activeToolSetting !== 'setting_2') return activity.tools || [];
+      var seen = {}, list = [];
+      (activity.tasks || []).forEach(function(rawT) {
+        var t = Object.assign({}, rawT);
+        if (t.alternativeTools && t.alternativeTools.length > 0) {
+          var fa = t.alternativeTools[0];
+          t.tool = (typeof fa === 'object' && fa !== null) ? fa.tool : fa;
+        }
+        if (t.tool && !seen[t.tool]) { seen[t.tool] = true; list.push(t.tool); }
+      });
+      return list;
+    })();
+    effectiveFilterTools.forEach(function(tool) {
       var active = filterState.tools.indexOf(tool) >= 0;
       html += '<button class="chip chip-tool' + (active ? ' chip-active' : '') + '" data-type="tools" data-key="' + escapeHtml(tool) + '">' + escapeHtml(tool) + '</button>';
     });
@@ -2614,7 +2636,7 @@ function buildHtml(workflowData, options) {
         return (typeof localStorage !== 'undefined')
           ? JSON.parse(localStorage.getItem('activity_links_positions') || localStorage.getItem('activity_links_positions_v1') || 'null')
           : null;
-      } catch(e) { return null; }
+      } catch (e) { return null; }
     })() || null,
     scope: scope,
     activeActivityIndex: 0,
