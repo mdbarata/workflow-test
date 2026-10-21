@@ -90,35 +90,10 @@ const STATIC_CSS = `
   /* Links view */
   .link-card { transition: stroke .15s; }
 
-  /* Feedback Drawer */
-  .feedback-drawer { position: fixed; top: 0; right: -360px; width: 340px; height: 100vh; background: #ffffff; box-shadow: -4px 0 24px rgba(0,0,0,0.15); z-index: 2000; display: flex; flex-direction: column; transition: right 0.25s cubic-bezier(0.16, 1, 0.3, 1); border-left: 1px solid #e2e8f0; }
-  .feedback-drawer.open { right: 0; }
-  .feedback-header { padding: 16px; background: #f8fafc; border-bottom: 1px solid #e2e8f0; display: flex; align-items: center; justify-content: space-between; font-weight: 700; font-size: 14px; color: #1e293b; }
-  .feedback-close { background: none; border: none; font-size: 18px; cursor: pointer; color: #64748b; padding: 4px; }
-  .feedback-body { flex: 1; overflow-y: auto; padding: 16px; display: flex; flex-direction: column; gap: 16px; }
-  .feedback-form { display: flex; flex-direction: column; gap: 10px; background: #f1f5f9; padding: 12px; border-radius: 8px; border: 1px solid #e2e8f0; }
-  .feedback-form label { font-size: 11px; font-weight: 600; color: #475569; text-transform: uppercase; letter-spacing: 0.5px; }
-  .feedback-form input, .feedback-form textarea, .feedback-form select { width: 100%; padding: 8px 10px; border: 1px solid #cbd5e1; border-radius: 6px; font-size: 12px; font-family: inherit; background: #fff; box-sizing: border-box; }
-  .feedback-form textarea { resize: vertical; min-height: 60px; }
-  .feedback-btn-primary { padding: 8px 14px; background: #2563eb; color: #fff; font-size: 12px; font-weight: 600; border: none; border-radius: 6px; cursor: pointer; transition: background .15s; }
-  .feedback-btn-primary:hover { background: #1d4ed8; }
-  .feedback-list { display: flex; flex-direction: column; gap: 10px; }
-  .feedback-item { background: #fff; border: 1px solid #e2e8f0; border-radius: 8px; padding: 10px; font-size: 12px; box-shadow: 0 1px 3px rgba(0,0,0,0.04); position: relative; }
-  .feedback-item-header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 6px; font-size: 11px; color: #64748b; }
-  .feedback-badge { display: inline-block; padding: 2px 6px; border-radius: 4px; background: #eff6ff; color: #1e40af; font-weight: 600; font-size: 10px; margin-bottom: 6px; border: 1px solid #bfdbfe; word-break: break-all; }
-  .feedback-item-text { color: #1e293b; line-height: 1.4; white-space: pre-wrap; }
-  .feedback-del { background: none; border: none; color: #ef4444; cursor: pointer; font-size: 13px; font-weight: 700; padding: 0 4px; }
-  .feedback-footer { padding: 12px 16px; background: #f8fafc; border-top: 1px solid #e2e8f0; display: flex; gap: 8px; }
-  .feedback-btn-sec { flex: 1; padding: 8px 10px; background: #fff; border: 1px solid #cbd5e1; color: #334155; font-size: 11px; font-weight: 600; border-radius: 6px; cursor: pointer; text-align: center; transition: all .15s; }
-  .feedback-btn-sec:hover { background: #f1f5f9; border-color: #94a3b8; }
-  .feedback-topbtn { padding: 6px 12px; background: #eff6ff; border: 1px solid #bfdbfe; color: #1e40af; border-radius: 6px; font-size: 12px; font-weight: 600; cursor: pointer; display: flex; align-items: center; gap: 6px; transition: all .15s; }
-  .feedback-topbtn:hover { background: #dbeafe; }
-  .feedback-count-badge { background: #2563eb; color: #fff; padding: 1px 6px; border-radius: 10px; font-size: 10px; font-weight: 700; }
-
   .link-line { transition: stroke-opacity .15s; }
 
   /* Font size & compact controls */
-  .font-controls { display: flex; align-items: center; gap: 6px; background: #f1f5f9; border: 1.5px solid #cbd5e1; border-radius: 8px; padding: 3px 10px; margin-left: 8px; }
+  .font-controls { display: flex; align-items: center; gap: 6px; background: #f1f5f9; border: 1.5px solid #cbd5e1; border-radius: 8px; padding: 3px 10px; margin-left: auto; }
   .fc-label { font-size: 13px; font-weight: 700; color: #64748b; flex-shrink: 0; }
   .fc-value { font-size: 10px; color: #64748b; min-width: 28px; text-align: center; font-variant-numeric: tabular-nums; }
   .font-controls input[type=range] { -webkit-appearance: none; appearance: none; width: 80px; height: 4px; background: #cbd5e1; border-radius: 2px; outline: none; cursor: pointer; }
@@ -848,9 +823,6 @@ const VIEWER_JS = `
     svgEl.querySelectorAll('.task-node[data-seq-name]').forEach(function(node) {
       node.addEventListener('click', function(e) {
         e.stopPropagation();
-        // While the feedback drawer is open, double-click selects the task, so don't navigate away
-        var drawer = document.getElementById('feedback-drawer');
-        if (drawer && drawer.classList.contains('open')) return;
         var seqName = node.getAttribute('data-seq-name');
         var seqIdx = sequences.findIndex(function(s) { return s.name === seqName || s.id === seqName; });
         if (seqIdx >= 0) {
@@ -2151,238 +2123,7 @@ const VIEWER_JS = `
     });
   }
 
-  // ══════════════════════════════════════════════════════════════════════════
-  // FEEDBACK ENGINE
-  // ══════════════════════════════════════════════════════════════════════════
-  var fbStorageKey = 'viewer_fb_' + (activities[0] ? activities[0].id : 'all');
-  var fbState = { author: '', comments: [] };
-  try {
-    var savedFb = JSON.parse(localStorage.getItem(fbStorageKey) || 'null');
-    if (savedFb && Array.isArray(savedFb.comments)) fbState = savedFb;
-  } catch(e) {}
 
-  var currentTarget = { type: 'general', key: 'General Workflow', activityId: null, activityName: null };
-  var drawerEl = document.getElementById('feedback-drawer');
-  var toggleBtn = document.getElementById('feedback-toggle-btn');
-  var closeBtn = document.getElementById('feedback-close-btn');
-  var countEl = document.getElementById('feedback-count');
-  var authorInput = document.getElementById('fb-author');
-  var targetBadge = document.getElementById('fb-target-badge');
-  var clearTargetBtn = document.getElementById('fb-clear-target');
-  var textInput = document.getElementById('fb-text');
-  var refNoteContainer = document.getElementById('fb-ref-note-container');
-  var refNoteInput = document.getElementById('fb-ref-note');
-  var submitBtn = document.getElementById('fb-submit-btn');
-  var listEl = document.getElementById('fb-list');
-  var copyMdBtn = document.getElementById('fb-copy-md');
-  var downloadJsonBtn = document.getElementById('fb-download-json');
-
-  if (authorInput) authorInput.value = fbState.author || '';
-
-  function saveFbState() {
-    try {
-      if (authorInput) fbState.author = authorInput.value.trim();
-      localStorage.setItem(fbStorageKey, JSON.stringify(fbState));
-    } catch(e) {}
-    updateFbCount();
-  }
-
-  function updateFbCount() {
-    if (!countEl) return;
-    var c = fbState.comments.length;
-    countEl.textContent = c;
-    countEl.style.display = c > 0 ? 'inline-block' : 'none';
-  }
-
-  function setFbTarget(type, key, actId, actName, tools) {
-    currentTarget = { type: type, key: key, activityId: actId || null, activityName: actName || null, tools: tools || [] };
-    if (targetBadge) {
-      var label = '';
-      if (type === 'general') label = 'General Workflow';
-      else if (type === 'tool') label = 'Tool: ' + key + (actName ? ' (' + actName + ')' : '');
-      else if (type === 'activity') label = 'Activity: ' + key;
-      else if (type === 'task') label = 'Task: ' + key;
-      else if (type === 'link') label = 'Link: ' + key;
-      else label = key;
-      targetBadge.textContent = label;
-    }
-    if (refNoteContainer) {
-      if (type === 'task' || type === 'link') {
-        refNoteContainer.style.display = 'block';
-        if (refNoteInput) refNoteInput.value = '';
-      } else {
-        refNoteContainer.style.display = 'none';
-        if (refNoteInput) refNoteInput.value = '';
-      }
-    }
-  }
-
-  function renderFbList() {
-    if (!listEl) return;
-    if (fbState.comments.length === 0) {
-      listEl.innerHTML = '<div style="text-align:center;color:#94a3b8;font-size:12px;padding:20px 0;">No comments yet. Click any tool lane, architecture box, or link in the diagram to attach a note!</div>';
-      return;
-    }
-    var html = '';
-    fbState.comments.forEach(function(item) {
-      var label = '';
-      if (item.targetType === 'general') label = 'General Workflow';
-      else if (item.targetType === 'tool') label = 'Tool: ' + item.targetKey + (item.activityName ? ' (' + item.activityName + ')' : '');
-      else if (item.targetType === 'activity') label = 'Activity: ' + item.targetKey;
-      else if (item.targetType === 'link') label = 'Link: ' + item.targetKey;
-      else label = item.targetKey || 'General';
-
-      html += '<div class="feedback-item">';
-      html += '<div class="feedback-item-header">';
-      html += '<span><strong>' + escapeHtml(item.author || 'Anonymous') + '</strong></span>';
-      html += '<span>' + new Date(item.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) + '</span>';
-      html += '</div>';
-      html += '<span class="feedback-badge">' + escapeHtml(label) + '</span>';
-      html += '<div class="feedback-item-text">' + escapeHtml(item.text) + '</div>';
-      html += '<div style="text-align:right;margin-top:6px;"><button class="feedback-del" data-id="' + item.id + '" title="Delete comment">Delete</button></div>';
-      html += '</div>';
-    });
-    listEl.innerHTML = html;
-
-    listEl.querySelectorAll('.feedback-del').forEach(function(btn) {
-      btn.addEventListener('click', function() {
-        var id = btn.getAttribute('data-id');
-        fbState.comments = fbState.comments.filter(function(c) { return c.id !== id; });
-        saveFbState();
-        renderFbList();
-      });
-    });
-  }
-
-  if (toggleBtn) toggleBtn.addEventListener('click', function() { if (drawerEl) drawerEl.classList.toggle('open'); });
-  if (closeBtn) closeBtn.addEventListener('click', function() { if (drawerEl) drawerEl.classList.remove('open'); });
-  if (clearTargetBtn) clearTargetBtn.addEventListener('click', function() { setFbTarget('general', 'General Workflow'); });
-  if (authorInput) authorInput.addEventListener('input', saveFbState);
-
-  if (submitBtn) {
-    submitBtn.addEventListener('click', function() {
-      var txt = textInput ? textInput.value.trim() : '';
-      if (!txt) { alert('Please enter a comment.'); return; }
-      var author = authorInput ? authorInput.value.trim() : '';
-      if (!author) { author = 'Anonymous Reviewer'; if (authorInput) authorInput.value = author; }
-      var comment = {
-        id: 'fb-' + Date.now() + '-' + Math.random().toString(36).substr(2, 4),
-        author: author,
-        text: txt,
-        targetType: currentTarget.type,
-        targetKey: currentTarget.key,
-        activityId: currentTarget.activityId,
-        activityName: currentTarget.activityName,
-        associatedTools: currentTarget.tools || [],
-        referenceNote: refNoteInput ? refNoteInput.value.trim() : '',
-        timestamp: new Date().toISOString()
-      };
-      fbState.comments.push(comment);
-      if (textInput) textInput.value = '';
-      saveFbState();
-      renderFbList();
-    });
-  }
-
-  if (copyMdBtn) {
-    copyMdBtn.addEventListener('click', function() {
-      if (fbState.comments.length === 0) { alert('No comments to copy!'); return; }
-      var lines = ['# Model Review Feedback', 'Author: **' + (fbState.author || 'Anonymous') + '**', 'Exported: ' + new Date().toLocaleString(), ''];
-      fbState.comments.forEach(function(c, i) {
-        var label = c.targetType === 'tool' ? 'Tool: ' + c.targetKey + (c.activityName ? ' (' + c.activityName + ')' : '') : c.targetKey;
-        lines.push('### ' + (i+1) + '. ' + label);
-        lines.push('> ' + c.text);
-        lines.push('*By ' + (c.author || 'Anonymous') + ' at ' + new Date(c.timestamp).toLocaleTimeString() + '*\\n');
-      });
-      var md = lines.join('\\n');
-      if (navigator.clipboard) {
-        navigator.clipboard.writeText(md).then(function() { alert('Feedback markdown copied to clipboard!'); });
-      } else {
-        alert(md);
-      }
-    });
-  }
-
-  if (downloadJsonBtn) {
-    downloadJsonBtn.addEventListener('click', function() {
-      if (fbState.comments.length === 0) { alert('No comments to export!'); return; }
-      var payload = {
-        version: 1,
-        exportedAt: new Date().toISOString(),
-        author: fbState.author || 'Anonymous',
-        scope: scope,
-        comments: fbState.comments
-      };
-      var blob = new Blob([JSON.stringify(payload, null, 2)], { type: 'application/json' });
-      var url = URL.createObjectURL(blob);
-      var a = document.createElement('a');
-      a.href = url;
-      a.download = 'model-feedback-' + (fbState.author || 'reviewer').toLowerCase().replace(/[^a-z0-9]+/g, '-') + '.json';
-      a.click();
-      URL.revokeObjectURL(url);
-    });
-  }
-
-  // Event delegation to select targets when clicking diagram elements
-  document.addEventListener('click', function(e) {
-    var targetEl = e.target.closest('[data-key], [data-tool], .link-group, .chip-tool');
-    if (!targetEl) return;
-    // We handle task nodes and links separately in dblclick now
-    if (targetEl.classList.contains('task-node') || targetEl.classList.contains('link-group') || targetEl.classList.contains('dep-arrow')) return;
-    
-    if (e.target.closest('#feedback-drawer, #tool-note-modal, .view-toggle, .filter-bar, .topbar, .tab-bar, .zoom-controls, .note-icon, .arch-note-icon')) return;
-
-    if (!drawerEl || !drawerEl.classList.contains('open')) return;
-
-    var type = 'general', key = 'General Workflow', actId = null, actName = null;
-    var panelEl = targetEl.closest('.tab-panel');
-    if (panelEl) {
-      var idx = parseInt(panelEl.getAttribute('data-index') || '0', 10);
-      if (activities[idx]) { actId = activities[idx].id; actName = activities[idx].name; }
-    }
-
-    if (targetEl.getAttribute('data-tool')) {
-      type = 'tool'; key = targetEl.getAttribute('data-tool');
-    } else if (targetEl.classList.contains('chip') && targetEl.getAttribute('data-type') === 'tools') {
-      type = 'tool'; key = targetEl.getAttribute('data-key');
-    } else if (targetEl.classList.contains('chip-tool')) {
-      type = 'tool'; key = targetEl.textContent.trim();
-    }
-
-    if (type !== 'general') {
-      setFbTarget(type, key, actId, actName, [key]);
-    }
-  });
-
-  document.addEventListener('dblclick', function(e) {
-    var targetEl = e.target.closest('.task-node, .link-group, .dep-arrow');
-    if (!targetEl) return;
-    if (e.target.closest('#feedback-drawer, #tool-note-modal, .view-toggle, .filter-bar, .topbar, .tab-bar, .zoom-controls, .note-icon, .arch-note-icon')) return;
-
-    if (!drawerEl || !drawerEl.classList.contains('open')) return;
-
-    var type = 'general', key = 'General Workflow', actId = null, actName = null;
-    var panelEl = targetEl.closest('.tab-panel');
-    if (panelEl) {
-      var idx = parseInt(panelEl.getAttribute('data-index') || '0', 10);
-      if (activities[idx]) { actId = activities[idx].id; actName = activities[idx].name; }
-    }
-
-    var tools = [];
-    if (targetEl.classList.contains('task-node')) {
-      type = 'task'; key = targetEl.getAttribute('data-id');
-      if (targetEl.getAttribute('data-tool')) tools.push(targetEl.getAttribute('data-tool'));
-    } else if (targetEl.classList.contains('link-group') || targetEl.classList.contains('dep-arrow')) {
-      type = 'link'; key = targetEl.getAttribute('data-from') + ' -> ' + targetEl.getAttribute('data-to');
-      if (targetEl.getAttribute('data-source-tool')) tools.push(targetEl.getAttribute('data-source-tool'));
-      if (targetEl.getAttribute('data-target-tool')) tools.push(targetEl.getAttribute('data-target-tool'));
-    }
-
-    if (type !== 'general') {
-      setFbTarget(type, key, actId, actName, tools);
-      if (window.getSelection) window.getSelection().removeAllRanges();
-    }
-  });
 
   // Tool note modal logic
   var tnmEl = document.getElementById('tool-note-modal');
@@ -2837,9 +2578,6 @@ function buildHtml(workflowData, options) {
       <button id="font-reset" type="button" class="fc-reset" title="Reset font size">↺</button>
     </div>
 
-    <button id="feedback-toggle-btn" class="feedback-topbtn" style="margin-left:auto;">
-      💬 Leave Feedback <span id="feedback-count" class="feedback-count-badge" style="display:none;">0</span>
-    </button>
   </div>
   ${showTabBar ? `<div class="tab-bar">${tabBarHtml}</div>` : `<div class="tab-bar" style="display:none">${tabBarHtml}</div>`}
   <div id="tips-banner" class="tips-banner">
@@ -2855,40 +2593,6 @@ function buildHtml(workflowData, options) {
   </div>` : ''}
 
   <div id="tooltip" class="d3-tooltip"></div>
-  <div id="feedback-drawer" class="feedback-drawer">
-    <div class="feedback-header">
-      <span>💬 Reviewer Feedback</span>
-      <button id="feedback-close-btn" class="feedback-close" title="Close">✕</button>
-    </div>
-    <div class="feedback-body">
-      <div class="feedback-form">
-        <label>Your Name / Role</label>
-        <input id="fb-author" type="text" placeholder="e.g. Alice (Systems Eng)" />
-        <label>Target Area</label>
-        <div style="display:flex;gap:4px;align-items:center;">
-          <span id="fb-target-badge" class="feedback-badge" style="margin:0;flex:1;">General Workflow</span>
-          <button id="fb-clear-target" type="button" style="background:none;border:none;color:#64748b;cursor:pointer;font-size:11px;text-decoration:underline;">Reset</button>
-        </div>
-        <div style="font-size:11px;color:#1e40af;background:#eff6ff;padding:6px 8px;border-radius:6px;border:1px solid #bfdbfe;line-height:1.3;margin:2px 0;">
-          💡 <strong>Tip:</strong> Click any <strong>Tool lane</strong> or <strong>Architecture box</strong>, or double-click any <strong>Task</strong> or <strong>Link</strong> in the diagram to attach your comment directly to that item!
-        </div>
-        <div id="fb-ref-note-container" style="display:none;margin-top:8px;">
-          <label>Reference Note (Optional)</label>
-          <input id="fb-ref-note" type="text" placeholder="Explain exactly what this comment refers to..." />
-        </div>
-        <label id="fb-note-label">Comment</label>
-        <textarea id="fb-text" placeholder="Write your observation, question, or suggestion..."></textarea>
-        <button id="fb-submit-btn" type="button" class="feedback-btn-primary">Add Comment</button>
-      </div>
-      <div id="fb-list" class="feedback-list">
-        <div style="text-align:center;color:#94a3b8;font-size:12px;padding:20px 0;">No comments yet. Click any tool lane, architecture box, or link in the diagram to attach a note!</div>
-      </div>
-    </div>
-    <div class="feedback-footer">
-      <button id="fb-copy-md" type="button" class="feedback-btn-sec" title="Copy formatted markdown report to clipboard">📋 Copy Markdown</button>
-      <button id="fb-download-json" type="button" class="feedback-btn-sec" style="background:#1e40af;color:#fff;border-color:#1e40af;" title="Download JSON file to import into live React editor">📥 Export JSON</button>
-    </div>
-  </div>
   <div id="tool-note-modal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,0.45);z-index:3000;align-items:center;justify-content:center;backdrop-filter:blur(2px);">
     <div style="background:#fff;border-radius:12px;width:520px;max-width:90vw;box-shadow:0 20px 60px rgba(0,0,0,0.3);overflow:hidden;display:flex;flex-direction:column;border:1px solid #e2e8f0;">
       <div style="display:flex;align-items:center;justify-content:space-between;padding:14px 20px;border-bottom:1px solid #e2e8f0;background:#f8fafc;">
