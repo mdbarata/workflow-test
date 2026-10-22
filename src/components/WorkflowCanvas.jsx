@@ -1095,6 +1095,7 @@ const WorkflowCanvas = ({
 
   const [hoveredTaskId, setHoveredTaskId] = useState(null);
   const [hoveredDocId, setHoveredDocId] = useState(null);
+  const [docLinkPrompt, setDocLinkPrompt] = useState(null); // { name, url } | null
   const [tooltipPos, setTooltipPos] = useState({ x: 0, y: 0 });
   // Treat an empty {} the same as null/undefined — both mean "no positions saved yet".
   const hasPersistedDocPositions = persistedDocPositions && Object.keys(persistedDocPositions).length > 0;
@@ -1780,7 +1781,8 @@ const WorkflowCanvas = ({
                 isDimmed={(!isSearchMatchDoc) || (!!hoveredTask && !isHighlighted) || (!!hoveredDocId && hoveredDocId !== doc.id && !isHighlighted)}
                 isDragging={dragging?.id === doc.id}
                 onMouseEnter={() => setHoveredDocId(doc.id)} onMouseLeave={() => setHoveredDocId(null)}
-                onMouseDown={(e) => handleDocMouseDown(e, doc.id)} onHeightChange={(h) => handleDocHeight(doc.id, h)} />
+                onMouseDown={(e) => handleDocMouseDown(e, doc.id)} onHeightChange={(h) => handleDocHeight(doc.id, h)}
+                onDoubleClick={(e) => { e.stopPropagation(); if (doc.url) setDocLinkPrompt({ name: doc.name, url: doc.url }); }} />
             );
           })}
         </g>
@@ -1791,6 +1793,21 @@ const WorkflowCanvas = ({
           onClose={() => setOpenNoteTool(null)} onSave={(tool, text) => onToolNoteChange(tool, text)} />
       )}
       <Tooltip task={hoveredTask} responsible={hoveredTask ? respMap[hoveredTask.responsible] : null} documents={documents} pos={tooltipPos} />
+
+      {docLinkPrompt && (
+        <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.45)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 3000, backdropFilter: 'blur(3px)' }}
+          onClick={() => setDocLinkPrompt(null)}>
+          <div onClick={(e) => e.stopPropagation()} style={{ background: '#fff', borderRadius: 12, padding: '22px 24px', width: 420, maxWidth: '90vw', boxShadow: '0 20px 60px rgba(0,0,0,0.3)' }}>
+            <div style={{ fontSize: 15, fontWeight: 600, color: '#1e293b', marginBottom: 8 }}>🔗 Open linked document?</div>
+            <div style={{ fontSize: 13, color: '#475569', marginBottom: 6 }}>Do you want to go to <strong>{docLinkPrompt.name}</strong>?</div>
+            <div style={{ fontSize: 11, color: '#64748b', background: '#f1f5f9', borderRadius: 6, padding: '6px 8px', marginBottom: 16, wordBreak: 'break-all' }}>{docLinkPrompt.url}</div>
+            <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8 }}>
+              <button className="btn-secondary" onClick={() => setDocLinkPrompt(null)}>Cancel</button>
+              <button className="btn-primary" autoFocus onClick={() => { window.open(docLinkPrompt.url, '_blank', 'noopener,noreferrer'); setDocLinkPrompt(null); }}>Open document</button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {showExportModal && (
         <ExportModal

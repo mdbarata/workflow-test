@@ -19,6 +19,7 @@ const SequenceCanvas = ({
   onSearchChange,
   onEditTasks,
   onToolNotes,
+  onDocLinks,
   activeVariant,
   setActiveVariant,
   activeToolSetting,
@@ -191,6 +192,7 @@ const SequenceCanvas = ({
         onSearchChange={onSearchChange}
         // Exclude chapters for sequences
         onChapters={() => { }}
+        onDocLinks={onDocLinks}
         onSaveJson={onSaveJson}
         onLoadJson={onLoadJson}
       />

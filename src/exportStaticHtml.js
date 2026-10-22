@@ -682,7 +682,8 @@ const VIEWER_JS = `
       var dH = docHeights[doc.id] || DOC_MIN_HEIGHT;
       var y = pos.y - dH / 2;
       var lines = wrapDocName(doc.name);
-      svg += '<g class="doc-node" data-doc-id="' + escapeHtml(doc.id) + '" style="cursor:pointer;">';
+      var docUrl = (doc.url && (String(doc.url).toLowerCase().indexOf('http://') === 0 || String(doc.url).toLowerCase().indexOf('https://') === 0)) ? String(doc.url) : '';
+      svg += '<g class="doc-node' + (docUrl ? ' has-link' : '') + '" data-doc-id="' + escapeHtml(doc.id) + '" data-doc-name="' + escapeHtml(doc.name || doc.id) + '"' + (docUrl ? ' data-doc-url="' + escapeHtml(docUrl) + '"' : '') + ' style="cursor:pointer;">';
       svg += '<rect x="' + pos.x + '" y="' + y + '" width="' + DOC_WIDTH + '" height="' + dH + '" rx="' + DOC_RADIUS + '" fill="' + fill + '" stroke="rgba(0,0,0,0.3)" stroke-width="1.5" class="doc-rect"/>';
       // DocIcon — mirrors DocumentNode.jsx lines 9-22
       var iconX = pos.x + 8;
@@ -693,6 +694,13 @@ const VIEWER_JS = `
       lines.forEach(function(line, i) {
         svg += '<text x="' + (pos.x + DOC_WIDTH / 2 + 6) + '" y="' + (startY + i * 12) + '" text-anchor="middle" font-size="10px" font-weight="600" fill="white" pointer-events="none">' + escapeHtml(typeof line === 'string' ? line : line.join(' ')) + '</text>';
       });
+      if (docUrl) {
+        var bx = pos.x + DOC_WIDTH - 11, by = y + 11;
+        svg += '<g transform="translate(' + bx + ',' + by + ')" pointer-events="none"><title>Double-click to open linked document</title>' +
+          '<circle r="8" fill="white" fill-opacity="0.95" stroke="rgba(0,0,0,0.25)" stroke-width="0.8"/>' +
+          '<g transform="rotate(-45)" fill="none" stroke="#2563eb" stroke-width="1.3">' +
+          '<rect x="-5.2" y="-2.4" width="6.4" height="4.8" rx="2.4"/><rect x="-1.2" y="-2.4" width="6.4" height="4.8" rx="2.4"/></g></g>';
+      }
       svg += '</g>';
     });
 
@@ -963,10 +971,58 @@ const VIEWER_JS = `
       node.addEventListener('mouseleave', function() { clearHighlights(); hideTooltip(); });
     });
 
+    function showDocLinkConfirm(name, url) {
+      var old = document.getElementById('doc-link-confirm');
+      if (old) old.remove();
+      var ov = document.createElement('div');
+      ov.id = 'doc-link-confirm';
+      ov.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,.45);display:flex;align-items:center;justify-content:center;z-index:5000;backdrop-filter:blur(3px);';
+      var box = document.createElement('div');
+      box.style.cssText = 'background:#fff;border-radius:12px;padding:22px 24px;width:420px;max-width:90vw;box-shadow:0 20px 60px rgba(0,0,0,.3);font-family:inherit;';
+      var title = document.createElement('div');
+      title.style.cssText = 'font-size:15px;font-weight:600;color:#1e293b;margin-bottom:8px;';
+      title.textContent = 'Open linked document?';
+      var msg = document.createElement('div');
+      msg.style.cssText = 'font-size:13px;color:#475569;margin-bottom:6px;';
+      msg.appendChild(document.createTextNode('Do you want to go to '));
+      var strong = document.createElement('strong');
+      strong.textContent = name;
+      msg.appendChild(strong);
+      msg.appendChild(document.createTextNode('?'));
+      var urlBox = document.createElement('div');
+      urlBox.style.cssText = 'font-size:11px;color:#64748b;background:#f1f5f9;border-radius:6px;padding:6px 8px;margin-bottom:16px;word-break:break-all;';
+      urlBox.textContent = url;
+      var row = document.createElement('div');
+      row.style.cssText = 'display:flex;justify-content:flex-end;gap:8px;';
+      var cancel = document.createElement('button');
+      cancel.textContent = 'Cancel';
+      cancel.style.cssText = 'padding:7px 14px;border-radius:6px;border:1px solid #cbd5e1;background:#fff;color:#334155;font-size:13px;cursor:pointer;';
+      var ok = document.createElement('button');
+      ok.textContent = 'Open document';
+      ok.style.cssText = 'padding:7px 14px;border-radius:6px;border:none;background:#2563eb;color:#fff;font-size:13px;font-weight:600;cursor:pointer;';
+      function close() { ov.remove(); document.removeEventListener('keydown', onKey); }
+      function onKey(ev) { if (ev.key === 'Escape') close(); }
+      cancel.addEventListener('click', close);
+      ok.addEventListener('click', function() { window.open(url, '_blank', 'noopener,noreferrer'); close(); });
+      ov.addEventListener('click', function(ev) { if (ev.target === ov) close(); });
+      document.addEventListener('keydown', onKey);
+      row.appendChild(cancel); row.appendChild(ok);
+      box.appendChild(title); box.appendChild(msg); box.appendChild(urlBox); box.appendChild(row);
+      ov.appendChild(box);
+      document.body.appendChild(ov);
+      ok.focus();
+    }
+
     // Doc hover
     svgEl.querySelectorAll('.doc-node').forEach(function(node) {
       node.addEventListener('mouseenter', function() { highlightDoc(node.getAttribute('data-doc-id')); });
       node.addEventListener('mouseleave', function() { clearHighlights(); });
+      node.addEventListener('dblclick', function(e) {
+        var u = node.getAttribute('data-doc-url');
+        if (!u) return;
+        e.stopPropagation();
+        showDocLinkConfirm(node.getAttribute('data-doc-name') || 'this document', u);
+      });
     });
 
     // Initial fit
@@ -2256,9 +2312,6 @@ const VIEWER_JS = `
       });
     }
   }
-
-  updateFbCount();
-  renderFbList();
 
   // Activate initial tab
   var initialTab = tabBtns[0] ? tabBtns[0].getAttribute('data-tab') : null;

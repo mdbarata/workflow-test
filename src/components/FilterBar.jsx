@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 
-const FilterBar = ({ activity, filters, onChange, onImport, onToolNotes, onChapters, onSaveJson, onLoadJson, searchQuery, onSearchChange, activeVariant, activeToolSetting }) => {
+const FilterBar = ({ activity, filters, onChange, onImport, onToolNotes, onChapters, onDocLinks, onSaveJson, onLoadJson, searchQuery, onSearchChange, activeVariant, activeToolSetting }) => {
   const { responsibles, tools: defaultTools } = activity;
 
   const safeFilters = {
@@ -171,6 +171,11 @@ const FilterBar = ({ activity, filters, onChange, onImport, onToolNotes, onChapt
       <button className="import-btn" style={{ marginRight: 6, background: '#6d28d9' }} onClick={onChapters}>
         📖 Chapters
       </button>
+      {onDocLinks && (
+        <button className="import-btn" style={{ marginRight: 6, background: '#0891b2' }} onClick={onDocLinks} title="Attach Google Docs / web links to input and output documents">
+          🔗 Doc links
+        </button>
+      )}
       <button className="import-btn" onClick={onImport}>
         ✎ Edit tasks
       </button>

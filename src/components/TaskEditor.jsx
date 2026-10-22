@@ -129,7 +129,7 @@ const rowsToWorkflow = (rows, originalData, variantNames, toolSettingNames) => {
     const existing = originalDocByName[lower] || originalDocById[trimmed];
     const id = existing ? existing.id : slugify(trimmed);
     const displayName = existing ? existing.name : trimmed;
-    return { id, name: displayName, type };
+    return { id, name: displayName, type, ...(existing && existing.url ? { url: existing.url } : {}) };
   };
 
   // Given a display name from the editor row, return the best responsible key to use.

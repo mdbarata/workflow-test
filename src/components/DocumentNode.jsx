@@ -33,6 +33,7 @@ const DocumentNode = ({
   onMouseLeave,
   onMouseDown,
   onHeightChange,
+  onDoubleClick,
 }) => {
   const textRef = useRef(null);
   const [boxHeight, setBoxHeight] = useState(DOC_MIN_HEIGHT);
@@ -71,6 +72,7 @@ const DocumentNode = ({
       onMouseEnter={onMouseEnter}
       onMouseLeave={onMouseLeave}
       onMouseDown={onMouseDown}
+      onDoubleClick={doc.url ? onDoubleClick : undefined}
     >
       <rect
         x={x}
@@ -121,6 +123,16 @@ const DocumentNode = ({
           </tspan>
         ))}
       </text>
+      {doc.url && (
+        <g transform={`translate(${x + DOC_WIDTH - 11}, ${y + 11})`} pointerEvents="none">
+          <title>{`Double-click to open: ${doc.url}`}</title>
+          <circle r="8" fill="white" fillOpacity="0.95" stroke="rgba(0,0,0,0.25)" strokeWidth="0.8" />
+          <g transform="rotate(-45)" fill="none" stroke="#2563eb" strokeWidth="1.3">
+            <rect x="-5.2" y="-2.4" width="6.4" height="4.8" rx="2.4" />
+            <rect x="-1.2" y="-2.4" width="6.4" height="4.8" rx="2.4" />
+          </g>
+        </g>
+      )}
     </g>
   );
 };

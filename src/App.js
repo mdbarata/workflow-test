@@ -5,6 +5,7 @@ import WorkflowCanvas from './components/WorkflowCanvas';
 import FilterBar from './components/FilterBar';
 import TaskEditor from './components/TaskEditor';
 import ChapterEditor from './components/ChapterEditor';
+import DocumentLinksEditor from './components/DocumentLinksEditor';
 import ActivityLinksView from './components/ActivityLinksView';
 import SequenceCanvas from './components/SequenceCanvas';
 import { loadAppState, saveAppState, clearAppState, useAutoSave } from './useWorkflowPersistence';
@@ -398,6 +399,7 @@ const App = () => {
   const [searchQuery, setSearchQuery] = useState('');
   const [showEditor, setShowEditor] = useState(false);
   const [showChapterEditor, setShowChapterEditor] = useState(false);
+  const [showDocLinks, setShowDocLinks] = useState(false);
   const [showToolNotes, setShowToolNotes] = useState(false);
   const [showLinks, setShowLinks] = useState(saved?.showLinks || false);
   const [showAltTools, setShowAltTools] = useState(false);
@@ -511,6 +513,22 @@ const App = () => {
     setOverviewPositions(null);
   };
 
+  // Apply a { [docId]: url } map to every copy of each document (activities, hidden, root)
+  const handleSaveDocLinks = (urlMap) => {
+    const apply = (d) => {
+      if (!d || !d.id || !(d.id in urlMap)) return d;
+      const next = { ...d };
+      delete next.url;
+      return urlMap[d.id] ? { ...next, url: urlMap[d.id] } : next;
+    };
+    setWorkflowData((prev) => ({
+      ...prev,
+      activities: (prev.activities || []).map((act) => ({ ...act, documents: (act.documents || []).map(apply) })),
+      ...(prev.hiddenDocuments ? { hiddenDocuments: prev.hiddenDocuments.map(apply) } : {}),
+      ...(prev.documents ? { documents: prev.documents.map(apply) } : {}),
+    }));
+  };
+
   // Save chapters for the current activity into workflowData
   const handleSaveChapters = (chapters) => {
     setWorkflowData((prev) => ({
@@ -537,10 +555,21 @@ const App = () => {
         ...act,
         chapters: Array.isArray(act.chapters) ? act.chapters : []
       })),
-      // Persist layout positions so the diagram looks the same when shared
+      // Persist layout positions and notes so the diagram looks the same when shared
       toolPositions: archPositions,
+      docPositions: docPositions,
       edgeSides: edgeSides,
+      toolNotes: toolNotes,
       ...(currentOverviewPos ? { overviewPositions: currentOverviewPos } : {}),
+      // Save names of the options and tools/tool settings
+      variantNames: {
+        option_1: workflowData.variantNames?.option_1 || 'Option 1',
+        option_2: workflowData.variantNames?.option_2 || 'Option 2',
+      },
+      toolSettingNames: {
+        setting_1: workflowData.toolSettingNames?.setting_1 || 'TOOL SETTING 1',
+        setting_2: workflowData.toolSettingNames?.setting_2 || 'TOOL SETTING 2',
+      },
     };
     const data = JSON.stringify(cleanData, null, 2);
     const a = document.createElement('a');
@@ -657,6 +686,13 @@ const App = () => {
       });
     });
 
+    const joinedVariantNames = {};
+    const joinedToolSettingNames = {};
+    pendingImport.payloads.forEach((payload) => {
+      if (payload.variantNames) Object.assign(joinedVariantNames, payload.variantNames);
+      if (payload.toolSettingNames) Object.assign(joinedToolSettingNames, payload.toolSettingNames);
+    });
+
     setWorkflowData((prev) => ({
       ...prev,
       activities: newActivities,
@@ -665,7 +701,9 @@ const App = () => {
       toolNotes: newNotes,
       docPositions: newDocPos,
       toolPositions: newArchPos,
-      edgeSides: newEdgeSides
+      edgeSides: newEdgeSides,
+      ...(Object.keys(joinedVariantNames).length > 0 ? { variantNames: { ...(prev.variantNames || {}), ...joinedVariantNames } } : {}),
+      ...(Object.keys(joinedToolSettingNames).length > 0 ? { toolSettingNames: { ...(prev.toolSettingNames || {}), ...joinedToolSettingNames } } : {}),
     }));
     setToolNotes(newNotes);
     setDocPositions(newDocPos);
@@ -742,6 +780,13 @@ const App = () => {
       });
     });
 
+    const combinedVariantNames = {};
+    const combinedToolSettingNames = {};
+    pendingImport.payloads.forEach((payload) => {
+      if (payload.variantNames) Object.assign(combinedVariantNames, payload.variantNames);
+      if (payload.toolSettingNames) Object.assign(combinedToolSettingNames, payload.toolSettingNames);
+    });
+
     setWorkflowData({
       activities: combinedActivities,
       sequences: combinedSequences,
@@ -749,7 +794,9 @@ const App = () => {
       toolNotes: combinedNotes,
       docPositions: combinedDocPos,
       toolPositions: combinedArchPos,
-      edgeSides: combinedEdgeSides
+      edgeSides: combinedEdgeSides,
+      ...(Object.keys(combinedVariantNames).length > 0 ? { variantNames: combinedVariantNames } : {}),
+      ...(Object.keys(combinedToolSettingNames).length > 0 ? { toolSettingNames: combinedToolSettingNames } : {}),
     });
     setToolNotes(combinedNotes);
     setDocPositions(combinedDocPos);
@@ -1078,6 +1125,7 @@ const App = () => {
           onImport={() => setShowEditor(true)}
           onToolNotes={() => setShowToolNotes(true)}
           onChapters={() => setShowChapterEditor(true)}
+          onDocLinks={() => setShowDocLinks(true)}
           onSaveJson={handleSaveJson}
           onLoadJson={handleLoadJson}
           searchQuery={searchQuery}
@@ -1106,6 +1154,7 @@ const App = () => {
             onSearchChange={setSearchQuery}
             onEditTasks={() => setShowEditor(true)}
             onToolNotes={() => setShowToolNotes(true)}
+            onDocLinks={() => setShowDocLinks(true)}
             activeVariant={activeVariant}
             setActiveVariant={setActiveVariant}
             activeToolSetting={activeToolSetting}
@@ -1177,6 +1226,14 @@ const App = () => {
           activity={activity}
           onSave={handleSaveChapters}
           onClose={() => setShowChapterEditor(false)}
+        />
+      )}
+
+      {showDocLinks && (
+        <DocumentLinksEditor
+          workflowData={workflowData}
+          onSave={handleSaveDocLinks}
+          onClose={() => setShowDocLinks(false)}
         />
       )}
 
